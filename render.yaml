@@ -1,0 +1,55 @@
+# Render Blueprint. Deploy: Render dashboard > New > Blueprint > select this repo.
+# Plan: NOT free. A free web service spins down after 15 minutes without traffic (~1 minute to wake),
+# which would break a live demo. See https://render.com/docs/free
+# Field names checked against https://render.com/docs/blueprint-spec for healthCheckPath and
+# numInstances; dockerfilePath and dockerContext were NOT re-verified (check on first deploy).
+services:
+  - type: web
+    name: mochi-backend
+    runtime: docker
+    dockerfilePath: ./services/backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    numInstances: 1 # all state is in memory: exactly one instance, one worker
+    healthCheckPath: /healthz
+    envVars:
+      - key: MOCHI_AGORA_MODE
+        value: real
+      - key: MOCHI_SILENCE_STRATEGY
+        value: empty_reply
+      - key: MOCHI_ENABLE_DEV_ROUTES
+        value: "false" # flip to "true" only if you need /dev/... during the demo
+      - key: MOCHI_PUBLIC_URL
+        sync: false # set to this service's https URL after the first deploy
+      - key: MOCHI_TURN_KEY
+        sync: false
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false
+      - key: AGORA_REST_KEY
+        sync: false
+      - key: AGORA_REST_SECRET
+        sync: false
+      - key: MODEL_API_KEY
+        sync: false
+      - key: MOCHI_MODEL_BASE_URL
+        value: https://api.openai.com/v1
+      - key: MOCHI_MODEL_NAME
+        value: gpt-4o-mini
+      - key: MOCHI_CHANNEL
+        value: mochi-demo
+      - key: MOCHI_ASR_VENDOR
+        value: microsoft
+      - key: MOCHI_ASR_LANGUAGE
+        value: en-US
+      - key: MOCHI_ASR_PARAMS
+        sync: false # JSON object of vendor params, e.g. the ASR vendor key
+      - key: MOCHI_TTS_VENDOR
+        value: microsoft
+      - key: MOCHI_TTS_PARAMS
+        sync: false # JSON object of vendor params, e.g. key and voice
+      - key: MOCHI_CORS_ORIGINS
+        value: "*"
+      - key: MOCHI_LOG_LEVEL
+        value: INFO

@@ -83,10 +83,17 @@ def _masked(name: str, value: object) -> str:
 
 
 def describe_errors(error: ValidationError) -> str:
-    """One line per bad variable: name, masked value, expected shape."""
+    """One line per problem: variable, masked value, expected shape.
+
+    Errors about the whole settings object carry no single value, so none is printed (the input
+    could contain secrets that were set correctly).
+    """
     lines = []
     for item in error.errors():
-        name = ".".join(str(part) for part in item["loc"]).upper() or "SETTINGS"
+        if not item["loc"]:
+            lines.append(str(item["msg"]))
+            continue
+        name = ".".join(str(part) for part in item["loc"]).upper()
         lines.append(f"{name}={_masked(name, item.get('input'))}: {item['msg']}")
     return "invalid settings: " + "; ".join(lines)
 

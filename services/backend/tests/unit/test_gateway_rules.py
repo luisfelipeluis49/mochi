@@ -266,6 +266,13 @@ def test_settings_errors_mask_secrets_and_name_the_variable() -> None:
     assert "s3cret" not in str(masked.value)
 
 
+def test_whole_settings_errors_never_echo_secrets_that_were_set() -> None:
+    with pytest.raises(SettingsError) as raised:
+        load_settings({"MOCHI_AGORA_MODE": "real", "AGORA_REST_SECRET": "very-secret-value"})
+    assert "very-secret-value" not in str(raised.value)
+    assert "AGORA_APP_ID" in str(raised.value)
+
+
 REQUEST = AgentStartRequest(
     "chan", 1002, 1001, "tok", "https://x/agora/llm/demo/chat/completions", "k", SpeechTuning()
 )

@@ -18,3 +18,7 @@ Append one entry per checkpoint: what works and how to see it.
   expiry/replacement, session start/stop, device state, activity endpoints, reset, silence strategies,
   Agora REST adapter + token issuer behind ports, `MOCHI_AGORA_MODE=fake`.
   See it: `make -C services/backend test` (integration walkthrough: `tests/integration/test_gateway_flow.py`).
+
+## Scripts, Docker, Render, CI
+- `scripts/smoke.sh` against a live server: all steps PASS. Container built and run (non-root, healthy,
+  `/healthz` returns the git SHA). `render.yaml`, `.github/workflows/verify.yml` written (not pushed).
