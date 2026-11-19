@@ -1,0 +1,669 @@
+[
+ {
+  "id": "code_switch-01",
+  "case": "code_switch",
+  "text": "I need to adiar my meeting tomorrow.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-02",
+  "case": "code_switch",
+  "text": "I forgot my guarda-chuva at the office.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-03",
+  "case": "code_switch",
+  "text": "Can you hold the fila for me while I get coffee?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "queue",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-04",
+  "case": "code_switch",
+  "text": "Please put it in the geladeira when you get home.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "fridge",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-05",
+  "case": "code_switch",
+  "text": "We had feijoada at the restaurant last night.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "code_switch-06",
+  "case": "code_switch",
+  "text": "Eu preciso adiar a reunião amanhã.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "code_switch-07",
+  "case": "code_switch",
+  "text": "The weather is really nice today.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "code_switch-08",
+  "case": "code_switch",
+  "text": "I visited São Paulo last week.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "says_unknown-09",
+  "case": "says_unknown",
+  "text": "How do you say… the thing for the rain?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "says_unknown",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "says_unknown-10",
+  "case": "says_unknown",
+  "text": "I don't know the word for the paper they give you when you pay.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "receipt",
+   "reason": "says_unknown",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "says_unknown-11",
+  "case": "says_unknown",
+  "text": "What's the word for fila?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "queue",
+   "reason": "says_unknown",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "says_unknown-12",
+  "case": "says_unknown",
+  "text": "How do you say hello in French?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "says_unknown-13",
+  "case": "says_unknown",
+  "text": "What's the word of the day on that app?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "says_unknown-14",
+  "case": "says_unknown",
+  "text": "I know the word for that already.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_partner-15",
+  "case": "asks_partner",
+  "text": "Ben, como se diz recibo?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "receipt",
+   "reason": "asks_partner",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "asks_partner-16",
+  "case": "asks_partner",
+  "text": "Ben, how do you say mala in English?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "suitcase",
+   "reason": "asks_partner",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "asks_partner-17",
+  "case": "asks_partner",
+  "text": "Ben, what's the word for geladeira?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "fridge",
+   "reason": "asks_partner",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "asks_partner-18",
+  "case": "asks_partner",
+  "text": "Ben, can you pass the salt?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_partner-19",
+  "case": "asks_partner",
+  "text": "Ben, como foi seu dia?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_partner-20",
+  "case": "asks_partner",
+  "text": "Ana, how do you say hello in French?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-21",
+  "case": "asks_mochi",
+  "text": "Oi Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-22",
+  "case": "asks_mochi",
+  "text": "Hi Moshi, how do you say recibo?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "receipt",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: receipt."
+  }
+ },
+ {
+  "id": "asks_mochi-23",
+  "case": "asks_mochi",
+  "text": "Hey Motchi, what's the word for geladeira?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "fridge",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: fridge."
+  }
+ },
+ {
+  "id": "asks_mochi-24",
+  "case": "asks_mochi",
+  "text": "I love my mochi ice cream.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-25",
+  "case": "asks_mochi",
+  "text": "Mochi is a Japanese dessert.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-26",
+  "case": "asks_mochi",
+  "text": "Oi Mochi",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "trails_off-27",
+  "case": "trails_off",
+  "text": "It's raining and I forgot my… um…",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "trails_off",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "trails_off-28",
+  "case": "trails_off",
+  "text": "Please bring my… hmm… for the rain…",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "trails_off",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "trails_off-29",
+  "case": "trails_off",
+  "text": "I forgot my wallet and my… um… the bag for travel…",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "suitcase",
+   "reason": "trails_off",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "trails_off-30",
+  "case": "trails_off",
+  "text": "I forgot my… um… keys.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "trails_off-31",
+  "case": "trails_off",
+  "text": "Well… I guess we can go.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "trails_off-32",
+  "case": "trails_off",
+  "text": "Hmm.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "talks_around-33",
+  "case": "talks_around",
+  "text": "It's the paper they give you when you pay.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "receipt",
+   "reason": "talks_around",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "talks_around-34",
+  "case": "talks_around",
+  "text": "I need the bag for travel, the one you pack for a trip.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "suitcase",
+   "reason": "talks_around",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "talks_around-35",
+  "case": "talks_around",
+  "text": "Where is the thing that opens the door?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "key",
+   "reason": "talks_around",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "talks_around-36",
+  "case": "talks_around",
+  "text": "It's raining today.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "talks_around-37",
+  "case": "talks_around",
+  "text": "I paid and they gave me the bill.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "talks_around-38",
+  "case": "talks_around",
+  "text": "The bag is on the table.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-39",
+  "case": "restarts",
+  "text": "We should… we need to… make it later.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "restarts-40",
+  "case": "restarts",
+  "text": "Let's… let's… push it back.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "restarts-41",
+  "case": "restarts",
+  "text": "The flight will… it's going to… arrive later than planned.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "delay",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "restarts-42",
+  "case": "restarts",
+  "text": "We should… probably go now.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-43",
+  "case": "restarts",
+  "text": "We need to leave, we need to leave now!",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-44",
+  "case": "restarts",
+  "text": "So… we… I don't know.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-45",
+  "case": "look_alike",
+  "text": "I pretend to travel in July.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "intend",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "look_alike-46",
+  "case": "look_alike",
+  "text": "I'm actually working on a new project.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "currently",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "look_alike-47",
+  "case": "look_alike",
+  "text": "Yesterday I bought a book at the library.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "bookstore",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "look_alike-48",
+  "case": "look_alike",
+  "text": "The kids pretend to be pirates.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-49",
+  "case": "look_alike",
+  "text": "Actually, I disagree with that.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-50",
+  "case": "look_alike",
+  "text": "I borrowed a book from the library.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "not_understood-51",
+  "case": "not_understood",
+  "text": "Sorry, what do you mean?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "receipt",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "It's the paper they give you when you pay."
+  ]
+ },
+ {
+  "id": "not_understood-52",
+  "case": "not_understood",
+  "text": "I don't understand.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "Where is my guarda-chuva?"
+  ]
+ },
+ {
+  "id": "not_understood-53",
+  "case": "not_understood",
+  "text": "What do you mean?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "queue",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "Can you hold the fila?"
+  ]
+ },
+ {
+  "id": "not_understood-54",
+  "case": "not_understood",
+  "text": "Sorry, what do you mean?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "How was your weekend?"
+  ]
+ },
+ {
+  "id": "not_understood-55",
+  "case": "not_understood",
+  "text": "Sorry I'm late.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "not_understood-56",
+  "case": "not_understood",
+  "text": "What do you mean by that?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "The meeting is at nine."
+  ]
+ },
+ {
+  "id": "quiet_rules-57",
+  "case": "quiet_rules",
+  "text": "I forgot my guarda-chuva at the office.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "I need to adiar my meeting.",
+   "That sounds busy."
+  ],
+  "hint_turns_ago": 2
+ },
+ {
+  "id": "quiet_rules-58",
+  "case": "quiet_rules",
+  "text": "I need to adiar my meeting.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "round_active": true
+ },
+ {
+  "id": "quiet_rules-59",
+  "case": "quiet_rules",
+  "text": "My father died and I need to adiar the funeral.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "quiet_rules-60",
+  "case": "quiet_rules",
+  "text": "I need to, I mean, I want to adiar it.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "quiet_rules-61",
+  "case": "quiet_rules",
+  "text": "I forgot my guarda-chuva at the office.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "I need to adiar my meeting.",
+   "That sounds busy.",
+   "Yes, very."
+  ],
+  "hint_turns_ago": 3
+ },
+ {
+  "id": "quiet_rules-wake-in-round",
+  "case": "quiet_rules",
+  "text": "Oi Mochi, what's the word for fila?",
+  "round_active": true,
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "quiet_rules-63",
+  "case": "quiet_rules",
+  "text": "I need to adiar my meeting tomorrow.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "code_switch",
+   "target_user_id": null
+  },
+  "participants": "both_learning_en"
+ },
+ {
+  "id": "model-64",
+  "case": "model",
+  "text": "How do you say cancelar?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "cancel",
+   "reason": "says_unknown",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "says_unknown",
+   "expression": "cancel",
+   "meaning": "cancelar",
+   "example": "I need to cancel the trip."
+  }
+ },
+ {
+  "id": "model-65",
+  "case": "model",
+  "text": "How do you say cancelar?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "model-66",
+  "case": "model",
+  "text": "How do you say cancelar?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ }
+]

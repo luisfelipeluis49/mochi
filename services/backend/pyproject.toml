@@ -49,7 +49,7 @@ max-complexity = 8
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use literal expected values and don't annotate fixtures. See docs/DECISIONS.md D-01.
-"tests/**" = ["S101", "PLR2004", "ANN001", "ANN201", "ANN202"]
+"tests/**" = ["S101", "S105", "PLR2004", "ANN001", "ANN201", "ANN202"]
 
 [tool.mypy]
 strict = true

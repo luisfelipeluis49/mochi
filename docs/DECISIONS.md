@@ -4,7 +4,7 @@ Short ADR-style entries for choices the build prompt left open.
 
 ## D-01 Ruff ignores for tests
 `tests/**` ignores S101 (assert), PLR2004 (magic numbers) and ANN001/ANN201/ANN202 (pytest fixtures
-and tiny test helpers). Tests assert by nature and compare against literal expected values.
+and tiny test helpers) and S105 (the game's `secret_word` field is not a password). Tests assert by nature and compare against literal expected values.
 
 ## D-02 uv installed with the official installer
 No `pipx` and no `python3-venv` on this machine, so uv 0.13.9 was installed with Astral's official
@@ -27,3 +27,21 @@ format is identical for every language that reads the schema.
 AGENTS 7.2 suppresses a hint when one was shown in either of the last two turns. The two demo sentences
 therefore need at least two non-hint turns between them in the integration test and `smoke.sh`.
 Cooldown is implemented exactly as written.
+
+## D-07 Intelligence is an object; round secrets live inside it
+AGENTS 6.5 shows module-level functions. The build prompt forbids module singletons, so `Intelligence`
+(clock, ids, model injected) exposes `decide`, `handle`, `apply`, `words_for` and `reset`.
+`handle()` is not strictly pure: the public `Activity` never holds the secret word, so the
+`RoundEngine` remembers each round's `PrivatePrompt` until the result arrives.
+
+## D-08 Cooldown is computed from timestamps
+`SessionContext` has no link between turns and hints. A hint belongs to a turn when it was created after
+that turn arrived (`expires_at - ttl`), so tests must advance the clock between turns.
+
+## D-09 ASSISTED rides along with `decide()`
+`apply()` only receives proposals, so `decide()` returns ASSISTED upgrades in `Decision.learning_events`
+even when the decision is IGNORE.
+
+## D-10 Rules first, model second
+Lexicon cues and markers resolve cases 1-9 without a model; the model is asked only when a marker or an
+ask-for-word pattern could not be resolved (or a foreign word appears in an otherwise focus-language turn).

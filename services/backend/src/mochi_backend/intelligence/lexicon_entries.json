@@ -1,0 +1,20 @@
+{
+  "entries": [
+    {"pt": "adiar", "en": "postpone", "example_en": "I need to postpone my meeting.", "example_pt": "Preciso adiar minha reunião.", "describable": false, "cues": ["make it later", "push it back"]},
+    {"pt": "guarda-chuva", "en": "umbrella", "example_en": "I forgot my umbrella at the office.", "example_pt": "Esqueci meu guarda-chuva no escritório.", "describable": true, "cues": ["raining", "rainy", "the rain", "when it rains"]},
+    {"pt": "recibo", "en": "receipt", "example_en": "Can I have the receipt, please?", "example_pt": "Posso pegar o recibo, por favor?", "describable": true, "cues": ["paper they give", "when you pay", "proof of payment"]},
+    {"pt": "fila", "en": "queue", "example_en": "We waited in a long queue.", "example_pt": "Esperamos numa fila longa.", "describable": true, "cues": ["line of people", "people waiting in line"]},
+    {"pt": "mala", "en": "suitcase", "example_en": "I packed my suitcase last night.", "example_pt": "Arrumei a mala ontem à noite.", "describable": true, "cues": ["bag for travel", "pack for a trip"]},
+    {"pt": "saca-rolhas", "en": "corkscrew", "example_en": "Do you have a corkscrew?", "example_pt": "Você tem um saca-rolhas?", "describable": true, "cues": ["open a wine bottle", "opens wine"]},
+    {"pt": "geladeira", "en": "fridge", "example_en": "The milk is in the fridge.", "example_pt": "O leite está na geladeira.", "describable": true, "cues": ["keeps food cold"]},
+    {"pt": "chave", "en": "key", "example_en": "I lost my key.", "example_pt": "Perdi minha chave.", "describable": true, "cues": ["opens the door"]},
+    {"pt": "atrasar", "en": "delay", "example_en": "The flight will be delayed.", "example_pt": "O voo vai atrasar.", "describable": false, "cues": ["arrive later than planned"]},
+    {"pt": "reunião", "en": "meeting", "example_en": "The meeting starts at nine.", "example_pt": "A reunião começa às nove.", "describable": false, "cues": ["people gather to talk about work"]}
+  ],
+  "false_friends": [
+    {"used": "pretend", "intended": "intend", "meaning": "pretender", "example": "I intend to travel in July.", "trigger": "\\bpretend to (?:travel|go|buy|study|visit|learn|move|start|stay|work|leave|come)\\b"},
+    {"used": "actually", "intended": "currently", "meaning": "atualmente", "example": "I am currently working on a new project.", "trigger": "\\bactually (?:working|living|studying|reading|learning|building)\\b"},
+    {"used": "library", "intended": "bookstore", "meaning": "livraria", "example": "I bought a book at the bookstore.", "trigger": "\\b(?:bought|buy|buying)\\b.*\\blibrary\\b"}
+  ],
+  "deliberate": ["feijoada", "brigadeiro", "caipirinha", "pão de queijo", "brasil", "brazil"]
+}

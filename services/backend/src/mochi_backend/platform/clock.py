@@ -28,3 +28,11 @@ def iso_z(moment: datetime) -> str:
     """
     utc = moment.astimezone(UTC)
     return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond // 1000:03d}Z"
+
+
+def parse_iso_z(stamp: str) -> datetime:
+    """Parse the ISO-8601 UTC `...Z` format used by every event timestamp.
+
+    Example: `parse_iso_z("2026-11-19T16:00:04.700Z").microsecond` is 700000.
+    """
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(UTC)
