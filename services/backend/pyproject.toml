@@ -1,0 +1,59 @@
+[project]
+name = "mochi-backend"
+version = "0.1.0"
+description = "Mochi backend: gateway + intelligence in one process"
+requires-python = ">=3.12"
+dependencies = [
+  "mochi-contracts",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "httpx>=0.27",
+  "pydantic>=2.8,<3",
+  "pydantic-settings>=2.4",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+  "mypy>=1.11",
+]
+
+[tool.uv.sources]
+mochi-contracts = { path = "../../packages/contracts", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mochi_backend"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src", "tests", "../../packages/fixtures"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "../../packages/contracts/python"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ANN", "SIM", "RET", "PL", "N", "S", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, use literal expected values and don't annotate fixtures. See docs/DECISIONS.md D-01.
+"tests/**" = ["S101", "PLR2004", "ANN001", "ANN201", "ANN202"]
+
+[tool.mypy]
+strict = true
+disallow_any_explicit = true
+disallow_any_generics = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src:tests:../../packages/contracts/python"
