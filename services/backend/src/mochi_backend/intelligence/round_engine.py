@@ -21,6 +21,7 @@ from mochi_contracts import (
     WordSource,
 )
 
+PEOPLE_PER_SESSION = 2  # exactly two people (AGENTS 1)
 STOCK_WORDS_EN = ("umbrella", "suitcase", "corkscrew")
 _HOST_LINES = {
     Language.EN: ("{d} describes. {g} guesses!", "{g} got it!", "Skipped. Next time!"),
@@ -30,7 +31,7 @@ _HOST_LINES = {
 
 def _names(context: SessionContext) -> tuple[str, str]:
     """(guesser, describer): the learner guesses and the partner describes."""
-    if len(context.participants) != 2:  # noqa: PLR2004 - exactly two people (AGENTS 1)
+    if len(context.participants) != PEOPLE_PER_SESSION:
         raise ValueError(
             f"need exactly 2 participants to start a round; got {len(context.participants)}"
         )

@@ -5,12 +5,15 @@ import base64
 from pydantic import BaseModel, ValidationError
 
 from mochi_backend.gateway.agora.client_port import (
-    AgentAlreadyStopped,
+    AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
     SpeechTuning,
 )
 from mochi_backend.platform.http_client import (
+    HTTP_NOT_FOUND,
+    HTTP_OK,
+    HTTP_SERVER_ERROR,
     HttpClient,
     HttpResponse,
     HttpTransportError,
@@ -44,7 +47,7 @@ class AgoraRestClient:
         """POST /join; returns `agent_id`. Greeting and failure message are omitted (= off)."""
         url = f"{self._root}/join"
         reply = await self._post(url, join_body(request, self._ids.new("mochi")))
-        if reply.status != 200:  # noqa: PLR2004
+        if reply.status != HTTP_OK:
             raise AgoraError(_describe(url, reply, "200 with a JSON body containing agent_id"))
         try:
             return _JoinReply.model_validate_json(reply.body).agent_id
@@ -55,9 +58,9 @@ class AgoraRestClient:
         """POST /agents/{id}/leave. A 404 means the agent is already gone."""
         url = f"{self._root}/agents/{agent_id}/leave"
         reply = await self._post(url, None)
-        if reply.status == 404:  # noqa: PLR2004
-            raise AgentAlreadyStopped(f"agent {agent_id!r} not found at {url}")
-        if reply.status != 200:  # noqa: PLR2004
+        if reply.status == HTTP_NOT_FOUND:
+            raise AgentAlreadyStoppedError(f"agent {agent_id!r} not found at {url}")
+        if reply.status != HTTP_OK:
             raise AgoraError(_describe(url, reply, "200 with an empty body"))
 
     async def speak(self, agent_id: str, text: str) -> None:
@@ -67,7 +70,7 @@ class AgoraRestClient:
         reply = await self._post(
             url, {"text": clipped, "priority": "INTERRUPT", "interruptable": True}
         )
-        if reply.status != 200:  # noqa: PLR2004
+        if reply.status != HTTP_OK:
             raise AgoraError(_describe(url, reply, "200"))
 
     async def _post(self, url: str, payload: JsonValue) -> HttpResponse:
@@ -78,7 +81,7 @@ class AgoraRestClient:
             except HttpTransportError as error:
                 last_error = error
                 continue
-            if reply.status < 500:  # noqa: PLR2004
+            if reply.status < HTTP_SERVER_ERROR:
                 return reply
             last_error = None
         if last_error is not None:

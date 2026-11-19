@@ -22,3 +22,8 @@ Append one entry per checkpoint: what works and how to see it.
 ## Scripts, Docker, Render, CI
 - `scripts/smoke.sh` against a live server: all steps PASS. Container built and run (non-root, healthy,
   `/healthz` returns the git SHA). `render.yaml`, `.github/workflows/verify.yml` written (not pushed).
+
+## Review fixes
+- Smoke and the walkthrough now assert a plain sentence produces IGNORE and publishes nothing (outside any cooldown).
+- Real mode requires an https `MOCHI_PUBLIC_URL`; `/readyz` no longer reads ready for localhost in real mode.
+- Stale-schema check is also a pytest; rule exceptions inventoried in DECISIONS D-17.

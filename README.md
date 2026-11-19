@@ -98,7 +98,8 @@ break a live demo. `numInstances: 1`. WebSockets work behind Render's proxy with
 
 1. `.env` filled; backend reachable (Render URL, or `scripts/tunnel.sh` and the printed URL in `MOCHI_PUBLIC_URL`).
 2. `MOCHI_ENABLE_DEV_ROUTES=true` for the run (smoke needs it); then `scripts/smoke.sh` against that URL.
-3. Open `/readyz`: `ready: true`, `agora_mode: real`.
+3. Open `/readyz`: `ready: true`, `agora_mode: real`, `public_url_set: true`. In real mode the backend refuses to
+   start unless `MOCHI_PUBLIC_URL` starts with `https://`.
 4. Pi bridge up (`GET /api/devices/home_pi_01/state` polled); Home view on Mochi, Mobile views on both phones,
    Audience view on the projector.
 5. `scripts/reset-demo.sh`, then Start on the phone.

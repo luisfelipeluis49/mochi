@@ -38,9 +38,9 @@ async def healthz() -> Health:
 async def readyz(container: ContainerDep) -> Readiness:
     """Readiness: Agora mode, public URL, model and intelligence implementation."""
     settings = container.settings
-    public_url_set = settings.mochi_public_url.startswith(("https://", "http://localhost"))
+    public_url_set = settings.mochi_public_url.startswith("https://")
     return Readiness(
-        ready=public_url_set,
+        ready=settings.mochi_agora_mode == "fake" or public_url_set,
         agora_mode=settings.mochi_agora_mode,
         public_url_set=public_url_set,
         model_configured=settings.model_configured,

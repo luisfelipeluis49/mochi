@@ -5,7 +5,7 @@ import json
 from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
-from mochi_backend.platform.http_client import HttpClient, HttpTransportError, JsonValue
+from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
 
 SYSTEM_PROMPT = (
     "You help two people practice a language by talking to each other. Judge ONE sentence in "
@@ -66,7 +66,7 @@ class OpenAiHintModel:
             reply = await self._http.post_json(
                 self._url, headers, self._payload(request), self._timeout
             )
-            if reply.status != 200:  # noqa: PLR2004
+            if reply.status != HTTP_OK:
                 return None
             content = _ChatReply.model_validate_json(reply.body).choices[0].message.content
             return ModelSuggestion.model_validate_json(content)

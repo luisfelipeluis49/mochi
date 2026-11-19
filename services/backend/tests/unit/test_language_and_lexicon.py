@@ -44,8 +44,10 @@ def test_entry_for_expression_finds_either_language() -> None:
 
 
 def test_entry_for_cues_and_false_friend() -> None:
-    assert LEXICON.entry_for_cues("the thing for the rain").en == "umbrella"  # type: ignore[union-attr]
-    assert LEXICON.false_friend_in("i pretend to travel").intended == "intend"  # type: ignore[union-attr]
+    entry = LEXICON.entry_for_cues("the thing for the rain")
+    friend = LEXICON.false_friend_in("i pretend to travel")
+    assert entry is not None and entry.en == "umbrella"
+    assert friend is not None and friend.intended == "intend"
     assert LEXICON.false_friend_in("they pretend to be pirates") is None
 
 

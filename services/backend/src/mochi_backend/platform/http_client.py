@@ -6,6 +6,10 @@ from typing import Protocol
 
 import httpx
 
+HTTP_OK = 200
+HTTP_NOT_FOUND = 404
+HTTP_SERVER_ERROR = 500
+
 type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
 

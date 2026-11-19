@@ -18,6 +18,7 @@ from mochi_contracts import (
     LearningState,
     Reason,
     RoundResult,
+    SessionContext,
     StateChange,
     WordSource,
 )
@@ -46,7 +47,7 @@ def _saved(expression: str, state: LearningState = LearningState.DISCOVERED) -> 
     )
 
 
-def _with_words(*events: LearningEvent):  # type: ignore[no-untyped-def]
+def _with_words(*events: LearningEvent) -> SessionContext:
     context = make_context()
     return context.model_copy(update={"learning_events": {"ana": list(events), "ben": []}})
 

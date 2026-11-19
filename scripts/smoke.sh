@@ -16,9 +16,10 @@ turn() { post /dev/sessions/demo/turn "$(jq -nc --arg t "$1" '{text:$t}')"; }
 check "readyz" "$(curl -sf "$BASE_URL/readyz" | jq -r .ready)" "true"
 post /api/demo/reset >/dev/null
 check "start" "$(post /api/sessions/demo/start | jq -r .capturing)" "true"
+check "ordinary talk: no hint" "$(turn 'Did you watch the match yesterday?' | jq -c '[.decision.decision,.decision.hint]')" '["IGNORE",null]'
 check "hint 1: postpone" "$(turn 'I need to adiar my meeting tomorrow.' | jq -r .decision.hint.expression)" "postpone"
 turn 'That sounds stressful.' >/dev/null
-check "ordinary talk stays quiet" "$(turn 'Yes, I will postpone it until Thursday.' | jq -r .decision.decision)" "IGNORE"
+check "turn right after a hint stays quiet" "$(turn 'Yes, I will postpone it until Thursday.' | jq -r .decision.decision)" "IGNORE"
 check "hint 2: umbrella" "$(turn 'I forgot my guarda-chuva at the office.' | jq -r .decision.hint.expression)" "umbrella"
 check "round starts" "$(post /api/sessions/demo/activity/start | jq -r .state)" "ACTIVE_ROUND"
 check "round result" "$(post /api/sessions/demo/activity/result '{"result":"guessed"}' | jq -r .revealed_word)" "umbrella"

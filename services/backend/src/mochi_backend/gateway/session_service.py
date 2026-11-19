@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from mochi_backend.gateway.agora.client_port import (
-    AgentAlreadyStopped,
+    AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraAgentClient,
     AgoraError,
@@ -94,7 +94,7 @@ class SessionService:
     async def _stop_agent(self, agent_id: str) -> None:
         try:
             await self._agora.stop_agent(agent_id)
-        except AgentAlreadyStopped:
+        except AgentAlreadyStoppedError:
             self._logger.log("agora_already_stopped", {"agent_id": agent_id})
         except AgoraError as error:
             # Stop locally anyway: the Pi must stop sending even if Agora is unreachable.

@@ -10,7 +10,7 @@ class AgoraError(Exception):
     """An Agora call failed. The message names the endpoint, status and expected shape."""
 
 
-class AgentAlreadyStopped(AgoraError):  # noqa: N818 - reads better as a state than as an error
+class AgentAlreadyStoppedError(AgoraError):
     """The agent was already gone when we tried to stop it (tolerated)."""
 
 
@@ -47,7 +47,7 @@ class AgoraAgentClient(Protocol):
         ...
 
     async def stop_agent(self, agent_id: str) -> None:
-        """Stop an agent; raises `AgentAlreadyStopped` when it is already gone."""
+        """Stop an agent; raises `AgentAlreadyStoppedError` when it is already gone."""
         ...
 
     async def speak(self, agent_id: str, text: str) -> None:

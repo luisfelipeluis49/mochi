@@ -1,7 +1,7 @@
 """Fake Agora client and token issuer: record calls, fail on demand. No network."""
 
 from mochi_backend.gateway.agora.client_port import (
-    AgentAlreadyStopped,
+    AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
 )
@@ -15,7 +15,7 @@ class FakeAgoraClient:
         self.stopped: list[str] = []
         self.spoken: list[tuple[str, str]] = []
         self.start_error: AgoraError | None = None
-        self.stop_error: AgoraError | AgentAlreadyStopped | None = None
+        self.stop_error: AgoraError | AgentAlreadyStoppedError | None = None
         self.speak_error: AgoraError | None = None
 
     async def start_agent(self, request: AgentStartRequest) -> str:

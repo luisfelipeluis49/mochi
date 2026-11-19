@@ -65,6 +65,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"MOCHI_AGORA_MODE=real needs {missing}; set them, or use MOCHI_AGORA_MODE=fake"
             )
+        if not self.mochi_public_url.startswith("https://"):
+            raise ValueError(
+                f"MOCHI_PUBLIC_URL={self.mochi_public_url!r} must start with https:// in real "
+                "mode, because Agora's cloud calls this address (use scripts/tunnel.sh locally)"
+            )
         return self
 
     @property

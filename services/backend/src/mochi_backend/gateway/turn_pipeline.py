@@ -102,7 +102,7 @@ class TurnPipeline:
         except TimeoutError:
             self._logger.log("decide_failed", {"segment_id": turn.segment_id, "error": "timeout"})
             return silent_decision()
-        except Exception as error:  # noqa: BLE001 - one bad turn must not stop the session
+        except Exception as error:  # one bad turn must not stop the session
             self._logger.log("decide_failed", {"segment_id": turn.segment_id, "error": repr(error)})
             return silent_decision()
         millis = (self._clock.now() - started).total_seconds() * 1000

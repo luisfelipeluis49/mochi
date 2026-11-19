@@ -2,13 +2,18 @@
 
 import pytest
 
-from mochi_backend.gateway.agora.client_port import AgentAlreadyStopped, AgoraError
+from mochi_backend.gateway.agora.client_port import AgentAlreadyStoppedError, AgoraError
 from mochi_backend.gateway.errors import ConflictError, NotFoundError, UpstreamError
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_contracts import (
+    Activity,
+    ActivityCommand,
+    ActivityResult,
     Decision,
     DecisionKind,
+    LearningEvent,
     LearningState,
+    PrivatePrompt,
     RoundResult,
     SessionContext,
     Turn,
@@ -87,13 +92,13 @@ async def test_a_failing_or_slow_decide_means_silence() -> None:
         async def decide(self, turn: Turn, context: SessionContext) -> Decision:
             raise RuntimeError("boom")
 
-        def handle(self, command, context):  # type: ignore[no-untyped-def]
+        def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
             raise NotImplementedError
 
-        def apply(self, proposals):  # type: ignore[no-untyped-def]
+        def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
             return proposals
 
-        def words_for(self, user_id):  # type: ignore[no-untyped-def]
+        def words_for(self, user_id: str) -> list[LearningEvent]:
             return []
 
         def reset(self) -> None:
@@ -155,7 +160,8 @@ async def test_pi_token_is_cached_until_near_expiry() -> None:
     again = devices.state("home_pi_01").agora
     assert first is not None and again is not None and first.token == again.token
     harness.clock.advance(3600 - 60)  # inside the 5-minute refresh margin
-    assert devices.state("home_pi_01").agora.token != first.token  # type: ignore[union-attr]
+    refreshed = devices.state("home_pi_01").agora
+    assert refreshed is not None and first is not None and refreshed.token != first.token
 
 
 async def test_unknown_device_is_not_found() -> None:
@@ -175,7 +181,7 @@ async def test_agora_start_failure_is_a_502_and_leaves_no_partial_state() -> Non
 
 async def test_stop_tolerates_an_agent_that_is_already_gone() -> None:
     harness = await _started()
-    harness.agora.stop_error = AgentAlreadyStopped("gone")
+    harness.agora.stop_error = AgentAlreadyStoppedError("gone")
     state = await harness.container.sessions.stop()
     assert state.capturing is False and state.status.value == "ended"
 
@@ -212,7 +218,8 @@ async def test_reset_clears_words_game_and_hint_but_keeps_capturing() -> None:
     assert harness.container.core.store.capturing
     assert harness.container.core.live_hint.current is None
     assert home.types()[-2:] == ["session.state.changed", "activity.state.changed"]
-    assert ana.events[-1].payload.state.value == "IDLE"  # type: ignore[union-attr]
+    last = ana.events[-1].payload
+    assert isinstance(last, Activity) and last.state.value == "IDLE"
 
 
 async def test_activity_conflicts_are_409s() -> None:
@@ -236,7 +243,10 @@ async def test_the_full_walkthrough_from_agents_section_2() -> None:
     await harness.container.sessions.start()
     ana, ben = await harness.connect(ANA), await harness.connect(BEN)
     home, audience = await harness.connect(HOME), await harness.connect(AUDIENCE)
-    assert (await harness.say("Hi Ben, how was your day?")).reply == ""
+    before = len(home.texts)
+    ordinary = await harness.say("Did you watch the match yesterday?")
+    assert ordinary.decision.decision is DecisionKind.IGNORE and ordinary.decision.hint is None
+    assert ordinary.reply == "" and len(home.texts) == before  # nothing was published
     await harness.say(ADIAR)
     await harness.say("That sounds stressful.")
     await harness.say(
@@ -246,7 +256,8 @@ async def test_the_full_walkthrough_from_agents_section_2() -> None:
     cut = len(audience.texts)
     await harness.container.activity.start()
     prompt = [e for e in home.events if e.type.value == "activity.private_prompt"][0]
-    assert prompt.payload.secret_word == "umbrella"  # type: ignore[union-attr]
+    assert isinstance(prompt.payload, PrivatePrompt)
+    assert prompt.payload.secret_word == "umbrella"
     for watcher in (ana, ben, audience):
         assert "activity.private_prompt" not in watcher.types()
     assert all("umbrella" not in t for t in audience.texts[cut:])

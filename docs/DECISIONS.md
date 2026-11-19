@@ -69,3 +69,19 @@ The gateway and intelligence were built in one pass across M0-M4, so the history
 ## D-16 Learning events are published before the hint
 AGENTS 9.2 orders the chain "apply learning events, then publish". A client therefore sees
 `learning_event.created` before `hint.created` for the same turn.
+
+## D-17 Inventory of every rule exception (for the final report, section 13.8)
+Rules that were bent, and where:
+- **Ruff ignores for tests** (`tests/**`: S101, S105, S106, PLR2004, ANN001, ANN201, ANN202): see D-01.
+- **mypy override** for `agora_token_builder` (`ignore_missing_imports`): the package ships no types; it is
+  wrapped by `gateway/agora/token_issuer.py` behind `RtcTokenIssuer`.
+- **`type: ignore[attr-defined]`** in `tests/architecture/test_code_rules.py` (one line): `ast` types the
+  docstring constant loosely.
+- **Function-length rule:** several long argument lists were bundled into dataclasses (`PipelineDeps`,
+  `GatewayCore`, `IntelligenceSettings`) rather than ignoring PLR0913.
+- **Fixed instead of ignored:** HTTP status literals became named constants (`HTTP_OK` ...); the exception is
+  named `AgentAlreadyStoppedError` (N818); a dead `noqa: BLE001` was removed (BLE is not selected).
+- **Bare `except Exception`** in `TurnPipeline._decide` is deliberate: one bad turn must not stop the
+  session; it is logged as `decide_failed` and the turn is treated as IGNORE.
+- **No `Any`:** none in `src`. `JsonValue` is a recursive alias; Agora and model replies are parsed with
+  Pydantic models.

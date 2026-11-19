@@ -5,7 +5,7 @@ import json
 import pytest
 
 from mochi_backend.gateway.agora.client_port import (
-    AgentAlreadyStopped,
+    AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
     SpeechTuning,
@@ -220,7 +220,7 @@ def test_mute_window_can_be_closed_early() -> None:
 def test_sse_empty_reply_and_spoken_reply_parse_back() -> None:
     assert parse_stream("".join(sse_events(""))) == ("", True)
     assert parse_stream("".join(sse_events("You can say: queue."))) == ("You can say: queue.", True)
-    assert completion_json("hi")["choices"][0]["message"]["content"] == "hi"  # type: ignore[index]
+    assert '"content": "hi"' in json.dumps(completion_json("hi"))
 
 
 def test_last_user_text_reads_strings_and_parts() -> None:
@@ -250,6 +250,25 @@ def test_parse_target_accepts_the_three_shapes_and_explains_the_rest() -> None:
 
 def test_settings_fake_mode_gets_a_dev_key() -> None:
     assert load_settings({"MOCHI_AGORA_MODE": "fake"}).mochi_turn_key == "dev-turn-key"
+
+
+def test_real_mode_requires_an_https_public_url() -> None:
+    real = {
+        "MOCHI_AGORA_MODE": "real",
+        "AGORA_APP_ID": "a",
+        "AGORA_APP_CERTIFICATE": "b",
+        "AGORA_REST_KEY": "c",
+        "AGORA_REST_SECRET": "d",
+        "MOCHI_TURN_KEY": "e",
+    }
+    with pytest.raises(
+        SettingsError, match=r"MOCHI_PUBLIC_URL='http://localhost:8000' must start with https://"
+    ):
+        load_settings(real)
+    assert (
+        load_settings({**real, "MOCHI_PUBLIC_URL": "https://mochi.example"}).mochi_agora_mode
+        == "real"
+    )
 
 
 def test_settings_real_mode_names_what_is_missing() -> None:
@@ -325,7 +344,7 @@ async def test_stop_and_speak_use_the_documented_endpoints() -> None:
     client, http = _client(HttpResponse(200, ""), HttpResponse(200, "{}"), HttpResponse(404, ""))
     await client.stop_agent("A1")
     await client.speak("A1", "x" * 600)
-    with pytest.raises(AgentAlreadyStopped):
+    with pytest.raises(AgentAlreadyStoppedError):
         await client.stop_agent("A1")
     assert http.posts[0].url.endswith("/agents/A1/leave") and http.posts[0].payload is None
     assert http.posts[1].url.endswith("/agents/A1/speak")
