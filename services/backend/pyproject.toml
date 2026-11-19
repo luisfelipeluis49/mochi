@@ -10,6 +10,7 @@ dependencies = [
   "httpx>=0.27",
   "pydantic>=2.8,<3",
   "pydantic-settings>=2.4",
+  "agora-token-builder>=1.0.0",
 ]
 
 [dependency-groups]
@@ -49,7 +50,7 @@ max-complexity = 8
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use literal expected values and don't annotate fixtures. See docs/DECISIONS.md D-01.
-"tests/**" = ["S101", "S105", "PLR2004", "ANN001", "ANN201", "ANN202"]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "ANN001", "ANN201", "ANN202"]
 
 [tool.mypy]
 strict = true
@@ -57,3 +58,8 @@ disallow_any_explicit = true
 disallow_any_generics = true
 plugins = ["pydantic.mypy"]
 mypy_path = "src:tests:../../packages/contracts/python"
+
+[[tool.mypy.overrides]]
+# agora-token-builder ships no type information; it is wrapped by gateway/agora/token_issuer.py.
+module = ["agora_token_builder", "agora_token_builder.*"]
+ignore_missing_imports = true

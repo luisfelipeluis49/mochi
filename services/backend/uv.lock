@@ -7,6 +7,12 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "agora-token-builder"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/55/6741101e6169f7c44388f1184b845db956ccfaac23356f49077418042885/agora_token_builder-1.0.0.tar.gz", hash = "sha256:6a22a35baf748dc80ca054ba7e293ba16c22dc7eae85396ffb41e80f13f9c2f1", size = 4813, upload-time = "2021-12-29T02:53:13.415Z" }
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.7"
 source = { registry = "https://pypi.org/simple" }
@@ -396,6 +402,7 @@ name = "mochi-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "agora-token-builder" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "mochi-contracts" },
@@ -414,6 +421,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agora-token-builder", specifier = ">=1.0.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mochi-contracts", editable = "../../packages/contracts" },

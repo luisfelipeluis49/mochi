@@ -1,0 +1,36 @@
+"""The only way the gateway reaches intelligence (AGENTS 6.5). Kauê's side implements it."""
+
+from typing import Protocol
+
+from mochi_contracts import (
+    ActivityCommand,
+    ActivityResult,
+    Decision,
+    LearningEvent,
+    SessionContext,
+    Turn,
+)
+
+
+class IntelligencePort(Protocol):
+    """decide / handle / apply / words_for, plus `reset` (a proposal, see DECISIONS)."""
+
+    async def decide(self, turn: Turn, context: SessionContext) -> Decision:
+        """Decide what Mochi does with one turn."""
+        ...
+
+    def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
+        """Start a round or record its result; raises ValueError when it cannot apply."""
+        ...
+
+    def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
+        """Create or update learning events; returns the stored records."""
+        ...
+
+    def words_for(self, user_id: str) -> list[LearningEvent]:
+        """One person's saved words, newest first."""
+        ...
+
+    def reset(self) -> None:
+        """Clear saved words and any game."""
+        ...

@@ -4,7 +4,7 @@ Short ADR-style entries for choices the build prompt left open.
 
 ## D-01 Ruff ignores for tests
 `tests/**` ignores S101 (assert), PLR2004 (magic numbers) and ANN001/ANN201/ANN202 (pytest fixtures
-and tiny test helpers) and S105 (the game's `secret_word` field is not a password). Tests assert by nature and compare against literal expected values.
+and tiny test helpers) and S105/S106 (the game's `secret_word` field is not a password). Tests assert by nature and compare against literal expected values.
 
 ## D-02 uv installed with the official installer
 No `pipx` and no `python3-venv` on this machine, so uv 0.13.9 was installed with Astral's official

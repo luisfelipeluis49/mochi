@@ -1,0 +1,104 @@
+"""Every environment variable, typed. Invalid values fail at startup with a readable message."""
+
+from typing import Literal, Self
+
+from pydantic import ValidationError, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+VendorParams = dict[str, str | int | float | bool]
+_SECRET_MARKERS = ("key", "secret", "certificate", "token")
+_REAL_MODE_REQUIRED = (
+    "agora_app_id",
+    "agora_app_certificate",
+    "agora_rest_key",
+    "agora_rest_secret",
+    "mochi_turn_key",
+)
+
+
+class SettingsError(Exception):
+    """Raised at startup; names each variable, its (masked) value and the expected shape."""
+
+
+class Settings(BaseSettings):
+    """Environment variables (AGENTS 11 names plus MOCHI_* additions). See `.env.example`."""
+
+    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+
+    agora_app_id: str = ""
+    agora_app_certificate: str = ""
+    agora_rest_key: str = ""
+    agora_rest_secret: str = ""
+    mochi_turn_key: str = ""
+    model_api_key: str = ""
+    mochi_public_url: str = "http://localhost:8000"
+    mochi_agora_mode: Literal["fake", "real"] = "real"
+    mochi_silence_strategy: Literal["empty_reply", "mute_speaker"] = "empty_reply"
+    mochi_hint_ttl_seconds: float = 8.0
+    mochi_decide_timeout_seconds: float = 2.0
+    mochi_enable_dev_routes: bool = False
+    mochi_channel: str = "mochi-demo"
+    mochi_pi_uid: int = 1001
+    mochi_agent_uid: int = 1002
+    mochi_token_ttl_seconds: int = 3600
+    mochi_cors_origins: str = "*"
+    mochi_log_level: str = "INFO"
+    mochi_model_base_url: str = "https://api.openai.com/v1"
+    mochi_model_name: str = "gpt-4o-mini"
+    mochi_asr_vendor: str = "microsoft"
+    mochi_asr_language: str = "en-US"
+    mochi_asr_params: VendorParams = {}
+    mochi_tts_vendor: str = "microsoft"
+    mochi_tts_params: VendorParams = {}
+    mochi_end_of_speech_silence_ms: int = 900
+    mochi_speak_base_seconds: float = 0.6
+    mochi_speak_seconds_per_word: float = 0.45
+    port: int = 8000
+
+    @model_validator(mode="after")
+    def _real_mode_needs_credentials(self) -> Self:
+        if self.mochi_agora_mode == "fake":
+            self.mochi_turn_key = self.mochi_turn_key or "dev-turn-key"
+            return self
+        missing = [name.upper() for name in _REAL_MODE_REQUIRED if not getattr(self, name)]
+        if missing:
+            raise ValueError(
+                f"MOCHI_AGORA_MODE=real needs {missing}; set them, or use MOCHI_AGORA_MODE=fake"
+            )
+        return self
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """`MOCHI_CORS_ORIGINS` split on commas."""
+        return [o.strip() for o in self.mochi_cors_origins.split(",") if o.strip()]
+
+    @property
+    def model_configured(self) -> bool:
+        """True when a model key is present (otherwise only the rule-based cases run)."""
+        return bool(self.model_api_key)
+
+
+def _masked(name: str, value: object) -> str:
+    return "***" if any(m in name.lower() for m in _SECRET_MARKERS) else repr(value)
+
+
+def describe_errors(error: ValidationError) -> str:
+    """One line per bad variable: name, masked value, expected shape."""
+    lines = []
+    for item in error.errors():
+        name = ".".join(str(part) for part in item["loc"]).upper() or "SETTINGS"
+        lines.append(f"{name}={_masked(name, item.get('input'))}: {item['msg']}")
+    return "invalid settings: " + "; ".join(lines)
+
+
+def load_settings(environment: dict[str, str] | None = None) -> Settings:
+    """Read settings from the environment (or the given mapping, for tests).
+
+    Example: `load_settings({"MOCHI_AGORA_MODE": "fake"}).mochi_turn_key` is "dev-turn-key".
+    """
+    try:
+        if environment is None:
+            return Settings()
+        return Settings.model_validate({k.lower(): v for k, v in environment.items()})
+    except ValidationError as error:
+        raise SettingsError(describe_errors(error)) from error
