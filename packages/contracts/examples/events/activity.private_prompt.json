@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.4",
+  "event_id": "evt_005",
+  "type": "activity.private_prompt",
+  "session_id": "demo",
+  "emitted_at": "2026-11-19T16:00:04.700Z",
+  "sequence": 5,
+  "payload": {
+    "round_id": "round_001",
+    "describer_user_id": "ben",
+    "secret_word": "umbrella",
+    "source_learning_event_id": "learn_002"
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "LearningState": {
+      "description": "Progress of one saved word. There is no mastered state and no score.",
+      "enum": [
+        "DISCOVERED",
+        "ASSISTED",
+        "REINFORCED",
+        "USED_INDEPENDENTLY"
+      ],
+      "title": "LearningState",
+      "type": "string"
+    },
+    "Reason": {
+      "description": "Why a hint was made (`reason` / `detection_signal`).",
+      "enum": [
+        "code_switch",
+        "says_unknown",
+        "asks_partner",
+        "asks_mochi",
+        "trails_off",
+        "talks_around",
+        "restarts",
+        "look_alike",
+        "not_understood"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "StateChange": {
+      "additionalProperties": false,
+      "description": "One entry of a learning event's `state_history`.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "learning_state": {
+          "$ref": "#/$defs/LearningState"
+        }
+      },
+      "required": [
+        "learning_state",
+        "at"
+      ],
+      "title": "StateChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A saved word with its history for one person (a card under My words).",
+  "properties": {
+    "detection_signal": {
+      "$ref": "#/$defs/Reason"
+    },
+    "expression": {
+      "title": "Expression",
+      "type": "string"
+    },
+    "hint_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Hint Id"
+    },
+    "learning_event_id": {
+      "title": "Learning Event Id",
+      "type": "string"
+    },
+    "learning_state": {
+      "$ref": "#/$defs/LearningState"
+    },
+    "meaning": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Meaning"
+    },
+    "state_history": {
+      "items": {
+        "$ref": "#/$defs/StateChange"
+      },
+      "title": "State History",
+      "type": "array"
+    },
+    "target_language": {
+      "$ref": "#/$defs/Language"
+    },
+    "user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "User Id"
+    }
+  },
+  "required": [
+    "learning_event_id",
+    "user_id",
+    "target_language",
+    "expression",
+    "meaning",
+    "detection_signal",
+    "hint_id",
+    "learning_state",
+    "state_history"
+  ],
+  "title": "LearningEvent",
+  "type": "object"
+}

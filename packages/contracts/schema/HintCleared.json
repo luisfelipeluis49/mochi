@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "description": "Payload of `hint.cleared`.",
+  "properties": {
+    "hint_id": {
+      "title": "Hint Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "hint_id"
+  ],
+  "title": "HintCleared",
+  "type": "object"
+}

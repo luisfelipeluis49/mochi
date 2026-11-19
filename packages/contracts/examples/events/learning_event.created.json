@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.4",
+  "event_id": "evt_006",
+  "type": "learning_event.created",
+  "session_id": "demo",
+  "emitted_at": "2026-11-19T16:00:04.700Z",
+  "sequence": 6,
+  "payload": {
+    "learning_event_id": "learn_002",
+    "user_id": "ana",
+    "target_language": "en",
+    "expression": "umbrella",
+    "meaning": "guarda-chuva",
+    "detection_signal": "code_switch",
+    "hint_id": "hint_016",
+    "learning_state": "DISCOVERED",
+    "state_history": [
+      {
+        "learning_state": "DISCOVERED",
+        "at": "2026-11-19T16:00:20.000Z"
+      }
+    ]
+  }
+}

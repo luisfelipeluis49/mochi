@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "SpeakReason": {
+      "description": "Why Mochi speaks aloud.",
+      "enum": [
+        "asks_mochi",
+        "activity_host"
+      ],
+      "title": "SpeakReason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Payload of `agent.speak.requested`; also the text returned to Agora.",
+  "properties": {
+    "language": {
+      "$ref": "#/$defs/Language"
+    },
+    "reason": {
+      "$ref": "#/$defs/SpeakReason"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text",
+    "language",
+    "reason"
+  ],
+  "title": "Speak",
+  "type": "object"
+}

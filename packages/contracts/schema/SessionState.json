@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "SessionMode": {
+      "description": "Whether people talk freely or play a game.",
+      "enum": [
+        "together",
+        "activity"
+      ],
+      "title": "SessionMode",
+      "type": "string"
+    },
+    "SessionStatus": {
+      "description": "Session lifecycle.",
+      "enum": [
+        "created",
+        "active",
+        "paused",
+        "ended"
+      ],
+      "title": "SessionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Payload of `session.state.changed` (AGENTS calls it Session).",
+  "properties": {
+    "capturing": {
+      "title": "Capturing",
+      "type": "boolean"
+    },
+    "focus": {
+      "$ref": "#/$defs/Language"
+    },
+    "mode": {
+      "$ref": "#/$defs/SessionMode"
+    },
+    "participants": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Participants",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/SessionStatus"
+    }
+  },
+  "required": [
+    "status",
+    "mode",
+    "focus",
+    "capturing",
+    "participants"
+  ],
+  "title": "SessionState",
+  "type": "object"
+}

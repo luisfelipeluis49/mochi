@@ -1,0 +1,26 @@
+{
+  "additionalProperties": false,
+  "description": "One finished transcribed sentence. No speaker and no language (AGENTS 6.5).",
+  "properties": {
+    "received_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Received At",
+      "type": "string"
+    },
+    "segment_id": {
+      "title": "Segment Id",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "segment_id",
+    "text",
+    "received_at"
+  ],
+  "title": "Turn",
+  "type": "object"
+}

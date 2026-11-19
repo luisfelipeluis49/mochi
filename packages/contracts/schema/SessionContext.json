@@ -1,0 +1,465 @@
+{
+  "$defs": {
+    "Activity": {
+      "additionalProperties": false,
+      "description": "Payload of `activity.state.changed`. Never carries the secret word while active.\n\nPROPOSAL: the round fields are nullable so an IDLE state can be published\n(AGENTS 6.2 only shows an active example). See docs/DECISIONS.md D-03.",
+      "properties": {
+        "activity_id": {
+          "const": "describe_and_guess",
+          "title": "Activity Id",
+          "type": "string"
+        },
+        "describer_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Describer User Id"
+        },
+        "guesser_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Guesser User Id"
+        },
+        "public_instruction": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Public Instruction"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RoundResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revealed_word": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Revealed Word"
+        },
+        "round_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Round Id"
+        },
+        "state": {
+          "$ref": "#/$defs/GameState"
+        },
+        "word_source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WordSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "activity_id",
+        "round_id",
+        "state",
+        "describer_user_id",
+        "guesser_user_id",
+        "public_instruction",
+        "result",
+        "revealed_word",
+        "word_source"
+      ],
+      "title": "Activity",
+      "type": "object"
+    },
+    "GameState": {
+      "description": "Describe & Guess states.",
+      "enum": [
+        "IDLE",
+        "ACTIVE_ROUND",
+        "ROUND_RESULT"
+      ],
+      "title": "GameState",
+      "type": "string"
+    },
+    "Hint": {
+      "additionalProperties": false,
+      "description": "One word or short expression shown to help a stuck speaker.",
+      "properties": {
+        "example": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Example"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "hint_id": {
+          "title": "Hint Id",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "reason": {
+          "$ref": "#/$defs/Reason"
+        },
+        "target_language": {
+          "$ref": "#/$defs/Language"
+        },
+        "target_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target User Id"
+        }
+      },
+      "required": [
+        "hint_id",
+        "target_user_id",
+        "target_language",
+        "expression",
+        "meaning",
+        "example",
+        "reason",
+        "expires_at"
+      ],
+      "title": "Hint",
+      "type": "object"
+    },
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "LearningEvent": {
+      "additionalProperties": false,
+      "description": "A saved word with its history for one person (a card under My words).",
+      "properties": {
+        "detection_signal": {
+          "$ref": "#/$defs/Reason"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "hint_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hint Id"
+        },
+        "learning_event_id": {
+          "title": "Learning Event Id",
+          "type": "string"
+        },
+        "learning_state": {
+          "$ref": "#/$defs/LearningState"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "state_history": {
+          "items": {
+            "$ref": "#/$defs/StateChange"
+          },
+          "title": "State History",
+          "type": "array"
+        },
+        "target_language": {
+          "$ref": "#/$defs/Language"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
+        }
+      },
+      "required": [
+        "learning_event_id",
+        "user_id",
+        "target_language",
+        "expression",
+        "meaning",
+        "detection_signal",
+        "hint_id",
+        "learning_state",
+        "state_history"
+      ],
+      "title": "LearningEvent",
+      "type": "object"
+    },
+    "LearningState": {
+      "description": "Progress of one saved word. There is no mastered state and no score.",
+      "enum": [
+        "DISCOVERED",
+        "ASSISTED",
+        "REINFORCED",
+        "USED_INDEPENDENTLY"
+      ],
+      "title": "LearningState",
+      "type": "string"
+    },
+    "Participant": {
+      "additionalProperties": false,
+      "description": "One of the two people in the session.",
+      "properties": {
+        "comfortable_languages": {
+          "items": {
+            "$ref": "#/$defs/Language"
+          },
+          "title": "Comfortable Languages",
+          "type": "array"
+        },
+        "target_language": {
+          "$ref": "#/$defs/Language"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "comfortable_languages",
+        "target_language"
+      ],
+      "title": "Participant",
+      "type": "object"
+    },
+    "Reason": {
+      "description": "Why a hint was made (`reason` / `detection_signal`).",
+      "enum": [
+        "code_switch",
+        "says_unknown",
+        "asks_partner",
+        "asks_mochi",
+        "trails_off",
+        "talks_around",
+        "restarts",
+        "look_alike",
+        "not_understood"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "RoundResult": {
+      "description": "How a round ended.",
+      "enum": [
+        "guessed",
+        "skipped"
+      ],
+      "title": "RoundResult",
+      "type": "string"
+    },
+    "SessionMode": {
+      "description": "Whether people talk freely or play a game.",
+      "enum": [
+        "together",
+        "activity"
+      ],
+      "title": "SessionMode",
+      "type": "string"
+    },
+    "StateChange": {
+      "additionalProperties": false,
+      "description": "One entry of a learning event's `state_history`.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "learning_state": {
+          "$ref": "#/$defs/LearningState"
+        }
+      },
+      "required": [
+        "learning_state",
+        "at"
+      ],
+      "title": "StateChange",
+      "type": "object"
+    },
+    "Turn": {
+      "additionalProperties": false,
+      "description": "One finished transcribed sentence. No speaker and no language (AGENTS 6.5).",
+      "properties": {
+        "received_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Received At",
+          "type": "string"
+        },
+        "segment_id": {
+          "title": "Segment Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_id",
+        "text",
+        "received_at"
+      ],
+      "title": "Turn",
+      "type": "object"
+    },
+    "WordSource": {
+      "description": "Where a round's secret word came from.",
+      "enum": [
+        "learning_event",
+        "stock"
+      ],
+      "title": "WordSource",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Everything `decide()` and `handle()` may look at.",
+  "properties": {
+    "activity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Activity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "focus": {
+      "$ref": "#/$defs/Language"
+    },
+    "learning_events": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/LearningEvent"
+        },
+        "type": "array"
+      },
+      "title": "Learning Events",
+      "type": "object"
+    },
+    "mode": {
+      "$ref": "#/$defs/SessionMode"
+    },
+    "participants": {
+      "items": {
+        "$ref": "#/$defs/Participant"
+      },
+      "title": "Participants",
+      "type": "array"
+    },
+    "recent_hints": {
+      "items": {
+        "$ref": "#/$defs/Hint"
+      },
+      "title": "Recent Hints",
+      "type": "array"
+    },
+    "recent_turns": {
+      "items": {
+        "$ref": "#/$defs/Turn"
+      },
+      "title": "Recent Turns",
+      "type": "array"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "mode",
+    "focus",
+    "participants",
+    "recent_turns",
+    "recent_hints",
+    "activity",
+    "learning_events"
+  ],
+  "title": "SessionContext",
+  "type": "object"
+}

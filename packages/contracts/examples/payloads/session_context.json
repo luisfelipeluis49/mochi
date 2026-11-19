@@ -1,0 +1,28 @@
+{
+  "session_id": "demo",
+  "mode": "together",
+  "focus": "en",
+  "participants": [
+    {
+      "user_id": "ana",
+      "comfortable_languages": [
+        "pt-BR"
+      ],
+      "target_language": "en"
+    },
+    {
+      "user_id": "ben",
+      "comfortable_languages": [
+        "en"
+      ],
+      "target_language": "pt-BR"
+    }
+  ],
+  "recent_turns": [],
+  "recent_hints": [],
+  "activity": null,
+  "learning_events": {
+    "ana": [],
+    "ben": []
+  }
+}

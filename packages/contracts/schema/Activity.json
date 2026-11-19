@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "GameState": {
+      "description": "Describe & Guess states.",
+      "enum": [
+        "IDLE",
+        "ACTIVE_ROUND",
+        "ROUND_RESULT"
+      ],
+      "title": "GameState",
+      "type": "string"
+    },
+    "RoundResult": {
+      "description": "How a round ended.",
+      "enum": [
+        "guessed",
+        "skipped"
+      ],
+      "title": "RoundResult",
+      "type": "string"
+    },
+    "WordSource": {
+      "description": "Where a round's secret word came from.",
+      "enum": [
+        "learning_event",
+        "stock"
+      ],
+      "title": "WordSource",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Payload of `activity.state.changed`. Never carries the secret word while active.\n\nPROPOSAL: the round fields are nullable so an IDLE state can be published\n(AGENTS 6.2 only shows an active example). See docs/DECISIONS.md D-03.",
+  "properties": {
+    "activity_id": {
+      "const": "describe_and_guess",
+      "title": "Activity Id",
+      "type": "string"
+    },
+    "describer_user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Describer User Id"
+    },
+    "guesser_user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Guesser User Id"
+    },
+    "public_instruction": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Public Instruction"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoundResult"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "revealed_word": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Revealed Word"
+    },
+    "round_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Round Id"
+    },
+    "state": {
+      "$ref": "#/$defs/GameState"
+    },
+    "word_source": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WordSource"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "activity_id",
+    "round_id",
+    "state",
+    "describer_user_id",
+    "guesser_user_id",
+    "public_instruction",
+    "result",
+    "revealed_word",
+    "word_source"
+  ],
+  "title": "Activity",
+  "type": "object"
+}

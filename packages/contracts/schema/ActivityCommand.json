@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "RoundResult": {
+      "description": "How a round ended.",
+      "enum": [
+        "guessed",
+        "skipped"
+      ],
+      "title": "RoundResult",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "PROVISIONAL (AGENTS 6.5 leaves this open): start a round, or report its result.",
+  "properties": {
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RoundResult"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "type": {
+      "enum": [
+        "start",
+        "result"
+      ],
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "result"
+  ],
+  "title": "ActivityCommand",
+  "type": "object"
+}

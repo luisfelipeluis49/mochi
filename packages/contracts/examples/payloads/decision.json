@@ -1,0 +1,32 @@
+{
+  "decision": "SHOW_HINT",
+  "hint": {
+    "hint_id": "hint_015",
+    "target_user_id": "ana",
+    "target_language": "en",
+    "expression": "postpone",
+    "meaning": "adiar",
+    "example": "I need to postpone my meeting.",
+    "reason": "code_switch",
+    "expires_at": "2026-11-19T16:00:12.700Z"
+  },
+  "speak": null,
+  "learning_events": [
+    {
+      "learning_event_id": "learn_002",
+      "user_id": "ana",
+      "target_language": "en",
+      "expression": "umbrella",
+      "meaning": "guarda-chuva",
+      "detection_signal": "code_switch",
+      "hint_id": "hint_016",
+      "learning_state": "DISCOVERED",
+      "state_history": [
+        {
+          "learning_state": "DISCOVERED",
+          "at": "2026-11-19T16:00:20.000Z"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.4",
+  "event_id": "evt_008",
+  "type": "agent.speak.requested",
+  "session_id": "demo",
+  "emitted_at": "2026-11-19T16:00:04.700Z",
+  "sequence": 8,
+  "payload": {
+    "text": "You can say: queue.",
+    "language": "en",
+    "reason": "asks_mochi"
+  }
+}
