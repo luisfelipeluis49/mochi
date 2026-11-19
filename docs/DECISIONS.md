@@ -45,3 +45,27 @@ even when the decision is IGNORE.
 ## D-10 Rules first, model second
 Lexicon cues and markers resolve cases 1-9 without a model; the model is asked only when a marker or an
 ask-for-word pattern could not be resolved (or a foreign word appears in an otherwise focus-language turn).
+
+## D-11 The shared key is sent two ways
+Agora's docs do not name the header that carries `llm.api_key`. We send the key as `llm.api_key` and also as
+`X-Mochi-Key` through `llm.headers`; the endpoint accepts either (constant-time compare). See `VERIFIED.md`.
+
+## D-12 Intelligence `reset` and the device-state models (contract proposals)
+`IntelligencePort.reset()` is needed by `POST /api/demo/reset`. The device-state response models
+(`DeviceState`, `AgoraJoinInfo`) live in the gateway; they could move to `packages/contracts`.
+
+## D-13 `agora-token-builder` produces `006` tokens
+The package named in Agora's own tutorial builds AccessToken v1. Kept because it is the documented path;
+whether Agora and the Pi's IoT SDK accept `006` is untested (see `VERIFIED.md`).
+
+## D-14 Dev routes are off by default
+`MOCHI_ENABLE_DEV_ROUTES` defaults to `false` (the route is not mounted). `scripts/start-dev.sh` turns it on;
+`render.yaml` leaves it off.
+
+## D-15 Milestone commits are combined
+The gateway and intelligence were built in one pass across M0-M4, so the history has one commit per area
+(scaffold, contracts, intelligence, gateway, deploy, docs) instead of one per milestone.
+
+## D-16 Learning events are published before the hint
+AGENTS 9.2 orders the chain "apply learning events, then publish". A client therefore sees
+`learning_event.created` before `hint.created` for the same turn.
