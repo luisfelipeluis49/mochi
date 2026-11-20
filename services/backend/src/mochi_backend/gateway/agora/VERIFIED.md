@@ -178,3 +178,11 @@ office."). "Word right" = that word appears in the transcript.
 Both read "guarda-chuva" and "feira" the English way inside an English sentence. An automatic score on 13
 sentences is a rough guide, not a listening test.
 
+## OpenAI transcription can write its prompt into the transcript (2026-11-20, a person speaking)
+
+A sentence arrived as `Como você falar Mochi, adiar, postpone, guarda-chuva, umbrella, recibo, receipt, fila,
+queue, ... reunião, meeting. Esqueci a palavra. Limpar em inglês?`: the word list from
+`input_audio_transcription.prompt`, pasted in where the speaker hesitated. None of the 16 test clips showed it.
+`gateway/prompt_echo.py` removes the prompt's sentences and any run of four or more expected words with nothing
+between them, before the turn is handled, and logs `ears_prompt_echo`. Single expected words stay.
+

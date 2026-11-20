@@ -222,6 +222,8 @@ def _pipeline(settings: Settings, core: GatewayCore) -> TurnPipeline:
             logger=core.logger,
             decide_timeout_seconds=settings.turn_timeout_seconds,
             commit_lock=core.commit,
+            ears_prompt=settings.mochi_asr_prompt + " Words that may come up:",
+            ears_words=vocabulary(settings),
         )
     )
 

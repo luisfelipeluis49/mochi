@@ -154,6 +154,18 @@ async def test_its_name_without_a_greeting_lets_mochi_judge_whether_it_was_calle
     assert quiet.decision is DecisionKind.IGNORE
 
 
+async def test_someone_who_woke_mochi_keeps_its_attention_for_the_whole_session() -> None:
+    """Seen live: a minute after its last answer, "Are you still there?" got silence."""
+    clock = FakeClock()
+    mochi = FakeCharacterModel("[mood happy] Bye-bye!", "[mood happy] Still here!")
+    brain = _brain(mochi, clock)
+    brain.session_started(woken=True)
+    await brain.decide(make_turn("I need to go, tchau tchau!"), make_context())
+    clock.advance(60)
+    decision = await brain.decide(make_turn("Are you still there?"), make_context())
+    assert decision.decision is DecisionKind.SPEAK and mochi.requests[1].woken is True
+
+
 async def test_during_a_round_mochi_only_answers_to_its_name() -> None:
     mochi = FakeCharacterModel("[mood happy] Hello!")
     brain = _brain(mochi)

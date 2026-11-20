@@ -2,8 +2,8 @@
 
     IDLE ──"Oi Mochi" (offline)──► STARTING ──agent+bridge up──► ACTIVE
       ▲                                                            │
-      └──── STOPPING ◄── goodbye phrase (offline) / inactivity / max time / bridge died /
-                         the backend stopped the session
+      └──── STOPPING ◄── goodbye phrase (offline) / Mochi said goodbye / inactivity / max time /
+                         bridge died / the backend stopped the session
 
 While IDLE, the microphone only feeds the local keyword spotter: no Agora session exists and no
 audio leaves the Pi. Run: scripts/mochi.sh   (Ctrl-C to quit; any live session is ended first)
@@ -46,6 +46,7 @@ class Supervisor:
         self.agent_voice_at = self.heard_at = self.bye_until = 0.0
         self.enrol_lang = "en"
         self.backend_end: str | None = None  # set when the backend ended the session itself
+        self.bye_asked: float | None = None  # when Mochi said goodbye ([bye]): the session ends after it
 
     # --- the face on Mochi's screen ---------------------------------------------------------
     def on_agent_voice(self, level: int) -> None:
@@ -71,6 +72,15 @@ class Supervisor:
             self.kws.forget(value)
         elif kind == "stopped":  # the session was ended elsewhere: on_frame leaves the channel
             self.backend_end = str(value)
+        elif kind == "bye":  # Mochi is saying goodbye: on_frame ends the session once it has
+            self.bye_asked = time.monotonic()
+
+    def _goodbye_said(self, now: float) -> bool:
+        """Mochi wrote [bye]: leave once its goodbye has been heard out, or after 8 s at the latest."""
+        if self.bye_asked is None:
+            return False
+        heard_out = self.agent_voice_at > self.bye_asked and now - self.agent_voice_at > 0.8
+        return heard_out or now - self.bye_asked > 8
 
     def on_voice_event(self, event: tuple) -> None:
         """What the voice tracker noticed (speakers.py)."""
@@ -158,6 +168,8 @@ class Supervisor:
                 reason = f"goodbye phrase {hit[1]!r}"
             elif self.backend_end:
                 reason = self.backend_end
+            elif self._goodbye_said(now):
+                reason = "Mochi said goodbye"
             elif now - self.last_speech > self.cfg["session"]["inactivity_timeout_s"]:
                 reason = f"{self.cfg['session']['inactivity_timeout_s']} s without speech"
             elif now - self.session_started > self.cfg["session"]["max_session_s"]:
@@ -169,7 +181,7 @@ class Supervisor:
 
     async def start_session(self, wake_phrase: str) -> None:
         t0 = time.monotonic()
-        self.backend_end = None
+        self.backend_end = self.bye_asked = None
         try:
             if hasattr(self.backend, "set_voices"):
                 self.backend.set_voices(self.kws.known_voices, None)

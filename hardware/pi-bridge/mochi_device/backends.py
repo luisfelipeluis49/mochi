@@ -84,6 +84,10 @@ very start of a reply, never mention them, and use square brackets for nothing e
   "[mood excited][enroll Ben en] Nice, Ben! Tell me about your day for about ten seconds, so I can
   learn your voice." (he spoke English)
 - [forget NAME] When someone asks you to forget their voice.
+- [bye] When the person says goodbye to you, or that they are done, have to go, or that you should
+  sleep ("tchau", "bye", "see you", "até mais", "pode dormir"): say a short goodbye and add this
+  command. You then go back to sleep until someone calls you again. Not when they say goodbye to
+  each other, and not for a pause. Example: "[mood happy][bye] Tchau tchau! Até a próxima."
 Further down you are told whose voices you know and, when you recognise it, who is talking right
 now. Use the name now and then, the way a friend would, not in every sentence.
 Examples: "[mood cool][volume 80] Louder it is!"
@@ -102,7 +106,7 @@ Before every reply, check three things:
    of its own, in that language.
 5. It uses a name only if you were told it or recognise the voice, and it does not send anyone to a
    partner you do not know is there."""
-TAG = re.compile(r"\[\s*(volume|mood|show|temp|enroll|forget)\b\s*:?\s*([^\]]*?)\s*\]", re.I)
+TAG = re.compile(r"\[\s*(volume|mood|show|temp|enroll|forget|bye)\b\s*:?\s*([^\]]*?)\s*\]", re.I)
 PORTUGUESE_CUES = {"oi", "ola", "olá", "alo", "alô", "e", "bom", "boa", "tchau"}
 
 
@@ -128,7 +132,7 @@ class Body:
 
     def __init__(self, device: Device, on_event=None):
         """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
-        "enroll" (value: (name, "pt" | "en")) | "forget"."""
+        "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session)."""
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
 
@@ -141,6 +145,8 @@ class Body:
             self.on_event("volume", now)
         elif kind == "temp":
             self.on_event("temp", await asyncio.to_thread(self.device.temperature))
+        elif kind == "bye":
+            self.on_event("bye", None)
         elif kind == "enroll":
             words = value.split()
             lang = words.pop().lower() if len(words) > 1 and words[-1].lower() in ("pt", "en") else "en"

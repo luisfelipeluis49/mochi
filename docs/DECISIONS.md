@@ -269,3 +269,16 @@ after speech ends with `gpt-4o-transcribe`, 1.1 s with ARES (both include the 0.
 `gpt-4o-transcribe` is deprecated by OpenAI (shutdown 2027-02-26).
 The model key is sent to Agora in the start request. Not a contract change.
 
+## D-26: goodbye ends the session; a woken Mochi keeps listening; echoed prompts are removed (2026-11-20)
+
+From a second spoken conversation:
+- The person said "I need to go, tchau tchau!", Mochi said goodbye, and the session stayed open (only the
+  device's offline phrase "tchau mochi" ended one). New silent command `[bye]`: Mochi writes it when someone
+  says goodbye to it or tells it to sleep, and the device ends the session once the goodbye has been heard
+  (8 s at most). Added to `commands` in the device state (D-23); no other contract change.
+- A minute later "Are you still there?" got silence: the follow-up window had passed. In a session the device
+  was woken for, every sentence is now given to Mochi (which may still answer `[quiet]`). In a session the
+  operator started, the window stays as it was.
+- OpenAI transcription pasted its prompt's word list into a transcript; see `VERIFIED.md` and
+  `gateway/prompt_echo.py`.
+

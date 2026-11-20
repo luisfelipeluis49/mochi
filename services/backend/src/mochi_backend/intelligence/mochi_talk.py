@@ -63,7 +63,14 @@ class MochiTalk:
         self._until = self._clock.now() + self._follow_up
 
     def listening(self) -> bool:
-        """True while a sentence that does not say "Mochi" may still be meant for it."""
+        """True while a sentence that does not say "Mochi" may still be meant for it.
+
+        Someone who woke Mochi to talk to it has its attention for the whole session (seen live:
+        a minute after its last answer, "Are you still there?" got silence). Between two people
+        talking, only for a short while after Mochi spoke.
+        """
+        if self._woken:
+            return True
         return self._until is not None and self._clock.now() < self._until
 
     def reset(self) -> None:

@@ -30,6 +30,8 @@ def test_brackets_are_never_spoken_and_other_brackets_are_dropped() -> None:
     assert text == "Louder it is!" and written == [("mood", "cool"), ("volume", "80")]
     assert split_commands("[mood sleepy][temp]") == ("", [("mood", "sleepy"), ("temp", "")])
     assert split_commands("You can say: queue.") == ("You can say: queue.", [])
+    said, written = split_commands("[mood happy][bye] Tchau tchau! Até a próxima.")
+    assert said == "Tchau tchau! Até a próxima." and written == [("mood", "happy"), ("bye", "")]
 
 
 async def test_what_mochi_wrote_in_brackets_goes_to_the_device_not_to_the_speaker() -> None:

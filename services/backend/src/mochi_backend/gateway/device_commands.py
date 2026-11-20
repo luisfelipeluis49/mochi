@@ -1,8 +1,9 @@
 """Silent commands: what Mochi writes in square brackets moves its body and is never spoken.
 
 `[mood happy]` and `[show queue]` go to its face, `[volume 80]` to its speaker, `[temp]` shows its
-temperature, `[enroll Ana pt]` / `[forget Ana]` learn and forget a voice. The device reads them
-from its state (`commands`) and does each one once.
+temperature, `[enroll Ana pt]` / `[forget Ana]` learn and forget a voice, `[bye]` ends the session
+once Mochi's goodbye has been heard. The device reads them from its state (`commands`) and does each
+one once.
 """
 
 import re
@@ -10,7 +11,7 @@ import re
 from pydantic import BaseModel
 
 _COMMAND = re.compile(
-    r"\[\s*(volume|mood|show|temp|enroll|forget)\b\s*:?\s*([^\]]*?)\s*\]", re.IGNORECASE
+    r"\[\s*(volume|mood|show|temp|enroll|forget|bye)\b\s*:?\s*([^\]]*?)\s*\]", re.IGNORECASE
 )
 _BRACKETS = re.compile(r"\[[^\]]*\]")
 QUEUE_LIMIT = 20

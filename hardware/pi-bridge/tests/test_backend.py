@@ -10,7 +10,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
-from mochi_device.backends import JoinInfo, MochiBackend, WithFallback
+from mochi_device.backends import TAG, Body, JoinInfo, MochiBackend, WithFallback
 from mochi_device.main import Supervisor
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
@@ -256,6 +256,52 @@ class WithFallbackTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(own.calls, [("voices", ["Ana"], "Ana")])
 
 
+class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
+    """Mochi says goodbye ([bye]): the session ends once the goodbye has been heard out."""
+
+    def _supervisor(self):
+        now = time.monotonic()
+        sup = Supervisor.__new__(Supervisor)  # no microphone, models or screen
+        sup.cfg = {"session": {"inactivity_timeout_s": 30, "max_session_s": 600}, "audio": {"chimes": False}}
+        sup.kws = MagicMock(last_voice=now)
+        sup.kws.feed.return_value = None
+        sup.kws.voice_events.return_value = []
+        sup.face = MagicMock()
+        sup.bridge = MagicMock(running=True, stop=AsyncMock())
+        sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
+        sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
+        sup.session_started = sup.last_speech = now
+        sup.agent_voice_at = sup.heard_at = sup.bye_until = 0.0
+        return sup
+
+    async def test_the_command_reaches_the_supervisor(self):
+        events = []
+        await Body(FakeSpeaker(), lambda kind, value: events.append((kind, value))).act("bye", "")
+        self.assertEqual(events, [("bye", None)])
+        self.assertEqual(TAG.findall("[mood happy][bye] Tchau tchau!"), [("mood", "happy"), ("bye", "")])
+
+    async def test_mochi_finishes_its_goodbye_before_leaving(self):
+        sup = self._supervisor()
+        sup.on_agent_event("bye", None)
+        sup.bye_asked -= 3                              # the command came three seconds ago
+        await sup.on_frame(b"\0" * 640)
+        self.assertEqual(sup.state, "ACTIVE")          # the goodbye has not been spoken yet
+        sup.on_agent_voice(40)                          # Mochi is saying it
+        await sup.on_frame(b"\0" * 640)
+        self.assertEqual(sup.state, "ACTIVE")
+        sup.agent_voice_at = time.monotonic() - 1.0     # ...and has been quiet for a second
+        await sup.on_frame(b"\0" * 640)
+        self.assertEqual(sup.state, "IDLE")
+        sup.backend.stop.assert_awaited_once()
+
+    async def test_without_any_voice_it_still_leaves_after_a_few_seconds(self):
+        sup = self._supervisor()
+        sup.on_agent_event("bye", None)
+        sup.bye_asked = time.monotonic() - 9
+        await sup.on_frame(b"\0" * 640)
+        self.assertEqual(sup.state, "IDLE")
+
+
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_leaves_the_channel_when_the_backend_stopped_the_session(self):
         now = time.monotonic()
@@ -267,7 +313,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.face = MagicMock()
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
         sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
-        sup.state, sup._start_task, sup.backend_end = "ACTIVE", None, None
+        sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
         sup.session_started = sup.last_speech = now
         sup.agent_voice_at = sup.heard_at = sup.bye_until = 0.0
 

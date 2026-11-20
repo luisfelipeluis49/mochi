@@ -10,6 +10,7 @@ from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
+from mochi_backend.gateway.prompt_echo import without_prompt_echo
 from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -55,6 +56,10 @@ class PipelineDeps:
     logger: EventLogger
     decide_timeout_seconds: float
     commit_lock: asyncio.Lock
+    ears_prompt: str = (
+        ""  # what speech-to-text was told, if anything: it can echo into a transcript
+    )
+    ears_words: tuple[str, ...] = ()
 
 
 class TurnPipeline:
@@ -72,6 +77,7 @@ class TurnPipeline:
         self._timeout = deps.decide_timeout_seconds
         self._lock = asyncio.Lock()
         self._commit = deps.commit_lock
+        self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -91,7 +97,11 @@ class TurnPipeline:
         the same position: only "B." is a new turn.
         """
         async with self._lock:
-            return await self._handle(self._store.new_speech(heard.strip(), position))
+            said = self._store.new_speech(heard.strip(), position)
+            text = without_prompt_echo(said, self._ears_prompt, self._ears_words)
+            if text != " ".join(said.split()):
+                self._logger.log("ears_prompt_echo", {"heard": said, "kept": text})
+            return await self._handle(text)
 
     async def _handle(self, text: str) -> TurnOutcome:
         if not text or not self._store.capturing:
