@@ -6,6 +6,7 @@ from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
+    AgoraRejectedError,
 )
 
 
@@ -17,6 +18,8 @@ class FakeAgoraClient:
         self.stopped: list[str] = []
         self.spoken: list[tuple[str, str]] = []
         self.start_error: AgoraError | None = None
+        self.refused_ears: set[str] = set()  # speech-to-text vendors Agora "does not accept"
+        self.attempts: list[AgentStartRequest] = []  # every start, refused ones included
         self.stop_error: AgoraError | AgentAlreadyStoppedError | None = None
         self.speak_error: AgoraError | None = None
         self.start_gate: asyncio.Event | None = None  # when set, start_agent waits for it
@@ -27,8 +30,11 @@ class FakeAgoraClient:
 
     async def start_agent(self, request: AgentStartRequest) -> str:
         """Record the start (or raise the scripted error); returns "agent-N"."""
+        self.attempts.append(request)
         if self.start_error is not None:
             raise self.start_error
+        if request.tuning.asr_vendor in self.refused_ears:
+            raise AgoraRejectedError(f"vendor {request.tuning.asr_vendor!r} is not available")
         self.started.append(request)
         agent_id = f"agent-{len(self.started)}"
         self.start_entered.set()

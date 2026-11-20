@@ -210,12 +210,43 @@ def test_a_new_session_does_not_remember_the_last_ones_unanswered_sentences() ->
     assert _turn_texts(harness)[-1] == "Nice weather today. Really."
 
 
-def test_default_ears_are_ares_in_english_and_portuguese() -> None:
+def test_without_a_model_key_the_ears_are_ares_with_the_lexicon_as_keywords() -> None:
     client, harness = _client()
     client.post("/api/sessions/demo/start")
     tuning = harness.agora.started[0].tuning
     assert (tuning.asr_vendor, tuning.asr_language) == ("ares", "en-US,pt-PT")
-    assert tuning.asr_keywords == ("Mochi",) and tuning.asr_credential_mode == ""
+    assert tuning.asr_keywords[0] == "Mochi" and "guarda-chuva" in tuning.asr_keywords
+    assert "umbrella" in tuning.asr_keywords and tuning.asr_credential_mode == ""
+    assert len(harness.agora.attempts) == 1
+
+
+def test_with_a_model_key_the_ears_are_openai_transcription_with_a_prompt() -> None:
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    client.post("/api/sessions/demo/start")
+    tuning = harness.agora.started[0].tuning
+    assert (tuning.asr_vendor, tuning.asr_language, tuning.asr_keywords) == ("openai", "en-US", ())
+    listening = tuning.asr_params["input_audio_transcription"]
+    assert isinstance(listening, dict) and listening["model"] == "gpt-4o-transcribe"
+    assert listening["language"] == "en" and "guarda-chuva" in str(listening["prompt"])
+    assert "never translate" in str(listening["prompt"])
+    assert tuning.asr_params["api_key"] == "sk-test"
+
+
+def test_when_agora_refuses_the_first_ears_the_session_starts_with_ares() -> None:
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    harness.agora.refused_ears = {"openai"}
+    assert client.post("/api/sessions/demo/start").json()["capturing"] is True
+    assert [r.tuning.asr_vendor for r in harness.agora.attempts] == ["openai", "ares"]
+    assert harness.agora.started[0].tuning.asr_keywords[0] == "Mochi"
+    assert "ears_fallback" in harness.logger.names()
+
+
+def test_a_timeout_is_not_tried_again_with_other_ears() -> None:
+    """The first agent may be running: a second start could put two agents in the channel."""
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    harness.agora.start_error = AgoraError("POST /join failed after 1 attempt: timeout")
+    assert client.post("/api/sessions/demo/start").status_code == 502
+    assert len(harness.agora.attempts) == 1
 
 
 def test_error_statuses_are_readable() -> None:

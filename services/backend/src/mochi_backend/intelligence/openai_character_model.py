@@ -1,11 +1,13 @@
 """CharacterModel over any OpenAI-compatible chat-completions API. Never raises; returns None."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.character_port import CharacterRequest, DeviceStatus
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
+from mochi_backend.platform.json_logging import EventLogger
 from mochi_contracts import Language
 
 CHARACTER_FILE = Path(__file__).parent / "character.md"
@@ -98,37 +100,61 @@ def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:
     return messages
 
 
+@dataclass(frozen=True)
+class CharacterModelConfig:
+    """Which model writes Mochi's lines, and how it is reached."""
+
+    base_url: str
+    model_name: str
+    api_key: str
+    timeout_seconds: float
+    # The gpt-5 family thinks before it answers unless told not to: "none" answers at once.
+    # Leave empty for a model without that setting (gpt-4.1-mini rejects it).
+    reasoning_effort: str = ""
+
+
 class OpenAiCharacterModel:
-    """Example: `OpenAiCharacterModel(http, base_url, "gpt-4.1-mini", key, 6.0)`; see `reply`."""
+    """Example: `OpenAiCharacterModel(http, CharacterModelConfig(url, "gpt-x", key, 6.0))`."""
 
     def __init__(
-        self, http: HttpClient, base_url: str, model_name: str, api_key: str, timeout_seconds: float
+        self, http: HttpClient, config: CharacterModelConfig, logger: EventLogger | None = None
     ) -> None:
         self._http = http
-        self._url = f"{base_url.rstrip('/')}/chat/completions"
-        self._model_name = model_name
-        self._api_key = api_key
-        self._timeout = timeout_seconds
+        self._config = config
+        self._logger = logger
+        self._url = f"{config.base_url.rstrip('/')}/chat/completions"
         self._template = CHARACTER_FILE.read_text(encoding="utf-8")
 
     def _payload(self, request: CharacterRequest) -> JsonValue:
         prompt = system_prompt(request.status, self._template)
-        return {
-            "model": self._model_name,
+        body: dict[str, JsonValue] = {
+            "model": self._config.model_name,
             "temperature": 0.7,
-            "max_tokens": 256,
+            "max_completion_tokens": 256,
             "messages": messages_for(request, prompt),
         }
+        if self._config.reasoning_effort:
+            body["reasoning_effort"] = self._config.reasoning_effort
+        return body
+
+    def _failed(self, why: str) -> None:
+        """A reply that fails means Mochi says its fixed line or nothing: say why in the log."""
+        if self._logger is not None:
+            self._logger.log(
+                "character_model_failed", {"model": self._config.model_name, "why": why}
+            )
 
     async def reply(self, request: CharacterRequest) -> str | None:
         """Ask the model; None on transport error, non-200, or a reply without text."""
-        headers = {"Authorization": f"Bearer {self._api_key}"}
+        headers = {"Authorization": f"Bearer {self._config.api_key}"}
         try:
             answer = await self._http.post_json(
-                self._url, headers, self._payload(request), self._timeout
+                self._url, headers, self._payload(request), self._config.timeout_seconds
             )
             if answer.status != HTTP_OK:
+                self._failed(f"HTTP {answer.status}: {answer.body[:200]}")
                 return None
             return _ChatReply.model_validate_json(answer.body).choices[0].message.content
-        except (HttpTransportError, ValidationError, IndexError):
+        except (HttpTransportError, ValidationError, IndexError) as error:
+            self._failed(repr(error)[:200])
             return None

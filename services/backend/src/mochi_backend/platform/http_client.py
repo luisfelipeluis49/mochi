@@ -7,6 +7,7 @@ from typing import Protocol
 import httpx
 
 HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
 HTTP_SERVER_ERROR = 500
 

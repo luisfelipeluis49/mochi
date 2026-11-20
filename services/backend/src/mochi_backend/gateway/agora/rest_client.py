@@ -8,9 +8,11 @@ from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
+    AgoraRejectedError,
     SpeechTuning,
 )
 from mochi_backend.platform.http_client import (
+    HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
     HTTP_OK,
     HTTP_SERVER_ERROR,
@@ -48,7 +50,9 @@ class AgoraRestClient:
         url = f"{self._root}/join"
         reply = await self._post(url, join_body(request, self._ids.new("mochi")))
         if reply.status != HTTP_OK:
-            raise AgoraError(_describe(url, reply, "200 with a JSON body containing agent_id"))
+            refused = HTTP_BAD_REQUEST <= reply.status < HTTP_SERVER_ERROR
+            problem = AgoraRejectedError if refused else AgoraError
+            raise problem(_describe(url, reply, "200 with a JSON body containing agent_id"))
         try:
             return _JoinReply.model_validate_json(reply.body).agent_id
         except ValidationError as error:

@@ -8,6 +8,7 @@ from mochi_backend.intelligence.character_port import CharacterRequest, DeviceSt
 from mochi_backend.intelligence.mochi_talk import spoken_line
 from mochi_backend.intelligence.model_port import ModelSuggestion
 from mochi_backend.intelligence.openai_character_model import (
+    CharacterModelConfig,
     OpenAiCharacterModel,
     messages_for,
     system_prompt,
@@ -22,6 +23,7 @@ from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_http_client import FakeHttpClient
+from tests.fakes.fake_sender import FakeEventLogger
 
 ASK_WORD = "Oi Mochi, what's the word for fila?"
 ASK_LOUDER = "Hi Mochi, can you speak a bit louder?"
@@ -257,15 +259,37 @@ REQUEST = CharacterRequest(text="Hi Mochi!", history=[], status=DeviceStatus())
 GOOD = json.dumps({"choices": [{"message": {"content": "[mood happy] Oi!"}}]})
 
 
+def _config(effort: str = "") -> CharacterModelConfig:
+    return CharacterModelConfig("https://llm.example/v1/", "gpt-x", "secret-key", 6.0, effort)
+
+
 async def test_openai_character_model_sends_the_prompt_and_returns_the_line() -> None:
     http = FakeHttpClient([HttpResponse(200, GOOD)])
-    model = OpenAiCharacterModel(http, "https://llm.example/v1/", "gpt-x", "secret-key", 6.0)
+    model = OpenAiCharacterModel(http, _config())
     assert await model.reply(REQUEST) == "[mood happy] Oi!"
     post = http.posts[0]
     assert post.url == "https://llm.example/v1/chat/completions"
     assert post.headers["Authorization"] == "Bearer secret-key" and post.timeout_seconds == 6.0
     assert isinstance(post.payload, dict) and post.payload["model"] == "gpt-x"
     assert "You are Mochi" in json.dumps(post.payload["messages"])
+    assert post.payload["max_completion_tokens"] == 256 and "max_tokens" not in post.payload
+    assert "reasoning_effort" not in post.payload
+
+
+async def test_a_model_that_would_think_first_is_told_to_answer_at_once() -> None:
+    http = FakeHttpClient([HttpResponse(200, GOOD)])
+    await OpenAiCharacterModel(http, _config("none")).reply(REQUEST)
+    assert isinstance(http.posts[0].payload, dict)
+    assert http.posts[0].payload["reasoning_effort"] == "none"
+
+
+async def test_a_failed_reply_is_explained_in_the_log() -> None:
+    logger = FakeEventLogger()
+    refused = HttpResponse(404, '{"error": {"message": "Your organization must be verified"}}')
+    model = OpenAiCharacterModel(FakeHttpClient([refused]), _config(), logger)
+    assert await model.reply(REQUEST) is None
+    [(name, fields)] = logger.lines
+    assert name == "character_model_failed" and "must be verified" in str(fields["why"])
 
 
 @pytest.mark.parametrize(
@@ -280,5 +304,5 @@ async def test_openai_character_model_sends_the_prompt_and_returns_the_line() ->
 async def test_openai_character_model_returns_none_on_any_failure(
     reply: HttpResponse | HttpTransportError,
 ) -> None:
-    model = OpenAiCharacterModel(FakeHttpClient([reply]), "https://llm.example/v1", "m", "k", 6.0)
+    model = OpenAiCharacterModel(FakeHttpClient([reply]), _config())
     assert await model.reply(REQUEST) is None

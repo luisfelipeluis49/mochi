@@ -248,3 +248,24 @@ The same prompt changes went into the Pi's stand-in (`hardware/pi-bridge/config/
 **Still imperfect** (seen in replays with the real model): an occasional word of the other language inside a
 sentence, and the hint model inventing hints in a talk with Mochi ("hamburger", reason `asks_partner`).
 
+## D-25: ears and reply model chosen from measurements (2026-11-20)
+
+The hardware owner compared recognisers on 16 synthetic sentences with one word of the other language
+(`~/.cache/mochi-wake-eval/cs` on the Pi) and chose:
+- **Ears, first choice: OpenAI `gpt-4o-transcribe`** through Agora (`asr.vendor: openai`), main language `en`, with
+  a prompt saying the speakers mix both languages plus the lexicon's words. **Fallback: ARES** with the same words
+  as `keywords`. ARES is used when there is no `MODEL_API_KEY`, and `SessionService` retries with it when Agora
+  refuses the first request (`AgoraRejectedError`, a 4xx). A timeout is not retried (the first agent may be
+  running). Not covered: OpenAI failing during a session; Mochi is then deaf until `MOCHI_ASR_VENDOR=ares`.
+- **Replies: `gpt-5.4-mini`** with `reasoning_effort: none` (median 0.7 s against 1.0 s for `gpt-4.1-mini` on the
+  same sentences). The request now sends `max_completion_tokens`; a failed model call is logged
+  (`character_model_failed`). `gpt-5-mini` needs a verified OpenAI organisation.
+- **Voice: MiniMax stays.** `gpt-4o-mini-tts` did not pronounce embedded words better (table in `VERIFIED.md`).
+
+Numbers (`VERIFIED.md` has the tables): mixed-in word kept in 13/16 with `gpt-4o-transcribe` through Agora, 10/16
+with ARES + keywords, 7/16 with ARES and only "Mochi". The price is delay: a sentence reaches the backend 1.5 s
+after speech ends with `gpt-4o-transcribe`, 1.1 s with ARES (both include the 0.6 s end-of-speech wait).
+`gpt-transcribe` and `gpt-live-transcribe` scored lower: they tidy the mixed-in word into the sentence's language.
+`gpt-4o-transcribe` is deprecated by OpenAI (shutdown 2027-02-26).
+The model key is sent to Agora in the start request. Not a contract change.
+

@@ -12,6 +12,10 @@ class AgoraError(Exception):
     """An Agora call failed. The message names the endpoint, status and expected shape."""
 
 
+class AgoraRejectedError(AgoraError):
+    """Agora refused the request itself (a 4xx): the same request would be refused again."""
+
+
 class AgentAlreadyStoppedError(AgoraError):
     """The agent was already gone when we tried to stop it (tolerated)."""
 

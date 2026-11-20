@@ -9,6 +9,7 @@ from mochi_backend.gateway.agora.client_port import (
     AgentStartRequest,
     AgoraAgentClient,
     AgoraError,
+    AgoraRejectedError,
     RtcTokenIssuer,
     SpeechTuning,
 )
@@ -30,6 +31,7 @@ class SessionConfig:
     llm_key: str
     tuning: SpeechTuning
     idle_timeout_seconds: int = 60
+    fallback_tuning: SpeechTuning | None = None  # other ears, if Agora refuses the first ones
     greeting_en: str = ""
     greeting_pt: str = ""
 
@@ -134,6 +136,29 @@ class SessionService:
         return self._tokens.issue(self._config.channel, uid, self._config.token_ttl_seconds)
 
     async def _start_agent(self, greeting: str) -> str:
+        """Start with the configured ears; if Agora refuses that request, with the fallback ears.
+
+        Only a refusal (4xx) is tried again: after a timeout the first agent may be running.
+        """
+        fallback = self._config.fallback_tuning
+        try:
+            return await self._join(greeting, self._config.tuning)
+        except AgoraRejectedError as error:
+            if fallback is None:
+                raise self._start_failed(error) from error
+            self._logger.log("ears_fallback", {"to": fallback.asr_vendor, "because": str(error)})
+        except AgoraError as error:
+            raise self._start_failed(error) from error
+        try:
+            return await self._join(greeting, fallback)
+        except AgoraError as error:
+            raise self._start_failed(error) from error
+
+    def _start_failed(self, error: AgoraError) -> UpstreamError:
+        self._logger.log("agora_start_failed", {"error": str(error)})
+        return UpstreamError(f"could not start the Agora agent: {error}")
+
+    async def _join(self, greeting: str, tuning: SpeechTuning) -> str:
         request = AgentStartRequest(
             channel=self._config.channel,
             agent_uid=self._config.agent_uid,
@@ -141,15 +166,11 @@ class SessionService:
             token=self._issue(self._config.agent_uid),
             llm_url=self._config.llm_url,
             llm_key=self._config.llm_key,
-            tuning=self._config.tuning,
+            tuning=tuning,
             idle_timeout_seconds=self._config.idle_timeout_seconds,
             greeting=greeting,
         )
-        try:
-            return await self._agora.start_agent(request)
-        except AgoraError as error:
-            self._logger.log("agora_start_failed", {"error": str(error)})
-            raise UpstreamError(f"could not start the Agora agent: {error}") from error
+        return await self._agora.start_agent(request)
 
     async def _stop_agent(self, agent_id: str) -> None:
         try:

@@ -1,7 +1,7 @@
 """Composition root: builds every dependency from `Settings`. Nothing else constructs adapters."""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.agora.client_port import AgoraAgentClient, RtcTokenIssuer, SpeechTuning
@@ -21,19 +21,25 @@ from mochi_backend.gateway.session_service import SessionConfig, SessionService
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
+from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.model_port import HintModel, NullHintModel
-from mochi_backend.intelligence.openai_character_model import OpenAiCharacterModel
+from mochi_backend.intelligence.openai_character_model import (
+    CharacterModelConfig,
+    OpenAiCharacterModel,
+)
 from mochi_backend.intelligence.openai_hint_model import OpenAiHintModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.clock import Clock, SystemClock
-from mochi_backend.platform.http_client import HttpxClient
+from mochi_backend.platform.http_client import HttpxClient, JsonValue
 from mochi_backend.platform.ids import IdGenerator, UuidIdGenerator
 from mochi_backend.platform.json_logging import EventLogger, configure_json_logging
 from mochi_backend.platform.scheduler import AsyncioScheduler, Scheduler
 from mochi_backend.settings import Settings
+from mochi_contracts import Language
 
 LLM_PATH = "/agora/llm/demo/chat/completions"
+MAX_KEYWORDS = 128  # what ARES accepts (Agora join page)
 
 
 @dataclass(frozen=True)
@@ -73,13 +79,15 @@ def default_adapters(settings: Settings) -> Adapters:
         creds = (settings.agora_rest_key, settings.agora_rest_secret)
         agora = AgoraRestClient(HttpxClient(), settings.agora_app_id, *creds, ids)
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
-    brain = _brain_for(settings, clock, ids)
+    brain = _brain_for(settings, clock, ids, logger)
     name = "rules+model" if settings.model_configured else "rules"
     name += "+character" if settings.character_configured else ""
     return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
 
 
-def _brain_for(settings: Settings, clock: Clock, ids: IdGenerator) -> Intelligence:
+def _brain_for(
+    settings: Settings, clock: Clock, ids: IdGenerator, logger: EventLogger
+) -> Intelligence:
     tuning = IntelligenceSettings(
         hint_ttl_seconds=settings.mochi_hint_ttl_seconds,
         model_timeout_seconds=settings.mochi_decide_timeout_seconds,
@@ -88,25 +96,37 @@ def _brain_for(settings: Settings, clock: Clock, ids: IdGenerator) -> Intelligen
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
     if settings.character_configured:
-        brain.speak_as(
-            OpenAiCharacterModel(
-                HttpxClient(),
-                settings.mochi_model_base_url,
-                settings.mochi_character_model_name,
-                settings.model_api_key,
-                settings.mochi_character_timeout_seconds,
-            )
-        )
+        brain.speak_as(OpenAiCharacterModel(HttpxClient(), _character_model(settings), logger))
     return brain
 
 
-def _speech_tuning(settings: Settings) -> SpeechTuning:
+def _character_model(settings: Settings) -> CharacterModelConfig:
+    return CharacterModelConfig(
+        base_url=settings.mochi_model_base_url,
+        model_name=settings.mochi_character_model_name,
+        api_key=settings.model_api_key,
+        timeout_seconds=settings.mochi_character_timeout_seconds,
+        reasoning_effort=settings.mochi_character_reasoning_effort,
+    )
+
+
+def vocabulary(settings: Settings) -> tuple[str, ...]:
+    """The names and words speech-to-text should expect: `MOCHI_ASR_KEYWORDS` plus the lexicon.
+
+    Example: `vocabulary(settings)[:2]` is `("Mochi", "adiar")`.
+    """
+    words = list(settings.mochi_asr_keywords)
+    for entry in Lexicon.load().entries:
+        words += [entry.word(Language.PT_BR), entry.word(Language.EN)]
+    return tuple(dict.fromkeys(words))[:MAX_KEYWORDS]
+
+
+def _ares_ears(settings: Settings, words: tuple[str, ...]) -> SpeechTuning:
+    """Agora's own recogniser, hearing both languages, with the words as keywords."""
     return SpeechTuning(
-        asr_vendor=settings.mochi_asr_vendor,
-        asr_language=settings.mochi_asr_language,
-        asr_keywords=tuple(settings.mochi_asr_keywords),
-        asr_params=settings.mochi_asr_params,
-        asr_credential_mode=settings.mochi_asr_credential_mode,
+        asr_vendor="ares",
+        asr_language=settings.mochi_ares_language,
+        asr_keywords=words,
         tts_vendor=settings.mochi_tts_vendor,
         tts_params=settings.mochi_tts_params,
         tts_credential_mode=settings.mochi_tts_credential_mode,
@@ -114,7 +134,43 @@ def _speech_tuning(settings: Settings) -> SpeechTuning:
     )
 
 
+def _openai_ears(settings: Settings, words: tuple[str, ...]) -> dict[str, JsonValue]:
+    """`asr.params` for OpenAI transcription: the model, and a prompt that names the words."""
+    hint = f"{settings.mochi_asr_prompt} Words that may come up: {', '.join(words)}."
+    listening: dict[str, JsonValue] = {
+        "model": settings.mochi_asr_openai_model,
+        "prompt": hint,
+        "language": settings.mochi_asr_language[:2].lower(),
+    }
+    given = settings.mochi_asr_params
+    return {"api_key": settings.model_api_key, "input_audio_transcription": listening, **given}
+
+
+def speech_tunings(settings: Settings) -> tuple[SpeechTuning, SpeechTuning | None]:
+    """The ears a session starts with, and the ones to use if Agora refuses those.
+
+    OpenAI transcription needs the model key; without one ARES is the only choice.
+    Example: `speech_tunings(settings)[1]` is the ARES tuning, or None when ARES is already first.
+    """
+    words = vocabulary(settings)
+    ares = _ares_ears(settings, words)
+    vendor = settings.mochi_asr_vendor
+    if vendor == "ares" or (vendor == "openai" and not settings.model_api_key):
+        return ares, None
+    params = _openai_ears(settings, words) if vendor == "openai" else settings.mochi_asr_params
+    first = replace(
+        ares,
+        asr_vendor=vendor,
+        asr_language=settings.mochi_asr_language,
+        asr_keywords=(),  # Agora accepts keywords for ARES only
+        asr_params=params,
+        asr_credential_mode=settings.mochi_asr_credential_mode,
+    )
+    return first, ares
+
+
 def _session_config(settings: Settings) -> SessionConfig:
+    first, fallback = speech_tunings(settings)
     return SessionConfig(
         app_id=settings.agora_app_id,
         channel=settings.mochi_channel,
@@ -124,7 +180,8 @@ def _session_config(settings: Settings) -> SessionConfig:
         llm_url=settings.mochi_public_url.rstrip("/") + LLM_PATH,
         llm_key=settings.mochi_turn_key,
         idle_timeout_seconds=settings.mochi_agent_idle_timeout_seconds,
-        tuning=_speech_tuning(settings),
+        tuning=first,
+        fallback_tuning=fallback,
         greeting_en=settings.mochi_greeting_en,
         greeting_pt=settings.mochi_greeting_pt,
     )

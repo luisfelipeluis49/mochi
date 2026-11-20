@@ -8,6 +8,7 @@ from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
+    AgoraRejectedError,
     SpeechTuning,
 )
 from mochi_backend.gateway.agora.rest_client import AgoraRestClient, join_body
@@ -300,6 +301,17 @@ REQUEST = AgentStartRequest(
 def _client(*replies: HttpResponse | HttpTransportError) -> tuple[AgoraRestClient, FakeHttpClient]:
     http = FakeHttpClient(list(replies))
     return AgoraRestClient(http, "APPID", "rk", "rest-secret-xyz", SequentialIdGenerator()), http
+
+
+async def test_a_refusal_from_agora_is_told_apart_from_a_failure() -> None:
+    """A 4xx would be refused again as it is (other ears may work); a 5xx may have half-started."""
+    refused, _ = _client(HttpResponse(400, '{"reason": "InvalidFieldValue"}'))
+    with pytest.raises(AgoraRejectedError):
+        await refused.start_agent(REQUEST)
+    broken, _ = _client(HttpResponse(503, "busy"))
+    with pytest.raises(AgoraError) as raised:
+        await broken.start_agent(REQUEST)
+    assert not isinstance(raised.value, AgoraRejectedError)
 
 
 def test_join_body_uses_the_verified_field_names() -> None:

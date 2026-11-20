@@ -145,3 +145,36 @@ the microphone, the agent's voice watched by its loudness:
   `MOCHI_END_OF_SPEECH_SILENCE_MS=600` and the model connection kept open; the model call itself is 0.9 to 1.3 s.
 - What Mochi says is now in the log (`reply`: text and the commands it wrote).
 
+## Recognisers and voices compared (2026-11-20, a second Agora project, synthetic speech)
+
+**Mixed-language recognition**, 16 clips with one word of the other language ("I forgot my guarda-chuva at the
+office."). "Word right" = that word appears in the transcript.
+
+| Recogniser | How it was called | Word right | Word error |
+|---|---|---|---|
+| ARES, keyword "Mochi" | through Agora | 7/16 | 20% |
+| ARES, keywords = Mochi + lexicon (20 words) | through Agora | 10/16 | 15% |
+| `gpt-4o-transcribe`, `language: en`, prompt + lexicon words | through Agora (`asr.vendor: openai`) | 13/16 | 20% |
+| same, `language: pt` | through Agora | 11/16 | 42% |
+| `gpt-4o-transcribe`, no prompt | OpenAI file API | 6/16 | 59% |
+| `gpt-transcribe`, `languages` en+pt, `keywords` | OpenAI file API | 9/16 | 22% |
+| `gpt-live-transcribe`, hints | OpenAI realtime transcription | 9 to 11/16 | 34 to 38% |
+
+- Agora accepts `gpt-4o-transcribe` as `params.input_audio_transcription.model`, with `prompt` and a single
+  `language`. Its Python SDK refuses a request without `language`; the REST API was not tried without it.
+- **Delay in this backend's pipeline** (speech ends -> the turn request arrives, end-of-speech wait 600 ms):
+  ARES 1.08 s median (0.84 to 1.64, n=12); `gpt-4o-transcribe` 1.53 s median (1.33 to 2.00, n=16).
+- Whole turn with `gpt-4o-transcribe` and `gpt-5.4-mini`: first sound 3.1 to 3.7 s after the person stops; the
+  model call 0.7 to 0.8 s.
+
+**Voices**, 13 sentences said through Agora's speak endpoint, recorded, and read back with a phone recogniser;
+"own language" = the embedded word sounds closer to its own language's pronunciation than to the other's.
+
+| Voice | Word inside a sentence of the other language | Word in a sentence of its own | Starts after being asked |
+|---|---|---|---|
+| MiniMax `speech-2.8-turbo`, `language_boost: auto` (managed) | 6/9 own language | 4/4 | 1.39 s median |
+| OpenAI `gpt-4o-mini-tts`, voice coral, with pronunciation instructions (own key) | 6/9 | 3/4 | 1.58 s median |
+
+Both read "guarda-chuva" and "feira" the English way inside an English sentence. An automatic score on 13
+sentences is a rough guide, not a listening test.
+

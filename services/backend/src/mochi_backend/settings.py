@@ -49,16 +49,24 @@ class Settings(BaseSettings):
     mochi_model_name: str = "gpt-4o-mini"
     # Mochi's own voice: with a model key it answers in character when spoken to (DECISIONS D-23)
     mochi_character_enabled: bool = True
-    mochi_character_model_name: str = "gpt-4.1-mini"
+    mochi_character_model_name: str = "gpt-5.4-mini"
+    mochi_character_reasoning_effort: str = "none"  # empty for models without it (gpt-4.1-mini)
     mochi_character_timeout_seconds: float = 6.0
     mochi_follow_up_seconds: float = 20.0
     mochi_greeting_en: str = "Hi! I'm listening."
     mochi_greeting_pt: str = "Oi! Pode falar."
-    mochi_asr_vendor: str = "ares"
-    mochi_asr_language: str = (
-        "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT is its Portuguese
+    # Ears (DECISIONS D-25). "openai" needs MODEL_API_KEY; without one, or when Agora refuses the
+    # request, ARES with keywords is used instead.
+    mochi_asr_vendor: str = "openai"
+    mochi_asr_language: str = "en-US"  # the main language, for every vendor but ARES
+    mochi_asr_openai_model: str = "gpt-4o-transcribe"
+    mochi_asr_prompt: str = (
+        "Two people are practising languages. They speak English and Brazilian Portuguese and "
+        "often mix both in one sentence. Write every word in the language it was spoken in; "
+        "never translate."
     )
-    mochi_asr_keywords: list[str] = ["Mochi"]
+    mochi_ares_language: str = "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT stands in
+    mochi_asr_keywords: list[str] = ["Mochi"]  # names to expect; the lexicon's words are added
     mochi_asr_params: VendorParams = {}
     mochi_asr_credential_mode: str = ""
     mochi_tts_vendor: str = "minimax"

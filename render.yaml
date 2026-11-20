@@ -40,10 +40,13 @@ services:
       - key: MOCHI_CHANNEL
         value: mochi-demo
       # Agora-managed speech vendors: no vendor keys needed (tested against real Agora, see VERIFIED.md)
-      # Ears: ARES (Agora's own), English and Portuguese at once; no credential mode (see .env.example)
+      # Ears (.env.example, DECISIONS D-25): OpenAI transcription when MODEL_API_KEY is set (the key then goes
+      # to Agora with each session start), otherwise ARES with the lexicon as keywords.
       - key: MOCHI_ASR_VENDOR
-        value: ares
+        value: openai
       - key: MOCHI_ASR_LANGUAGE
+        value: en-US
+      - key: MOCHI_ARES_LANGUAGE
         value: en-US,pt-PT
       - key: MOCHI_ASR_KEYWORDS
         value: '["Mochi"]'
