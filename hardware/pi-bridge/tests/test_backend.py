@@ -10,9 +10,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
-from types import SimpleNamespace
-
-from mochi_device.backends import HeardTurns, JoinInfo, MochiBackend
+from mochi_device.backends import MochiBackend
 from mochi_device.main import Supervisor
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
@@ -24,8 +22,6 @@ class FakeBackend:
     def __init__(self):
         self.capturing = self.speaker_muted = self.broken = False
         self.posts: list[str] = []
-        self.bodies: list[dict] = []   # what each POST carried
-        self.heard: list[str] = []     # sentences reported to /turns
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -39,12 +35,7 @@ class FakeBackend:
 
             def do_POST(self):
                 action = self.path.rsplit("/", 1)[1]
-                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
-                if action == "turns":
-                    fake.heard.append(body["text"])
-                    return self.reply({"decision": {"decision": "SHOW_HINT", "hint": {"expression": "postpone"}}})
                 fake.posts.append(action)
-                fake.bodies.append(body)
                 fake.capturing = action == "start"
                 self.reply({})
 
@@ -149,105 +140,6 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(OSError):
             await self.backend.start()
         await self.backend.stop()  # must not raise: the supervisor has to get back to listening
-
-
-def said(role: str, text: str, started: int | None, ended: int | None = None):
-    """One entry of the agent's conversation history."""
-    return SimpleNamespace(role=role, content=text, speech_start_ms=started, speech_end_ms=ended)
-
-
-class HeardTurnsTest(unittest.TestCase):
-    def test_each_finished_sentence_once(self):
-        heard = HeardTurns()
-        history = [said("assistant", "Hi!", 1, 2), said("user", " Como se diz fila? ", 3, 4)]
-        self.assertEqual(heard.new(history), ["Como se diz fila?"])
-        history.append(said("assistant", "[mood happy] Fila?", 5))
-        self.assertEqual(heard.new(history), [])
-        history.append(said("user", "Queue!", 6, 7))
-        self.assertEqual(heard.new(history), ["Queue!"])
-
-    def test_a_sentence_still_being_said_waits(self):
-        heard = HeardTurns()
-        self.assertEqual(heard.new([said("user", "How do", 3)]), [])
-        self.assertEqual(heard.new([said("user", "How do you say window?", 3, 9)]), ["How do you say window?"])
-
-    def test_survives_the_history_dropping_its_oldest_entries(self):
-        heard = HeardTurns()
-        first, second = said("user", "one", 1, 2), said("user", "two", 3, 4)
-        self.assertEqual(heard.new([first, second]), ["one", "two"])
-        self.assertEqual(heard.new([second, said("user", "three", 5, 6)]), ["three"])
-
-
-class FakeAgent:
-    """Stands in for TestAgentBackend: Mochi's own agent."""
-
-    def __init__(self):
-        self.on_turn = None
-        self.calls: list = []
-
-    async def start(self, wake_phrase=None):
-        self.calls.append(("start", wake_phrase))
-        return JoinInfo("own-app", "mochi-test", 1001, "own-token")
-
-    async def stop(self):
-        self.calls.append("stop")
-
-    def set_voices(self, known, speaker):
-        self.calls.append(("voices", known, speaker))
-
-    async def voice_enrolled(self, name, lang, learned):
-        self.calls.append(("enrolled", name, lang, learned))
-
-
-class OwnAgentTest(unittest.IsolatedAsyncioTestCase):
-    """kind = "mochi_backend", agent = "character": Mochi's own agent talks, the backend listens in."""
-
-    def setUp(self):
-        self.fake = FakeBackend()
-        self.addCleanup(self.fake.close)
-        self.agent = FakeAgent()
-        self.events: list[tuple] = []
-        self.backend = MochiBackend(self.fake.url, "home_pi_01", FakeSpeaker(),
-                                    lambda kind, value: self.events.append((kind, value)),
-                                    poll_interval_s=0.02, agent=self.agent)
-
-    async def test_backend_starts_no_agent_and_the_bridge_joins_mochis_own(self):
-        join = await self.backend.start("oi mochi")
-        self.assertEqual(self.fake.bodies, [{"agent": "device"}])
-        self.assertEqual((join.app_id, join.channel), ("own-app", "mochi-test"))
-        self.assertEqual(self.agent.calls, [("start", "oi mochi")])
-        await self.backend.stop()
-        self.assertEqual(self.agent.calls[-1], "stop")
-        self.assertEqual(self.fake.posts, ["start", "stop"])
-
-    async def test_every_sentence_is_reported_in_order(self):
-        await self.backend.start()
-        for sentence in ("Eu preciso adiar a reunião.", "Postpone!", "Thank you."):
-            self.agent.on_turn(sentence)
-        self.assertTrue(await until(lambda: len(self.fake.heard) == 3))
-        self.assertEqual(self.fake.heard, ["Eu preciso adiar a reunião.", "Postpone!", "Thank you."])
-        await self.backend.stop()
-
-    async def test_voices_reach_mochis_own_agent(self):
-        self.backend.set_voices(["Ana"], "Ana")
-        await self.backend.voice_enrolled("Ana", "pt", True)
-        self.assertEqual(self.agent.calls, [("voices", ["Ana"], "Ana"), ("enrolled", "Ana", "pt", True)])
-
-    async def test_backend_can_still_end_the_session(self):
-        await self.backend.start()
-        self.fake.capturing = False
-        self.assertTrue(await until(lambda: self.events))
-        await self.backend.stop()
-        self.assertEqual(self.agent.calls[-1], "stop")
-        self.assertEqual(self.fake.posts, ["start"])
-
-    async def test_mochi_talks_even_when_the_backend_is_down(self):
-        await asyncio.to_thread(self.fake.close)
-        join = await self.backend.start("hi mochi")
-        self.assertEqual(join.channel, "mochi-test")
-        self.agent.on_turn("Nobody is told this.")
-        await self.backend.stop()
-        self.assertEqual(self.agent.calls, [("start", "hi mochi"), "stop"])
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):

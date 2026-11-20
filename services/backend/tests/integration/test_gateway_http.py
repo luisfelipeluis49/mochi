@@ -156,6 +156,14 @@ def test_session_device_and_activity_endpoints() -> None:
     assert client.post("/api/demo/reset").json()["capturing"] is False
 
 
+def test_default_ears_are_ares_in_english_and_portuguese() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    tuning = harness.agora.started[0].tuning
+    assert (tuning.asr_vendor, tuning.asr_language) == ("ares", "en-US,pt-PT")
+    assert tuning.asr_keywords == ("Mochi",) and tuning.asr_credential_mode == ""
+
+
 def test_error_statuses_are_readable() -> None:
     client, harness = _client()
     assert client.get("/api/devices/pi_99/state").status_code == 404

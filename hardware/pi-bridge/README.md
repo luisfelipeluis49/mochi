@@ -76,34 +76,13 @@ systemctl --user restart mochi      # after editing config/mochi.toml or .env
 
 Who runs the session is `[backend].kind` in the config (`mochi_device/backends.py`):
 
-- `test_agent` (the default): the Pi alone. Mochi's own agent (`[test_agent]`) is started straight at
-  Agora and nobody else is told anything.
-- `mochi_backend`: Luís's backend runs the session. The Pi asks it to start and stop
-  (`POST /api/sessions/demo/start|stop`) and reads `GET /api/devices/home_pi_01/state` every
-  `poll_interval_s`; when `capturing` turns false the Pi leaves the channel. Set `mochi_backend_url`
-  to where the backend runs. Who talks is `[backend].agent`:
-  - `character` (the default): Mochi's own agent, exactly as with `test_agent`, so everything
-    below still works: its character, ARES ears, voice, face, volume, temperature and voices. The
-    backend starts no agent (`{"agent": "device"}`), and the Pi reports every finished sentence to
-    `POST /api/devices/home_pi_01/turns`, so the backend decides the hints and saved words for the
-    phones and the projector. No public URL, REST key or model key is needed for this: Agora never
-    calls the backend. If the backend cannot be reached, Mochi talks anyway, without the hints.
-    Needs a backend that has `POST /api/devices/{id}/turns` (DECISIONS D-22); an older one would
-    ignore the option and start its own agent as well.
-  - `backend`: the backend's own agent talks: quiet by default, short fixed lines. The Pi joins the
-    channel the device state names and mutes the speaker while `speaker_muted` is true.
+- `mochi_backend`: Luís's backend. The Pi asks it to start (`POST /api/sessions/demo/start`), joins
+  with what `GET /api/devices/home_pi_01/state` returns, and keeps reading that state every
+  `poll_interval_s`. When `capturing` turns false the Pi leaves the channel; while `speaker_muted`
+  is true the speaker is silent. Set `mochi_backend_url` to where the backend runs.
+- `test_agent` (the default): a stand-in agent, for working without the backend.
 
-To try it on the Pi with the backend on the same machine:
-
-```bash
-MOCHI_AGORA_MODE=fake scripts/start-dev.sh    # repo root; fake Agora is enough, the backend starts no agent
-# in config/mochi.toml set kind = "mochi_backend", then:
-systemctl --user restart mochi
-# say the wake phrase and talk; the log shows what the backend decided for each sentence:
-#   [mochi] backend heard 'Como se diz "fila" em inglês?': SHOW_HINT, hint 'queue'
-```
-
-Mochi's character and the way it helps (clue first, the word in a sentence,
+The stand-in's character and the way it helps (clue first, the word in a sentence,
 "your turn", saying a slip back the right way, nudging the two people toward each other) are the
 `instructions` in `config/mochi.toml`. It understands and speaks English and Brazilian Portuguese
 and greets in the language of the wake phrase.

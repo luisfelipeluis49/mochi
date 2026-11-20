@@ -51,19 +51,15 @@ class DeviceService:
         self._config = config
         self._clock = clock
 
-    def require(self, device_id: str) -> None:
-        """Raise `NotFoundError` unless this is the one device we know."""
-        if device_id != HOME_DEVICE_ID:
-            raise NotFoundError(f"unknown device {device_id!r}; expected {HOME_DEVICE_ID!r}")
-
     def state(self, device_id: str) -> DeviceState:
         """Example: while capturing -> `capturing=True` and a join block; else `agora=None`."""
-        self.require(device_id)
+        if device_id != HOME_DEVICE_ID:
+            raise NotFoundError(f"unknown device {device_id!r}; expected {HOME_DEVICE_ID!r}")
         if not self._store.capturing:
             return DeviceState(capturing=False, agora=None, speaker_muted=False)
-        # A device that runs the agent itself is never muted: its own agent does the talking.
-        muted = self._silence.speaker_muted() and not self._store.agent_on_device
-        return DeviceState(capturing=True, agora=self._join_info(), speaker_muted=muted)
+        return DeviceState(
+            capturing=True, agora=self._join_info(), speaker_muted=self._silence.speaker_muted()
+        )
 
     def _join_info(self) -> AgoraJoinInfo:
         return AgoraJoinInfo(
