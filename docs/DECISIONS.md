@@ -303,3 +303,25 @@ Asked for by the hardware owner; it changes intelligence code (Kauê's), so it i
 - **Not built:** escalation when a hint is not enough (to be agreed with the team); using the device's speaker
   recognition to choose whose hint it is.
 
+## D-28: fixes from the first spoken test of the quiet hints (2026-11-20)
+
+One person tried the mode from D-27 by voice; the log was read back and the sentences replayed.
+- **Asked word.** "...adiar our meeting. How do I say garfo in English?" gave "postpone": the rules took any
+  lexicon word in the turn. `clear_cases.asked_term` finds what the question names; the rules search only that,
+  the hint model gets it as `asked_about`, and a language the question names (`wanted_language`) is the hint's
+  language and decides whose hint it is.
+- **Stale memory.** `SessionService._begin` clears `turns` and `hints`: a hint from an earlier session had put
+  the new session's first sentence under the cooldown.
+- **Cooldown.** Unchanged for unasked hints (AGENTS 7.2). A turn that asks how to say something is exempt.
+  **Open, for the team:** two turns is about 20 seconds of real talk, and it still silenced a second, different
+  word ("...eu esqueci minha wallet em casa." two turns after another hint). Proposal: hold a new hint back only
+  while the previous one is still on screen.
+- **"I mean"** at the start of a turn is not a self-correction (`quiet_rules._SELF_CORRECTION`).
+- **Split questions.** "Como se fala..." and "Carteira em inglês." arrive as two turns because of the pause; a
+  turn that follows an unfinished question within 20 s is read together with it (`_with_its_question`). The hint
+  model is told not to guess a word nobody mentioned.
+- **Hint card.** The device's `commands` carry a hint as `hint` with a JSON card (`word`, `language`, `meaning`,
+  `example`) instead of `show` with the bare word; Mochi's face shows the language and meaning under the word.
+- The decision log line now names the hint and its meaning.
+`scripts/eval-intelligence.sh` is unchanged at 82/85.
+
