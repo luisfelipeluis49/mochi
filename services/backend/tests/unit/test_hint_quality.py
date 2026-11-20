@@ -3,7 +3,15 @@
 import asyncio
 import json
 
-from mochi_backend.intelligence.clear_cases import asked_term, asks_for_word, question_itself
+import pytest
+
+from mochi_backend.intelligence.clear_cases import (
+    asked_term,
+    asks_for_word,
+    question_itself,
+    unfinished_question,
+)
+from mochi_backend.intelligence.hedged import first_answer
 from mochi_backend.intelligence.language_guess import spoken_language
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
@@ -12,13 +20,14 @@ from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.http_client import HttpResponse
 from mochi_backend.platform.ids import SequentialIdGenerator
-from mochi_contracts import Decision, DecisionKind, Language, SessionContext
+from mochi_contracts import Decision, DecisionKind, Language, Reason, SessionContext
 from tests.factories import make_context, make_hint, make_turn
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_http_client import FakeHttpClient
 
 GARFO = "Can you pass me the garfo, please?"
+_REQUEST = ModelRequest(text=GARFO, recent_texts=[], focus=Language.EN, candidate_reasons=[])
 UMBRELLA = "I forgot my guarda-chuva at the office."
 
 
@@ -27,11 +36,13 @@ def _hint(**fields: object) -> ModelSuggestion:
     return ModelSuggestion.model_validate({**base, "meaning": "garfo", **fields})
 
 
-async def _decided(suggestion: ModelSuggestion, text: str = GARFO) -> Decision:
+async def _decided(
+    suggestion: ModelSuggestion, text: str = GARFO, context: SessionContext | None = None
+) -> Decision:
     brain = Intelligence(
         clock=FakeClock(), ids=SequentialIdGenerator(), model=FakeHintModel(suggestion)
     )
-    return await brain.decide(make_turn(text), make_context())
+    return await brain.decide(make_turn(text, 60), context or make_context())
 
 
 async def test_a_hint_the_model_is_sure_of_is_shown() -> None:
@@ -67,7 +78,10 @@ async def test_a_synonym_for_a_word_of_the_same_language_is_not_a_hint() -> None
 async def test_someone_trying_out_a_word_they_were_given_is_not_stuck() -> None:
     """Seen live: "Molho para salada?" got "salad sauce" back."""
     echo = _hint(reason="says_unknown", expression="salad sauce", meaning="molho para salada")
-    assert (await _decided(echo, "Molho para salada?")).decision is DecisionKind.IGNORE
+    given = make_context(turns=[make_turn("How do I say salad sauce in Portuguese?", 50)])
+    assert (await _decided(echo, "Molho para salada?", given)).decision is DecisionKind.IGNORE
+    fresh = _hint(reason="trails_off", expression="headache", meaning="dor de cabeça")
+    assert (await _decided(fresh, "Dor de cabeça...")).hint is not None  # nobody gave them that
 
 
 def test_a_short_question_names_its_word_and_the_last_question_counts() -> None:
@@ -176,3 +190,124 @@ async def test_a_quick_answer_is_asked_for_once() -> None:
     brain = Intelligence(clock=FakeClock(), ids=SequentialIdGenerator(), model=model)
     await brain.decide(make_turn(GARFO), make_context())
     assert len(model.requests) == 1
+
+
+# ---- found by an independent review of the first version of these checks ----
+
+IGNORE = ModelSuggestion(decision="IGNORE")
+
+
+async def test_an_ordinary_question_that_names_a_language_asks_for_no_word() -> None:
+    """ "Was the meeting in Portuguese?" showed "reunião", and skipped the cooldown doing so."""
+    ordinary = (
+        "Was the meeting in Portuguese?",
+        "A reunião foi em inglês?",
+        "Is the receipt in Portuguese?",
+        "Talk in English?",
+        "Let's speak in English?",
+        "Hi, can you speak in Portuguese?",
+    )
+    for question in ordinary:
+        assert not asks_for_word(question) and asked_term(question) is None, question
+        assert (await _decided(IGNORE, question)).decision is DecisionKind.IGNORE, question
+    assert asks_for_word("The key... in Portuguese?")
+    assert asked_term("The key... in Portuguese?") == "key"
+
+
+def test_a_question_that_names_its_word_is_finished_and_one_that_points_names_nothing() -> None:
+    assert asked_term("I forgot the word for chave.") == "chave"
+    assert not unfinished_question("I forgot the word for chave.")
+    assert unfinished_question("I forgot the word.")
+    pointing = "Guarda-chuva. How do you say that in English?"
+    assert asked_term(pointing) is None and question_itself(pointing) == pointing
+
+
+async def test_a_question_that_names_no_language_gets_the_word_in_the_models_language() -> None:
+    """ "Como se diz saudade?" is asked in Portuguese for an English word."""
+    longing = _hint(reason="says_unknown", expression="longing", meaning="saudade")
+    asked = await _decided(
+        longing.model_copy(update={"expression_language": "en"}), "Como se diz saudade?"
+    )
+    assert asked.hint is not None and asked.hint.expression == "longing"
+    assert asked.hint.target_language is Language.EN
+    jam = _hint(reason="says_unknown", expression="engarrafamento", meaning="traffic jam")
+    other = await _decided(
+        jam.model_copy(update={"expression_language": "pt-BR"}), "How do you say traffic jam?"
+    )
+    assert other.hint is not None and other.hint.target_language is Language.PT_BR
+
+
+async def test_language_labels_are_read_loosely_and_swapped_with_swapped_words() -> None:
+    for label in ("EN", "en-US", "English"):
+        assert (await _decided(_hint(expression_language=label))).hint is not None, label
+    swapped = _hint(
+        expression="garfo", meaning="fork", expression_language="pt-BR", meaning_language="en"
+    )
+    decision = await _decided(swapped)
+    assert decision.hint is not None and decision.hint.expression == "fork"
+
+
+async def test_a_word_in_another_form_was_still_said() -> None:
+    plural = await _decided(_hint(), "I bought two garfos yesterday.")
+    assert plural.hint is not None and plural.hint.expression == "fork"
+
+
+def test_um_is_an_article_in_portuguese_and_a_hesitation_before_a_pause() -> None:
+    lexicon = Lexicon.load()
+    assert spoken_language("Quero um umbrella.", lexicon, Language.EN) is Language.PT_BR
+    assert spoken_language("Um umbrella, por favor.", lexicon, Language.EN) is Language.PT_BR
+    assert spoken_language("Um, I think so.", lexicon, Language.PT_BR) is Language.EN
+
+
+async def test_the_other_quiet_rules_hold_when_the_cooldown_does_not() -> None:
+    serious = "I forgot my guarda-chuva at the funeral."
+    assert (await _next(serious, _after_a_hint(19.5), "while_shown")).decision is (
+        DecisionKind.IGNORE
+    )
+    corrected = "I forgot my guarda-chuva, I mean, my umbrella."
+    assert (await _next(corrected, _after_a_hint(19.5), "while_shown")).decision is (
+        DecisionKind.IGNORE
+    )
+
+
+async def test_while_shown_waits_for_the_screen_even_after_two_quick_turns() -> None:
+    quick = [make_turn("I need to adiar it.", 12), make_turn("Ok.", 14), make_turn("Yes.", 16)]
+    context = make_context(turns=quick, hints=[make_hint(12.5)])  # on screen until 20.5
+    assert (await _next(UMBRELLA, context, "while_shown")).decision is DecisionKind.IGNORE
+
+
+async def test_only_a_hint_of_the_last_two_turns_counts_as_just_shown() -> None:
+    long_ago = make_context(
+        turns=[make_turn("Fine.", 0), make_turn("That sounds busy.", 12)],
+        hints=[make_hint(-30)],  # "postpone", several turns back
+    )
+    again = await _next("I have to adiar the party.", long_ago, "while_shown")
+    assert again.hint is not None and again.hint.expression == "postpone"
+
+
+class _Broken(FakeHintModel):
+    """A model adapter with a bug: the error must reach the log, not vanish."""
+
+    async def suggest(self, request: ModelRequest) -> ModelSuggestion | None:
+        raise RuntimeError(f"cannot read the answer for {request.text!r}")
+
+
+async def test_an_error_in_the_model_adapter_is_not_swallowed() -> None:
+    with pytest.raises(RuntimeError):
+        await first_answer(lambda: _Broken().suggest(_REQUEST), 0.0, 1.0)
+    assert await first_answer(
+        lambda: FakeHintModel(TimeoutError()).suggest(_REQUEST), 0.0, 1.0
+    ) is (None)
+
+
+async def test_a_field_the_model_got_wrong_does_not_cost_the_answer() -> None:
+    odd = (
+        '{"decision": "SHOW_HINT", "reason": ["code_switch"], "expression": "fork", '
+        '"meaning": "garfo", "confidence": 95, "expression_language": 7}'
+    )
+    body = json.dumps({"choices": [{"message": {"content": odd}}]})
+    model = OpenAiHintModel(FakeHttpClient([HttpResponse(200, body)]), "https://x/v1", "m", "k", 2)
+    answer = await model.suggest(_REQUEST.model_copy(update={"asked_about": "garfo"}))
+    assert answer is not None and answer.expression == "fork"
+    assert answer.reason is Reason.SAYS_UNKNOWN and answer.confidence == 0.95
+    assert answer.expression_language is None

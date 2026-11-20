@@ -45,13 +45,10 @@ IGNORE all of this:
 answered;
 - anything where you would have to guess which word they need.
 
-The transcript is made by a machine that expects one language. A word of the other language is \
-sometimes written the way it sounds, as a non-word or as several small words ("cashew hoe" for \
-"cachorro", "dischave" for "diz chave", "brekfest" for "breakfast"). If, read aloud, it is \
-clearly such a word and the sentence makes sense with it, treat it as said and give the hint for \
-the real word. A word that is no real word in either language, and that does not sound like \
-exactly one real word, means you cannot tell what was said: IGNORE, never guess. When you did \
-reconstruct a word, say so with a `confidence` of at most 0.8. People also pause while they \
+The transcript is made by a machine that expects one language, so a word of the other language \
+is sometimes written the way it sounds, as a non-word or as several small words. Do not guess \
+at such a word. If something in the sentence is no real word of either language and you cannot \
+be sure which word it was, you cannot tell what was said: IGNORE. People also pause while they \
 think, so a \
 question can be split over two \
 turns ("Como se fala..." and then "Carteira em inglês."): read `recent` to complete it.
@@ -82,15 +79,29 @@ num engarrafamento."}.
 Example, focus en: "I need to go, ok? Tchau tchau!" -> {"decision": "IGNORE"}."""
 
 
+def _confidence(value: object) -> float | None:
+    """The model's confidence as 0-1; a percentage is scaled, anything else is no statement."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value / 100 if value > 1 else float(value)
+
+
 def _suggestion(content: str, asked: bool) -> ModelSuggestion:
-    """Parse the model's JSON. A reason it made up must not cost the whole answer.
+    """Parse the model's JSON. A field it got wrong must not cost the whole answer.
 
     Seen with a real model: `"reason": "asked_about"` for an explicit question, which is not one of
     ours. For a question that named its word the reason is says_unknown; otherwise there is none.
     """
     fields = json.loads(content)
-    if isinstance(fields, dict) and fields.get("reason") not in {r.value for r in Reason}:
+    if not isinstance(fields, dict):
+        raise ValueError(f"hint model answered {content[:80]!r}; expected a JSON object")
+    reason = fields.get("reason")
+    if not isinstance(reason, str) or reason not in {r.value for r in Reason}:
         fields["reason"] = Reason.SAYS_UNKNOWN.value if asked else None
+    fields["confidence"] = _confidence(fields.get("confidence"))
+    for label in ("expression_language", "meaning_language"):
+        if not isinstance(fields.get(label), str):
+            fields[label] = None
     return ModelSuggestion.model_validate(fields)
 
 

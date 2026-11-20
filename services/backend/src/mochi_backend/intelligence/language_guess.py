@@ -6,28 +6,28 @@ from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import normalized, words_of
 from mochi_contracts import Language
 
-# Words that exist in only one language (no "a", "no", "as", "me", "do": they exist in both; and
-# no "um": spoken English is full of it as a filler, and it made English turns look Portuguese).
+# Words that exist in only one language (no "a", "no", "as", "me": they exist in both). Only the
+# small words that hold a sentence together: a noun or adjective is what people borrow from the
+# other language ("Meu friend chegou"), so it says little about the language of the sentence.
 _ENGLISH = (
     "i you he she we they it the an to of and is are was were my your his her our their need "
-    "forgot at in on with for this that these those what how does did have has had can will "
+    "forgot at in on with for this that these those what how do does did have has had can will "
     "would should could tomorrow today last week said like be been am not but or so if then "
     "there here when where why who which because about from by "
-    "know think good very just really maybe never yes yeah okay ok well now want went go going "
-    "get got please thanks thank some any more much many little one two right sure sorry "
-    "don't i'm it's that's didn't can't doesn't isn't i'll we're you're let's "
-    "day time thing people friend home work food question mean say tell see look"
+    "know think very just really maybe never well now want went go going get got some any "
+    "more much many don didn doesn isn ll"
 )
 ENGLISH_WORDS = frozenset(_ENGLISH.split())
 _PORTUGUESE = (
-    "o os uma de da dos das em na nas para pra com sem que e eu você voce ele ela nós "
+    "o os um uma de do da dos das em na nas para pra com sem que e eu você voce ele ela nós "
     "eles elas meu minha seu sua não nao sim como se diz por mais muito está isso aqui "
     "preciso quero vamos hoje ontem onde quando qual obrigado obrigada tudo bem estou "
-    "é tá tô né então também já só bom boa agora acho gosto fui foi vai vou ter tem tenho "
-    "pode posso fazer coisa casa dia pro num numa até aí lá sobre porque mas ou gente "
-    "esqueci palavra falar fala inglês português amigo comida pergunta coisas"
+    "é tá tô né então também já só agora acho gosto fui foi vai vou ter tem tenho pode posso "
+    "fazer pro num numa até aí lá sobre porque mas ou gente esqueci falar fala inglês português"
 )
 PORTUGUESE_WORDS = frozenset(_PORTUGUESE.split())
+# "Um, good question": a hesitation, not the Portuguese article. It is followed by a pause.
+_HESITATION = re.compile(r"\b(?:u+m+|u+h+|e+r+|h+m+)\b(?=\s*[,.…?!—-])", re.IGNORECASE)
 _ACCENTED = re.compile(r"[ãõçáàéíóúâêô]")
 # Capitalised word in the middle of a sentence: a name or place, not a stuck word.
 # The pronoun "I" and its contractions ("I'm") are capitalised everywhere, so they are not names.
@@ -51,7 +51,7 @@ def _word_language(word: str) -> Language | None:
 def count_by_language(text: str, lexicon: Lexicon) -> dict[Language, int]:
     """Words per language. Example: "I need to adiar my meeting" -> EN 4, PT_BR 1."""
     counts = {Language.EN: 0, Language.PT_BR: 0}
-    for word in words_of(text):
+    for word in words_of(_HESITATION.sub(" ", text)):
         found = _word_language(word)
         if found is not None:
             counts[found] += 1

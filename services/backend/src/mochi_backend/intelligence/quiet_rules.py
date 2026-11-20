@@ -7,7 +7,7 @@ from mochi_backend.intelligence.language_guess import strip_proper_nouns
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import folded, lowered, normalized
 from mochi_backend.platform.clock import parse_iso_z
-from mochi_contracts import GameState, SessionContext, Turn
+from mochi_contracts import GameState, Hint, SessionContext, Turn
 
 _SERIOUS = re.compile(
     r"\b(?:funeral|passed away|died|death|cancer|divorce|hospital|diagnos\w*|depress\w*|"
@@ -28,18 +28,23 @@ def round_is_active(context: SessionContext) -> bool:
     return context.activity is not None and context.activity.state is GameState.ACTIVE_ROUND
 
 
-def cooldown_active(context: SessionContext, ttl_seconds: float) -> bool:
-    """True when a hint was shown for one of the last two turns.
+def hints_of_last_turns(context: SessionContext, ttl_seconds: float) -> list[Hint]:
+    """The hints shown for one of the last two turns.
 
     A hint belongs to a turn when it was created after that turn arrived; its creation time is
-    `expires_at - ttl`. Example: hint made at t1, turns t1,t2,t3 -> quiet at t2 and t3, free at t4.
+    `expires_at - ttl`. Example: hint made at t1, turns t1,t2,t3 -> listed at t2 and t3, not t4.
     """
     turns = context.recent_turns[-2:]
     if not turns:
-        return False
+        return []
     window_start = parse_iso_z(turns[0].received_at)
     ttl = timedelta(seconds=ttl_seconds)
-    return any(parse_iso_z(h.expires_at) - ttl >= window_start for h in context.recent_hints)
+    return [h for h in context.recent_hints if parse_iso_z(h.expires_at) - ttl >= window_start]
+
+
+def cooldown_active(context: SessionContext, ttl_seconds: float) -> bool:
+    """True when a hint was shown for one of the last two turns (see `hints_of_last_turns`)."""
+    return bool(hints_of_last_turns(context, ttl_seconds))
 
 
 def hint_on_screen(context: SessionContext, turn: Turn) -> bool:
@@ -66,15 +71,24 @@ def is_deliberate_switch(text: str, context: SessionContext, lexicon: Lexicon) -
     return lexicon.is_deliberate(normalized(text)) and not stuck
 
 
-def quiet_reason(
-    text: str, context: SessionContext, lexicon: Lexicon, ttl_seconds: float
-) -> str | None:
-    """Name of the first quiet rule that applies, else None (so the flow may continue)."""
+def lasting_quiet_reason(text: str, context: SessionContext, lexicon: Lexicon) -> str | None:
+    """Name of the first quiet rule other than the cooldown that applies, else None.
+
+    These hold whatever was shown before: a round, a serious talk, thinking aloud, a name.
+    """
     checks = (
         ("round_active", round_is_active(context)),
-        ("cooldown", cooldown_active(context, ttl_seconds)),
         ("serious_conversation", is_serious(text)),
         ("thinking_or_self_correction", is_just_thinking(text)),
         ("deliberate_switch", is_deliberate_switch(text, context, lexicon)),
     )
     return next((name for name, applies in checks if applies), None)
+
+
+def quiet_reason(
+    text: str, context: SessionContext, lexicon: Lexicon, ttl_seconds: float
+) -> str | None:
+    """Name of the first quiet rule that applies, else None (so the flow may continue)."""
+    if not round_is_active(context) and cooldown_active(context, ttl_seconds):
+        return "cooldown"
+    return lasting_quiet_reason(text, context, lexicon)

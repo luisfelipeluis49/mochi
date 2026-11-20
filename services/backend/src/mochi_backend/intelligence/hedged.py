@@ -5,10 +5,18 @@ from collections.abc import Awaitable, Callable
 
 
 def _answer[T](task: "asyncio.Future[T | None]") -> T | None:
-    """A finished task's answer; a failed or cancelled one counts as no answer."""
-    if task.cancelled() or task.exception() is not None:
+    """A finished request's answer. A timeout or a cancelled request is no answer.
+
+    Any other error is raised, as it was when there was only one request: it must reach the log.
+    """
+    if task.cancelled():
         return None
-    return task.result()
+    error = task.exception()
+    if error is None:
+        return task.result()
+    if isinstance(error, TimeoutError):
+        return None
+    raise error
 
 
 async def _first_real[T](running: "set[asyncio.Future[T | None]]", seconds: float) -> T | None:
@@ -45,3 +53,4 @@ async def first_answer[T](
     finally:
         for task in running:
             task.cancel()
+        await asyncio.gather(*running, return_exceptions=True)  # nothing left running or unread

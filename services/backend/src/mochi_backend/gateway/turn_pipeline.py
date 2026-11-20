@@ -213,14 +213,25 @@ class TurnPipeline:
         self._silence.begin_speaking(text)
         return text
 
+    def _used_now(self, decision: Decision) -> list[LearningEvent]:
+        """Words someone just said after being given them ("Used with help"): the face cheers.
+
+        Not next to a new hint, whose card would cover the cheer at once, and only for a word
+        shown in this session: a card saved an hour ago is no reason to cheer now.
+        """
+        if decision.hint is not None:
+            return []
+        shown = {hint.expression for hint in self._store.hints}
+        used = (LearningState.ASSISTED,)
+        return [
+            event
+            for event in decision.learning_events
+            if event.learning_state in used and event.expression in shown
+        ]
+
     def _tell_device(self, decision: Decision, written: list[Written]) -> None:
         wanted = list(written)
-        # Someone said a word they were just given ("Used with help"): the face cheers, silently.
-        wanted += [
-            ("used", used_card(event))
-            for event in decision.learning_events
-            if event.learning_state is LearningState.ASSISTED
-        ]
+        wanted += [("used", used_card(event)) for event in self._used_now(decision)]
         if decision.hint is not None:
             # A hint goes on Mochi's face as a card: the word, its language and what it means.
             # It replaces a bare [show ...] Mochi wrote for the same turn.

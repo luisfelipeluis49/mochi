@@ -18,13 +18,26 @@ _SHORT_ASK = re.compile(
     r"(?:^|[.!?…]\s*)(?P<term>[^.!?…]+?)\s+(?:in|em)\s+"
     r"(?P<language>english|portuguese|ingl[eê]s|portugu[eê]s)\s*\?"
 )
-_MAX_SHORT_ASK_WORDS = 4
+_MAX_SHORT_ASK_WORDS = 3
 
 
 _ASKED = re.compile(
     r"how do (?:you|i) say|what(?:'s| is) the word for|what do you call|"
-    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de)"
+    r"i don'?t know (?:the word(?: for)?|how to say)|"
+    r"i (?:can'?t remember|forgot) the word(?: for)?|"
+    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de)|"
+    r"esqueci a palavra(?: para| pra| de)?"
 )
+# "How do you say that?" points at a word said elsewhere: it names nothing itself
+_POINTING = frozenset(
+    {"that", "it", "this", "isso", "isto", "aquilo", "esse", "essa", "este", "esta"}
+)
+_ARTICLES = frozenset({"the", "a", "an", "o", "os", "as", "um", "uma"})
+# "Can we talk in English?", "Tudo em inglês?": about the talk itself, not about a word
+_TALK_WORDS_EN = "speak talk say answer write switch continue practice practise let s t"
+_TALK_WORDS_MORE = "everything only again always better easier"
+_TALK_WORDS_PT = "responder continuar praticar escrever dizer conversar melhor"
+_ABOUT_THE_TALK = frozenset(f"{_TALK_WORDS_EN} {_TALK_WORDS_MORE} {_TALK_WORDS_PT}".split())
 _TO_SENTENCE_END = re.compile(r"[^?.!]*")
 # "in English", "em português", also with a hesitation in between: "in, uh— Portuguese"
 _NAMED_LANGUAGE = re.compile(
@@ -46,28 +59,45 @@ def wanted_language(text: str) -> Language | None:
     return Language.PT_BR if _WANTS_PORTUGUESE.search(low) else None
 
 
-def _short_ask(low: str) -> str | None:
-    """The word in "Limpar em inglês?" or "Salad sauce in Portuguese?", else None.
+def _flat(text: str) -> str:
+    """Lowercase, with a written pause ("..." or "…") turned into a space."""
+    return lowered(text).replace("...", " ").replace("…", " ")
 
-    The word must not already be in the language asked for: "Can we talk in English?" and
-    "Você quer falar em português?" ask for no word.
+
+def _short_ask(low: str) -> str | None:
+    """The word in "Limpar em inglês?" or "The key... in Portuguese?", else None.
+
+    Only a bare word or a short name of a thing counts. A clause in either language does not:
+    "Was the meeting in Portuguese?", "A reunião foi em inglês?" and "Can we talk in English?"
+    ask for no word.
     """
     found = _SHORT_ASK.search(low)
     if found is None:
         return None
-    term = _LEAD_IN.sub("", found.group("term"))
-    english = found.group("language").startswith(("e", "i"))  # english, inglês
-    known = ENGLISH_WORDS if english else PORTUGUESE_WORDS
-    words = words_of(term)
-    if not words or len(words) > _MAX_SHORT_ASK_WORDS or any(w in known for w in words):
+    words = words_of(_LEAD_IN.sub("", found.group("term")))
+    if len(words) > 1 and words[0] in _ARTICLES:
+        words = words[1:]
+    plain = ENGLISH_WORDS | PORTUGUESE_WORDS | _ABOUT_THE_TALK
+    if not words or len(words) > _MAX_SHORT_ASK_WORDS or any(w in plain for w in words):
         return None
-    return term
+    return " ".join(words)
 
 
 def asks_for_word(text: str) -> bool:
     """True when the turn asks how to say something. Example: "How do you say fila?" -> True."""
-    low = lowered(text)
+    low = _flat(text)
     return ASK_PATTERN.search(low) is not None or _short_ask(low) is not None
+
+
+def _named_after_ask(low: str) -> str:
+    """What follows the last "how do you say" in the turn, without the language it names."""
+    asks = list(_ASKED.finditer(low))
+    if not asks:  # the last one: "Como se fala... como se fala carteira?" asks about carteira
+        return ""
+    rest = _TO_SENTENCE_END.match(low, asks[-1].end())
+    term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
+    term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
+    return "" if term in _POINTING else term
 
 
 def asked_term(text: str) -> str | None:
@@ -77,15 +107,8 @@ def asked_term(text: str) -> str | None:
     "garfo", not about the other foreign word in the turn. None when nothing follows the question
     ("Como se fala..."), so the caller looks at the whole turn as before.
     """
-    # a pause is written as "..." or "…"; the last question in the turn is the one being asked
-    low = lowered(text).replace("...", " ").replace("…", " ")
-    asks = list(_ASKED.finditer(low))
-    if asks:  # the last one: "Como se fala... como se fala carteira?" asks about carteira
-        rest = _TO_SENTENCE_END.match(low, asks[-1].end())
-        term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
-    else:
-        term = _short_ask(low) or ""
-    term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
+    low = _flat(text)
+    term = _named_after_ask(low) or _short_ask(low) or ""
     return None if not term or ASK_PATTERN.search(term) else term
 
 

@@ -86,6 +86,16 @@ async def test_saying_the_word_they_were_given_makes_the_face_cheer() -> None:
     assert json.loads(used.value) == {"word": "postpone", "language": "en"}
 
 
+async def test_a_word_from_an_earlier_session_is_not_cheered() -> None:
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.say(ADIAR)
+    await harness.container.sessions.stop()
+    await harness.container.sessions.start()
+    await harness.say("Did they postpone the game?")
+    assert [c.kind for c in harness.container.core.store.commands] == []
+
+
 async def test_the_card_replaces_a_bare_word_mochi_wrote_for_the_same_turn() -> None:
     talking = make_harness(character=FakeCharacterModel("[mood excited][show queue] Queue!"))
     await talking.container.sessions.start()

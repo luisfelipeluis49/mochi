@@ -371,7 +371,27 @@ What changed, all in `intelligence/`:
   and Mochi's face shows the word with a star for five seconds, without a sound.
 - The device reads its state every 0.15 s (was 0.3 s).
 
+**After an independent review of the first version** (same day), with a test for each:
+- "Limpar em inglês?" counts as a question only for a bare word or a short name of a thing. "Was the meeting
+  in Portuguese?" and "A reunião foi em inglês?" had shown a hint, and skipped the cooldown doing so.
+- A question that names no language ("Como se diz saudade?") is asked in one language for a word of the
+  other: there the model's own label decides the hint's language (`CaseMatch.language`) instead of being
+  held against it. Labels are read loosely ("EN", "en-US", "English").
+- "I forgot the word for chave." names its word, so the next turn is no longer read as its second half.
+  "How do you say that?" names nothing, so the whole turn goes to the model.
+- A round, a serious talk, thinking aloud and names keep Mochi quiet also when the cooldown does not
+  (`lasting_quiet_reason`); the cooldown is one separate decision (`_held_back`). `while_shown` now really
+  waits for the screen, and "the same word twice" looks only at the last two turns.
+- "um" is Portuguese again, except before a pause ("Um, good question"); only small sentence-building
+  words count for the language of a sentence, not nouns, which are what people borrow.
+- The word a code switch names may be in another form ("garfos", "adiei"). The instructions no longer ask
+  the model to reconstruct mangled words: such a guess was dropped by this check anyway.
+- An error in the model adapter is raised again (it reaches the log as `decide_failed`); a wrong field in
+  the model's JSON (a list as reason, 95 as confidence) no longer costs the answer.
+- The cheer is for a word shown in this session, and not next to a new hint.
+Not changed: a card saved in an earlier session can still go to `ASSISTED` on a later session's first
+turns (`learning_rules`, as before); it is only no longer cheered.
+
 Still wrong: a word the recogniser turned into a non-word ("postone", "guardy shoe") is sometimes guessed
 at. A word list for both languages would settle it (is the "said" word a word at all?), which means adding
 data files; not done. False friends (case 8) are unchanged at 0 of 3 beyond the lexicon.
-
