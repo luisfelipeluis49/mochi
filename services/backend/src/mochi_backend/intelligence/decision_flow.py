@@ -1,6 +1,7 @@
 """`decide()` orchestration: wake phrase, quiet rules, clear cases, subtle cases, model."""
 
 import asyncio
+from dataclasses import dataclass
 
 from mochi_backend.intelligence.clear_cases import asks_for_word, detect_clear, mochi_entry
 from mochi_backend.intelligence.hint_builder import (
@@ -12,6 +13,7 @@ from mochi_backend.intelligence.hint_builder import (
 from mochi_backend.intelligence.language_guess import has_foreign_word, is_mostly
 from mochi_backend.intelligence.learning_rules import assisted_updates
 from mochi_backend.intelligence.lexicon import Lexicon
+from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel, ModelRequest
 from mochi_backend.intelligence.quiet_rules import quiet_reason
 from mochi_backend.intelligence.settings import IntelligenceSettings
@@ -39,6 +41,19 @@ def ignore() -> Decision:
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
 
 
+def _spoken(line: str, context: SessionContext) -> Decision:
+    speak = Speak(text=line, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
+    return Decision(decision=DecisionKind.SPEAK, hint=None, speak=speak, learning_events=[])
+
+
+@dataclass(frozen=True)
+class Minds:
+    """The two things that think: the model that judges a sentence, and Mochi's own talk."""
+
+    hints: HintModel
+    talk: MochiTalk
+
+
 class DecisionFlow:
     """Decides what to do with one turn. Build once, call `run` per turn."""
 
@@ -48,13 +63,14 @@ class DecisionFlow:
         clock: Clock,
         factory: HintFactory,
         lexicon: Lexicon,
-        model: HintModel,
+        minds: Minds,
         settings: IntelligenceSettings,
     ) -> None:
         self._clock = clock
         self._factory = factory
         self._lexicon = lexicon
-        self._model = model
+        self._model = minds.hints
+        self._talk = minds.talk
         self._ttl = settings.hint_ttl_seconds
         self._model_timeout = settings.model_timeout_seconds
 
@@ -72,6 +88,9 @@ class DecisionFlow:
         context = session_context.model_copy(update={"focus": spoken})
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
+        answer = await self._follow_up(turn, context)
+        if answer is not None:
+            return answer
         if quiet_reason(turn.text, context, self._lexicon, self._ttl):
             return ignore()
         match = await self._find_match(turn.text, context)
@@ -135,19 +154,35 @@ class DecisionFlow:
             decision=DecisionKind.SHOW_HINT, hint=hint, speak=None, learning_events=saved
         )
 
-    async def _answer_mochi(self, turn: Turn, context: SessionContext) -> Decision:
-        rest = without_wake_phrase(turn.text)
-        if not normalized(rest):
-            return ignore()  # just "Oi Mochi": nothing was asked, so no model call
+    async def _follow_up(self, turn: Turn, context: SessionContext) -> Decision | None:
+        """Right after Mochi spoke, the next sentence may answer it without saying "Mochi"."""
+        if context.activity is not None or not self._talk.listening():
+            return None  # during a round only the wake phrase makes Mochi speak
+        line = await self._talk.reply(turn.text, named=False)
+        return _spoken(line, context) if line else None
+
+    async def _word_asked(self, rest: str, context: SessionContext) -> CaseMatch | None:
         entry = mochi_entry(rest, context, self._lexicon)
         match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
         if match is None and asks_for_word(rest):
             match = await self._ask_model(rest, [], context)
-        if match is None:
+        return match
+
+    async def _answer_mochi(self, turn: Turn, context: SessionContext) -> Decision:
+        rest = without_wake_phrase(turn.text)
+        if not normalized(rest):
+            self._talk.called()  # just "Oi Mochi": nothing was asked yet, the next sentence is
             return ignore()
+        match = await self._word_asked(rest, context)
+        if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
+            line = await self._talk.reply(turn.text, named=True)
+            return _spoken(line, context) if line else ignore()
         shown = self._show(
             CaseMatch(Reason.ASKS_MOCHI, match.expression, match.meaning, match.example), context
         )
-        line = _ANSWER_LINES[context.focus].format(w=match.expression)
-        speak = Speak(text=line, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
+        line = await self._talk.reply(
+            turn.text, named=True, word=match.expression, meaning=match.meaning
+        )
+        text = line or _ANSWER_LINES[context.focus].format(w=match.expression)
+        speak = Speak(text=text, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
         return shown.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
