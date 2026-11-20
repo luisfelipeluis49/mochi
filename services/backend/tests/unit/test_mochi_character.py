@@ -96,6 +96,21 @@ async def test_mochi_stays_out_of_a_sentence_that_was_not_for_it() -> None:
     assert decision.hint is not None and decision.hint.expression == "postpone"
 
 
+async def test_a_word_needed_in_a_follow_up_is_shown_and_taught_by_mochi() -> None:
+    clock = FakeClock()
+    mochi = FakeCharacterModel(
+        "[mood happy] Louder it is!", "[mood proud][show postpone] Postpone!"
+    )
+    brain = _brain(mochi, clock)
+    await brain.decide(make_turn(ASK_LOUDER), make_context())
+    clock.advance(3)
+    decision = await brain.decide(make_turn(ADIAR), make_context())
+    assert decision.decision is DecisionKind.SPEAK and decision.speak is not None
+    assert decision.hint is not None and decision.hint.expression == "postpone"
+    assert len(decision.learning_events) == 1
+    assert (mochi.requests[1].word, mochi.requests[1].named) == ("postpone", False)
+
+
 async def test_after_a_while_only_its_name_makes_mochi_listen_again() -> None:
     clock = FakeClock()
     mochi = FakeCharacterModel("[mood happy] Louder it is!")

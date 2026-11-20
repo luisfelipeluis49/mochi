@@ -41,9 +41,10 @@ def ignore() -> Decision:
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
 
 
-def _spoken(line: str, context: SessionContext) -> Decision:
+def _saying(decision: Decision, line: str, context: SessionContext) -> Decision:
+    """The same decision, with Mochi saying `line` aloud."""
     speak = Speak(text=line, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
-    return Decision(decision=DecisionKind.SPEAK, hint=None, speak=speak, learning_events=[])
+    return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
 
 
 @dataclass(frozen=True)
@@ -88,13 +89,11 @@ class DecisionFlow:
         context = session_context.model_copy(update={"focus": spoken})
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
-        answer = await self._follow_up(turn, context)
-        if answer is not None:
-            return answer
-        if quiet_reason(turn.text, context, self._lexicon, self._ttl):
-            return ignore()
-        match = await self._find_match(turn.text, context)
-        return self._show(match, context) if match else ignore()
+        quiet = quiet_reason(turn.text, context, self._lexicon, self._ttl)
+        match = None if quiet else await self._find_match(turn.text, context)
+        shown = self._show(match, context) if match else ignore()
+        line = await self._follow_up(turn, context, match)
+        return _saying(shown, line, context) if line else shown
 
     async def _find_match(self, text: str, context: SessionContext) -> CaseMatch | None:
         history = [t.text for t in context.recent_turns]
@@ -154,12 +153,18 @@ class DecisionFlow:
             decision=DecisionKind.SHOW_HINT, hint=hint, speak=None, learning_events=saved
         )
 
-    async def _follow_up(self, turn: Turn, context: SessionContext) -> Decision | None:
-        """Right after Mochi spoke, the next sentence may answer it without saying "Mochi"."""
+    async def _follow_up(
+        self, turn: Turn, context: SessionContext, match: CaseMatch | None
+    ) -> str | None:
+        """Right after Mochi spoke, the next sentence may answer it without saying "Mochi".
+
+        Returns Mochi's line, or None: it is not in a conversation, or the sentence was not for it.
+        A word the rules found is shown either way, and Mochi is told to teach that one.
+        """
         if context.activity is not None or not self._talk.listening():
             return None  # during a round only the wake phrase makes Mochi speak
-        line = await self._talk.reply(turn.text, named=False)
-        return _spoken(line, context) if line else None
+        word, meaning = (match.expression, match.meaning) if match else (None, None)
+        return await self._talk.reply(turn.text, named=False, word=word, meaning=meaning)
 
     async def _word_asked(self, rest: str, context: SessionContext) -> CaseMatch | None:
         entry = mochi_entry(rest, context, self._lexicon)
@@ -176,7 +181,7 @@ class DecisionFlow:
         match = await self._word_asked(rest, context)
         if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
             line = await self._talk.reply(turn.text, named=True)
-            return _spoken(line, context) if line else ignore()
+            return _saying(ignore(), line, context) if line else ignore()
         shown = self._show(
             CaseMatch(Reason.ASKS_MOCHI, match.expression, match.meaning, match.example), context
         )
