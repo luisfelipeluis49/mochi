@@ -69,6 +69,8 @@ when run from source.
 | `MOCHI_ENABLE_DEV_ROUTES` | `false` | enables `POST /dev/sessions/demo/turn` |
 | `MODEL_API_KEY` | - | language-model key (optional) |
 | `MOCHI_MODEL_BASE_URL`, `MOCHI_MODEL_NAME` | OpenAI, `gpt-4o-mini` | OpenAI-compatible model |
+| `MOCHI_MODEL_REASONING_EFFORT` | empty | `none` for a gpt-5 family hint model (D-29) |
+| `MOCHI_HINT_COOLDOWN` | `two_turns` | `while_shown`: a new hint waits only until the last one left the screen (D-29) |
 | `MOCHI_CHANNEL`, `MOCHI_PI_UID`, `MOCHI_AGENT_UID`, `MOCHI_TOKEN_TTL_SECONDS` | `mochi-demo`, 1001, 1002, 3600 | RTC channel, uids, token life |
 | `MOCHI_CHARACTER_ENABLED`, `MOCHI_CHARACTER_MODEL_NAME`, `MOCHI_CHARACTER_TIMEOUT_SECONDS`, `MOCHI_FOLLOW_UP_SECONDS`, `MOCHI_GREETING_EN`, `MOCHI_GREETING_PT` | true, gpt-5.4-mini, 6, 20, greetings | Mochi's own voice when it is spoken to; needs `MODEL_API_KEY` (DECISIONS D-23) |
 | `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_OPENAI_MODEL`, `MOCHI_ASR_PROMPT`, `MOCHI_ARES_LANGUAGE`, `MOCHI_ASR_KEYWORDS`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | openai, `en-US`, gpt-4o-transcribe, a prompt about mixing, `en-US,pt-PT`, `["Mochi"]`, empty, `{}` | speech-to-text: OpenAI transcription with `MODEL_API_KEY` (the key goes to Agora), else or on refusal ARES with the lexicon as keywords (DECISIONS D-25) |

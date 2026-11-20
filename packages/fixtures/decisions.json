@@ -958,5 +958,145 @@
   "model": {
    "decision": "IGNORE"
   }
+ },
+ {
+  "id": "beyond_lexicon-12",
+  "case": "beyond_lexicon",
+  "text": "We need to buy leite and bread.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "milk",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "milk",
+   "meaning": "leite"
+  }
+ },
+ {
+  "id": "beyond_lexicon-13",
+  "case": "beyond_lexicon",
+  "text": "My cabeça hurts a lot today.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "head",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "head",
+   "meaning": "cabeça"
+  }
+ },
+ {
+  "id": "beyond_lexicon-14",
+  "case": "beyond_lexicon",
+  "text": "Eu tenho uma meeting às três.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "reunião",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "reunião",
+   "meaning": "meeting"
+  }
+ },
+ {
+  "id": "beyond_lexicon-15",
+  "case": "beyond_lexicon",
+  "text": "Preciso comprar um charger novo pro meu celular.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "carregador",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "carregador",
+   "meaning": "charger"
+  }
+ },
+ {
+  "id": "beyond_lexicon-16",
+  "case": "beyond_lexicon",
+  "text": "Colher in English?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "spoon",
+   "reason": "says_unknown",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "says_unknown",
+   "expression": "spoon",
+   "meaning": "colher"
+  }
+ },
+ {
+  "id": "beyond_lexicon-17",
+  "case": "beyond_lexicon",
+  "text": "Can we talk in English for a while?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-18",
+  "case": "beyond_lexicon",
+  "text": "Is the movie in English?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-19",
+  "case": "beyond_lexicon",
+  "text": "I love feijoada, my grandmother makes the best one.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-20",
+  "case": "beyond_lexicon",
+  "text": "Um, good question. Never. Like, maybe a ranch? You know.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-21",
+  "case": "beyond_lexicon",
+  "text": "I don't know. I need to go, ok? Tchau tchau!",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
  }
 ]

@@ -50,7 +50,7 @@ kind = "test_agent"
 mochi_backend_url = "http://localhost:8000"
 device_id = "home_pi_01"
 # Seconds between two reads of the device state during a session.
-poll_interval_s = 0.3
+poll_interval_s = 0.15
 # With kind = "mochi_backend": what happens when the backend cannot start a session (it is down or
 # cannot be reached). "test_agent": Mochi's own agent ([test_agent] below) takes that session, so
 # Mochi always answers when called. "none": the session does not start.

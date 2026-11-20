@@ -75,6 +75,17 @@ async def test_a_hint_reaches_the_device_as_a_card_with_its_language_and_meaning
     }
 
 
+async def test_saying_the_word_they_were_given_makes_the_face_cheer() -> None:
+    """ "Used with help" is the moment the word starts to stick: show it, without a sound."""
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.say(ADIAR)
+    await harness.say("Ok, let's postpone it then.")
+    hint, used = harness.container.core.store.commands
+    assert (hint.kind, used.kind) == ("hint", "used")
+    assert json.loads(used.value) == {"word": "postpone", "language": "en"}
+
+
 async def test_the_card_replaces_a_bare_word_mochi_wrote_for_the_same_turn() -> None:
     talking = make_harness(character=FakeCharacterModel("[mood excited][show queue] Queue!"))
     await talking.container.sessions.start()

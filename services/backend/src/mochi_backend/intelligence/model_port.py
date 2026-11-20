@@ -25,6 +25,9 @@ class ModelSuggestion(BaseModel):
     expression: str | None = None
     meaning: str | None = None
     example: str | None = None
+    confidence: float | None = None  # 0-1, how sure the model is that this word was needed
+    expression_language: str | None = None  # the language the model says `expression` is in
+    meaning_language: str | None = None  # ... and the language of the word they said (`meaning`)
 
 
 class HintModel(Protocol):

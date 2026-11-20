@@ -6,24 +6,33 @@ from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import normalized, words_of
 from mochi_contracts import Language
 
-# Words that exist in only one language (no "a", "no", "as", "me": they exist in both).
+# Words that exist in only one language (no "a", "no", "as", "me", "do": they exist in both; and
+# no "um": spoken English is full of it as a filler, and it made English turns look Portuguese).
 _ENGLISH = (
     "i you he she we they it the an to of and is are was were my your his her our their need "
-    "forgot at in on with for this that these those what how do does did have has had can will "
+    "forgot at in on with for this that these those what how does did have has had can will "
     "would should could tomorrow today last week said like be been am not but or so if then "
-    "there here when where why who which because about from by"
+    "there here when where why who which because about from by "
+    "know think good very just really maybe never yes yeah okay ok well now want went go going "
+    "get got please thanks thank some any more much many little one two right sure sorry "
+    "don't i'm it's that's didn't can't doesn't isn't i'll we're you're let's "
+    "day time thing people friend home work food question mean say tell see look"
 )
 ENGLISH_WORDS = frozenset(_ENGLISH.split())
 _PORTUGUESE = (
-    "o os um uma de do da dos das em na nas para pra com sem que e eu você voce ele ela nós "
+    "o os uma de da dos das em na nas para pra com sem que e eu você voce ele ela nós "
     "eles elas meu minha seu sua não nao sim como se diz por mais muito está isso aqui "
-    "preciso quero vamos hoje ontem onde quando qual obrigado obrigada tudo bem estou"
+    "preciso quero vamos hoje ontem onde quando qual obrigado obrigada tudo bem estou "
+    "é tá tô né então também já só bom boa agora acho gosto fui foi vai vou ter tem tenho "
+    "pode posso fazer coisa casa dia pro num numa até aí lá sobre porque mas ou gente "
+    "esqueci palavra falar fala inglês português amigo comida pergunta coisas"
 )
 PORTUGUESE_WORDS = frozenset(_PORTUGUESE.split())
 _ACCENTED = re.compile(r"[ãõçáàéíóúâêô]")
 # Capitalised word in the middle of a sentence: a name or place, not a stuck word.
 # The pronoun "I" and its contractions ("I'm") are capitalised everywhere, so they are not names.
-_PROPER_NOUN = re.compile(r"(?<=\s)(?!I\b)[A-ZÀ-Ý][\wÀ-ÿ]*")
+# The first word of a sentence is capitalised too: only a capital that follows a word counts.
+_PROPER_NOUN = re.compile(r"(?<=[^\s.!?…:;\"“”]\s)(?!I\b)[A-ZÀ-Ý][\wÀ-ÿ]*")
 
 
 def strip_proper_nouns(text: str) -> str:

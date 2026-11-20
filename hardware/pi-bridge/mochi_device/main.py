@@ -39,6 +39,9 @@ def hint_note(card: dict) -> str:
     return " · ".join(part for part in (language, meaning) if part)[:40]
 
 
+USED_NOTES = {"en": "★ you used it!", "pt-BR": "★ você usou!", "pt": "★ você usou!"}
+
+
 def log(msg: str) -> None:
     print(f"[mochi] {time.strftime('%H:%M:%S')} {msg}", flush=True)
 
@@ -75,6 +78,9 @@ class Supervisor:
             self.face.show_for(10, word=str(value)[:28], note="")
         elif kind == "hint":  # a word someone needed: say which language it is in and what it means
             self.face.show_for(10, word=str(value.get("word", ""))[:28], note=hint_note(value))
+        elif kind == "used":  # they said the word they were given: cheer, without a sound
+            note = USED_NOTES.get(str(value.get("language")), "★")
+            self.face.show_for(5, word=str(value.get("word", ""))[:28], note=note, mood="proud")
         elif kind in ("volume", "temp"):
             self.face.pop(kind, value)
         elif kind == "enroll":  # "learn my voice": the next ~10 s of speech become their voiceprint

@@ -7,7 +7,7 @@ from mochi_backend.intelligence.language_guess import strip_proper_nouns
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import folded, lowered, normalized
 from mochi_backend.platform.clock import parse_iso_z
-from mochi_contracts import GameState, SessionContext
+from mochi_contracts import GameState, SessionContext, Turn
 
 _SERIOUS = re.compile(
     r"\b(?:funeral|passed away|died|death|cancer|divorce|hospital|diagnos\w*|depress\w*|"
@@ -40,6 +40,12 @@ def cooldown_active(context: SessionContext, ttl_seconds: float) -> bool:
     window_start = parse_iso_z(turns[0].received_at)
     ttl = timedelta(seconds=ttl_seconds)
     return any(parse_iso_z(h.expires_at) - ttl >= window_start for h in context.recent_hints)
+
+
+def hint_on_screen(context: SessionContext, turn: Turn) -> bool:
+    """True while a hint shown earlier had not yet expired when `turn` was heard."""
+    heard = parse_iso_z(turn.received_at)
+    return any(parse_iso_z(h.expires_at) > heard for h in context.recent_hints)
 
 
 def is_serious(text: str) -> bool:

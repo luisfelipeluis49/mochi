@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     mochi_log_level: str = "INFO"
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
+    mochi_model_reasoning_effort: str = ""  # "none" for the gpt-5 family; empty for the rest
+    mochi_hint_cooldown: Literal["two_turns", "while_shown"] = "two_turns"  # DECISIONS D-29
     # Mochi's own voice: with a model key it answers in character when spoken to (DECISIONS D-23)
     mochi_character_enabled: bool = True
     mochi_character_model_name: str = "gpt-5.4-mini"

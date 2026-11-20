@@ -3,22 +3,29 @@
 import re
 
 from mochi_backend.intelligence.hint_builder import CaseMatch, match_from_entry
-from mochi_backend.intelligence.language_guess import is_mostly
+from mochi_backend.intelligence.language_guess import ENGLISH_WORDS, PORTUGUESE_WORDS, is_mostly
 from mochi_backend.intelligence.lexicon import Lexicon, LexiconEntry, other_language
-from mochi_backend.intelligence.tokens import lowered, normalized
+from mochi_backend.intelligence.tokens import lowered, normalized, words_of
 from mochi_contracts import Language, Reason, SessionContext
 
 ASK_PATTERN = re.compile(
     r"how do you say|how do i say|what(?:'s| is) the word for|what do you call|"
-    r"i don'?t know (?:the word|how to say)|i can'?t remember the word|"
-    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra"
+    r"i don'?t know (?:the word|how to say)|i can'?t remember the word|i forgot the word|"
+    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra|esqueci a palavra"
 )
+# "Limpar em inglês?": a word and the language wanted, and nothing else in that sentence
+_SHORT_ASK = re.compile(
+    r"(?:^|[.!?…]\s*)(?P<term>[^.!?…]+?)\s+(?:in|em)\s+"
+    r"(?P<language>english|portuguese|ingl[eê]s|portugu[eê]s)\s*\?"
+)
+_MAX_SHORT_ASK_WORDS = 4
 
 
 _ASKED = re.compile(
-    r"(?:how do (?:you|i) say|what(?:'s| is) the word for|what do you call|"
-    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de))(?P<term>[^?.!]*)"
+    r"how do (?:you|i) say|what(?:'s| is) the word for|what do you call|"
+    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de)"
 )
+_TO_SENTENCE_END = re.compile(r"[^?.!]*")
 # "in English", "em português", also with a hesitation in between: "in, uh— Portuguese"
 _NAMED_LANGUAGE = re.compile(
     r"\b(?:in|em)\b(?:[\s,…—-]|\b(?:uh+|um+|er+|like|tipo)\b)*"
@@ -39,9 +46,28 @@ def wanted_language(text: str) -> Language | None:
     return Language.PT_BR if _WANTS_PORTUGUESE.search(low) else None
 
 
+def _short_ask(low: str) -> str | None:
+    """The word in "Limpar em inglês?" or "Salad sauce in Portuguese?", else None.
+
+    The word must not already be in the language asked for: "Can we talk in English?" and
+    "Você quer falar em português?" ask for no word.
+    """
+    found = _SHORT_ASK.search(low)
+    if found is None:
+        return None
+    term = _LEAD_IN.sub("", found.group("term"))
+    english = found.group("language").startswith(("e", "i"))  # english, inglês
+    known = ENGLISH_WORDS if english else PORTUGUESE_WORDS
+    words = words_of(term)
+    if not words or len(words) > _MAX_SHORT_ASK_WORDS or any(w in known for w in words):
+        return None
+    return term
+
+
 def asks_for_word(text: str) -> bool:
     """True when the turn asks how to say something. Example: "How do you say fila?" -> True."""
-    return ASK_PATTERN.search(lowered(text)) is not None
+    low = lowered(text)
+    return ASK_PATTERN.search(low) is not None or _short_ask(low) is not None
 
 
 def asked_term(text: str) -> str | None:
@@ -52,12 +78,29 @@ def asked_term(text: str) -> str | None:
     ("Como se fala..."), so the caller looks at the whole turn as before.
     """
     # a pause is written as "..." or "…"; the last question in the turn is the one being asked
-    asks = list(_ASKED.finditer(lowered(text).replace("...", " ").replace("…", " ")))
-    if not asks:
-        return None
-    term = _LEAD_IN.sub("", _NAMED_LANGUAGE.sub("", asks[-1].group("term")))
-    term = term.strip(" \"'“”‘’,:;-")
+    low = lowered(text).replace("...", " ").replace("…", " ")
+    asks = list(_ASKED.finditer(low))
+    if asks:  # the last one: "Como se fala... como se fala carteira?" asks about carteira
+        rest = _TO_SENTENCE_END.match(low, asks[-1].end())
+        term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
+    else:
+        term = _short_ask(low) or ""
+    term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
     return None if not term or ASK_PATTERN.search(term) else term
+
+
+_SENTENCE = re.compile(r"[^.!?…]+[.!?…]*")
+
+
+def question_itself(text: str) -> str:
+    """Only the sentence that asks, when the turn holds more; the whole turn otherwise.
+
+    Seen with a real model: given `...adiar our meeting. How do I say "garfo" in English?` it
+    answered for "adiar". What is not sent cannot distract.
+    """
+    sentences = [s.strip() for s in _SENTENCE.findall(text.replace("...", "…"))]
+    asking = [s for s in sentences if asked_term(s)]
+    return asking[-1] if asking else text
 
 
 def unfinished_question(text: str) -> bool:
@@ -65,7 +108,8 @@ def unfinished_question(text: str) -> bool:
     return asks_for_word(text) and asked_term(text) is None
 
 
-def _addressed_partner(text: str, context: SessionContext) -> bool:
+def addressed_partner(text: str, context: SessionContext) -> bool:
+    """True when the turn opens with a participant's name. Example: "Ben, como se diz...?"."""
     names = "|".join(p.user_id for p in context.participants)
     return re.match(rf"\s*(?:{names})\b[,\s]", lowered(text)) is not None
 
@@ -96,7 +140,7 @@ def _asked_match(text: str, context: SessionContext, lexicon: Lexicon) -> CaseMa
     entry = find_entry(text, context, lexicon)
     if entry is None:
         return None
-    reason = Reason.ASKS_PARTNER if _addressed_partner(text, context) else Reason.SAYS_UNKNOWN
+    reason = Reason.ASKS_PARTNER if addressed_partner(text, context) else Reason.SAYS_UNKNOWN
     return match_from_entry(entry, reason, context)
 
 

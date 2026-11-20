@@ -325,3 +325,53 @@ One person tried the mode from D-27 by voice; the log was read back and the sent
 - The decision log line now names the hint and its meaning.
 `scripts/eval-intelligence.sh` is unchanged at 82/85.
 
+## D-29: the hint judge, second pass: measured on what was really heard (2026-11-20)
+
+Yardstick: 72 sentences as the recognisers actually wrote them (gpt-4o-transcribe and ARES, including
+the mangled ones), sentences from a real conversation on the Pi, and 26 sentences written afterwards
+and never used for tuning. Each has the hint it should or should not produce.
+
+| | before (D-28) | now |
+|---|---|---|
+| the first 46 sentences | 38 right, 7 wrong hints, 1 missed | 43 right, 1 to 2 wrong hints, 1 to 2 missed (all mangled words) |
+| the 26 new sentences | not measured | 26 right |
+| answer time, median | 0.84 s (gpt-4.1-mini) | 0.68 s (gpt-5.4-mini, `reasoning_effort: none`) |
+| `scripts/eval-intelligence.sh` | 82/85 | 92/95 (ten rows added; the three false friends still fail) |
+
+Live, real Agora and gpt-4o-transcribe, spoken test clips: the hint reached the device 1.2 s and 2.1 s
+after the sentence ended; Mochi stayed silent.
+
+What changed, all in `intelligence/`:
+- **Instructions** (`openai_hint_model.SYSTEM_PROMPT`): who the two people are, each reason spelled out, a
+  list of what is never a hint (greetings and exclamations in the other language, names, a word being
+  tried out, grammar), how a transcript mangles foreign words, and "when in doubt, IGNORE". The example is
+  the person's own sentence said right (a recast), not a dictionary sentence. IGNORE is answered as
+  `{"decision": "IGNORE"}`, which is most answers and a third of the tokens.
+- **Checks on the answer** (`decision_flow._accepted`): the model reports `confidence`, and the language of
+  both words. No hint when it is unsure (`hint_min_confidence`), when the hint is not in the language being
+  practised, when a "code switch" is a word of the same language (a synonym), when the word they "said" is
+  not in the sentence, when the hint only extends the word they said, or when the whole turn is just the
+  word itself (someone trying it out). A false friend the rules did not spot first (`look_alike` from the
+  model alone) is dropped: it was the label the model put on its wildest guesses.
+- **Language of a sentence** (`language_guess`): more common words on both sides, "um" is no longer
+  Portuguese (English speech is full of it), and a capital at the start of a sentence is not a name.
+- **Questions**: "Limpar em inglês?" counts as asking (`_short_ask`), but only when the word is not already
+  in the language named: "Can we talk in English?" asks for nothing. The model is sent only the sentence
+  that asks (`question_itself`). `asks_partner` needs a name; otherwise the reason is `says_unknown`.
+- **Model**: `MOCHI_MODEL_REASONING_EFFORT` (`OpenAiHintModel.thinking`). Compared on the yardstick:
+  gpt-4.1-mini 1.05 s, gpt-4.1 0.86 s, gpt-5.4 1.15 s, gpt-5.4-mini 0.68 s at the same accuracy; gpt-5.4-nano
+  misses a third of the mixed sentences. The code default is unchanged; this Pi runs gpt-5.4-mini.
+- **Slow answers** (`hedged.first_answer`): when the first request has not answered after 1 s a second one
+  is sent and the first answer wins; the 2 s limit of AGENTS 7.2 stays. Two answers in a row hit the limit
+  in one run, which cost two hints.
+- **Cooldown, optional** (`MOCHI_HINT_COOLDOWN=while_shown`): an unasked hint waits only until the earlier
+  one has left the screen, and the same word is never shown twice in a row. The default is still the
+  team's two turns; this Pi runs `while_shown`. **For the team to decide.**
+- **"You used it"**: when a card goes to `ASSISTED` the device gets a `used` command (`{"word", "language"}`)
+  and Mochi's face shows the word with a star for five seconds, without a sound.
+- The device reads its state every 0.15 s (was 0.3 s).
+
+Still wrong: a word the recogniser turned into a non-word ("postone", "guardy shoe") is sometimes guessed
+at. A word list for both languages would settle it (is the "said" word a word at all?), which means adding
+data files; not done. False friends (case 8) are unchanged at 0 of 3 beyond the lexicon.
+

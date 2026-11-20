@@ -65,7 +65,7 @@ def _model_for(settings: Settings) -> HintModel:
         settings.mochi_model_name,
         settings.model_api_key,
         settings.mochi_decide_timeout_seconds,
-    )
+    ).thinking(settings.mochi_model_reasoning_effort)
 
 
 def default_adapters(settings: Settings) -> Adapters:
@@ -93,6 +93,7 @@ def _brain_for(
         model_timeout_seconds=settings.mochi_decide_timeout_seconds,
         character_timeout_seconds=settings.mochi_character_timeout_seconds,
         follow_up_seconds=settings.mochi_follow_up_seconds,
+        hint_cooldown=settings.mochi_hint_cooldown,
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
     if settings.character_configured:

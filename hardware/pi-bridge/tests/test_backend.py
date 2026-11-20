@@ -282,6 +282,25 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup.face.show_for.assert_called_with(10, word="queue", note="")
 
 
+class UsedWordTest(unittest.IsolatedAsyncioTestCase):
+    """Someone says a word they were just given: the face cheers, silently."""
+
+    async def test_the_card_reaches_the_supervisor(self):
+        events = []
+        body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
+        await body.act("used", '{"word": "fork", "language": "en"}')
+        await body.act("used", "{}")                  # no word: nothing to cheer
+        self.assertEqual(events, [("used", {"word": "fork", "language": "en"})])
+
+    def test_the_face_cheers_in_the_language_of_the_word(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.face = MagicMock()
+        sup.on_agent_event("used", {"word": "fork", "language": "en"})
+        sup.face.show_for.assert_called_once_with(5, word="fork", note="★ you used it!", mood="proud")
+        sup.on_agent_event("used", {"word": "carteira", "language": "pt-BR"})
+        sup.face.show_for.assert_called_with(5, word="carteira", note="★ você usou!", mood="proud")
+
+
 class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
     """Mochi says goodbye ([bye]): the session ends once the goodbye has been heard out."""
 

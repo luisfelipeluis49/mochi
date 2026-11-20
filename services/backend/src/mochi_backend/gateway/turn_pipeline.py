@@ -25,6 +25,7 @@ from mochi_contracts import (
     GameState,
     Hint,
     LearningEvent,
+    LearningState,
     SessionContext,
     Speak,
     Turn,
@@ -50,6 +51,15 @@ def hint_card(hint: Hint) -> str:
         "meaning": hint.meaning,
         "example": hint.example,
     }
+    return json.dumps(card, ensure_ascii=False)
+
+
+def used_card(event: LearningEvent) -> str:
+    """What the device shows when someone goes on to say a word they were given, as JSON.
+
+    Example: `{"word": "fork", "language": "en"}`.
+    """
+    card = {"word": event.expression, "language": event.target_language.value}
     return json.dumps(card, ensure_ascii=False)
 
 
@@ -205,6 +215,12 @@ class TurnPipeline:
 
     def _tell_device(self, decision: Decision, written: list[Written]) -> None:
         wanted = list(written)
+        # Someone said a word they were just given ("Used with help"): the face cheers, silently.
+        wanted += [
+            ("used", used_card(event))
+            for event in decision.learning_events
+            if event.learning_state is LearningState.ASSISTED
+        ]
         if decision.hint is not None:
             # A hint goes on Mochi's face as a card: the word, its language and what it means.
             # It replaces a bare [show ...] Mochi wrote for the same turn.

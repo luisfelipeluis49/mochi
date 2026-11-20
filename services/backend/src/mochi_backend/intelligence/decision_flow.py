@@ -5,12 +5,15 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from mochi_backend.intelligence.clear_cases import (
+    addressed_partner,
     asked_term,
     asks_for_word,
     detect_clear,
     mochi_entry,
+    question_itself,
     unfinished_question,
 )
+from mochi_backend.intelligence.hedged import first_answer
 from mochi_backend.intelligence.hint_builder import (
     CaseMatch,
     HintFactory,
@@ -25,8 +28,12 @@ from mochi_backend.intelligence.language_guess import (
 from mochi_backend.intelligence.learning_rules import assisted_updates
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.mochi_talk import MochiTalk
-from mochi_backend.intelligence.model_port import HintModel, ModelRequest
-from mochi_backend.intelligence.quiet_rules import quiet_reason
+from mochi_backend.intelligence.model_port import HintModel, ModelRequest, ModelSuggestion
+from mochi_backend.intelligence.quiet_rules import (
+    cooldown_active,
+    hint_on_screen,
+    quiet_reason,
+)
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
@@ -83,6 +90,33 @@ def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
     return turn.model_copy(update={"text": f"{before.text} {turn.text}"})
 
 
+def same_words(one: str, other: str) -> bool:
+    """Example: `same_words("Fork", "fork ")` -> True."""
+    return normalized(one) == normalized(other)
+
+
+def _only_the_word(text: str, expression: str, meaning: str | None) -> bool:
+    """True when the whole turn is just the word itself and no question about it.
+
+    Someone who says only "Molho para salada?" is trying the word out or checking it, not stuck.
+    """
+    said = normalized(text)
+    words = {normalized(expression), normalized(meaning or "")} - {""}
+    return said in words and not asks_for_word(text)
+
+
+def _only_extends(expression: str, meaning: str | None) -> bool:
+    """A "hint" that just adds to the word they said is an invention, not a translation.
+
+    Seen with a real sentence: "pass me the bathroom" got "bathroom key" for "bathroom".
+    """
+    if not meaning:
+        return False
+    return has_phrase(normalized(expression), meaning) or has_phrase(
+        normalized(meaning), expression
+    )
+
+
 def ignore() -> Decision:
     """The silent decision."""
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
@@ -117,6 +151,9 @@ class DecisionFlow:
         self._model_timeout = settings.model_timeout_seconds
         self._judge_everything = settings.judge_every_sentence
         self._min_words = settings.min_words_to_judge
+        self._min_confidence = settings.hint_min_confidence
+        self._cooldown = settings.hint_cooldown
+        self._hedge_after = settings.hedge_after_seconds
 
     async def run(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is."""
@@ -134,11 +171,30 @@ class DecisionFlow:
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
         quiet = quiet_reason(turn.text, context, self._lexicon, self._ttl)
-        if quiet == "cooldown" and asks_for_word(turn.text):
-            quiet = None  # the cooldown is against unasked hints; someone asking outright gets one
+        if quiet == "cooldown" and self._cooldown_lifted(turn, context):
+            quiet = None
         match, line = await self._match_and_line(turn, context, bool(quiet))
+        if match and self._just_shown(match, turn, context):
+            match = None
         shown = self._show(match, context) if match else ignore()
         return self._saying(shown, line, turn) if line else shown
+
+    def _cooldown_lifted(self, turn: Turn, context: SessionContext) -> bool:
+        """The cooldown is against unasked hints piling up; someone asking outright gets theirs.
+
+        With `hint_cooldown="while_shown"` an unasked hint only waits until the earlier one has
+        left the screen: two turns are some twenty seconds of real talk, and a second, different
+        stuck word in that time went unanswered.
+        """
+        if asks_for_word(turn.text):
+            return True
+        return self._cooldown == "while_shown" and not hint_on_screen(context, turn)
+
+    def _just_shown(self, match: CaseMatch, turn: Turn, context: SessionContext) -> bool:
+        """The same word as a hint of the last two turns, and nobody asked: once is enough."""
+        if asks_for_word(turn.text) or not cooldown_active(context, self._ttl):
+            return False
+        return any(same_words(h.expression, match.expression) for h in context.recent_hints)
 
     async def _match_and_line(
         self, turn: Turn, context: SessionContext, quiet: bool
@@ -174,7 +230,10 @@ class DecisionFlow:
         history = [t.text for t in context.recent_turns]
         if found is not None:
             return await self._confirmed_by_model(found, text, history, context)
-        return await self._ask_model(text, history, context)
+        answer = await self._ask_model(text, history, context)
+        # A false friend the rules did not spot is the model's least reliable call: with a real
+        # model "pass me the bathroom" came back as look_alike "toilet". Quiet first (AGENTS 7.2).
+        return None if answer and answer.reason is Reason.LOOK_ALIKE else answer
 
     async def _confirmed_by_model(
         self, candidate: CaseMatch, text: str, history: list[str], context: SessionContext
@@ -203,24 +262,59 @@ class DecisionFlow:
         self, text: str, history: list[str], context: SessionContext
     ) -> CaseMatch | None:
         request = ModelRequest(
-            text=text,
+            text=question_itself(text),
             recent_texts=history[-3:],
             focus=context.focus,
             candidate_reasons=list(Reason),
             asked_about=asked_term(text),
         )
-        try:
-            suggestion = await asyncio.wait_for(self._model.suggest(request), self._model_timeout)
-        except TimeoutError:
-            return None  # AGENTS 7.2: a slow model call means IGNORE
+        # AGENTS 7.2: no answer within the limit means IGNORE. A slow first request is asked again.
+        suggestion = await first_answer(
+            lambda: self._model.suggest(request), self._hedge_after, self._model_timeout
+        )
+        match = self._accepted(text, suggestion, context.focus)
+        if match and match.reason is Reason.ASKS_PARTNER and not addressed_partner(text, context):
+            # nobody was named, so nobody in particular was asked: the label must not vary
+            match = CaseMatch(Reason.SAYS_UNKNOWN, match.expression, match.meaning, match.example)
+        return match
+
+    def _accepted(
+        self, text: str, suggestion: ModelSuggestion | None, focus: Language
+    ) -> CaseMatch | None:
+        """The model's answer as a hint, or None: no hint, incomplete, unsure or off the rules."""
         if suggestion is None or suggestion.decision != "SHOW_HINT":
             return None
-        if not (suggestion.expression and suggestion.reason):
+        if not (suggestion.expression and suggestion.reason) or self._doubtful(suggestion, focus):
             return None
+        if self._made_up(text, suggestion):
+            return None
+        if _only_the_word(text, suggestion.expression, suggestion.meaning):
+            return None  # "Molho para salada?": trying out a word they were just given
         expression, meaning = _needed_word(text, suggestion.expression, suggestion.meaning)
-        if expression is None:
+        if expression is None or _only_extends(expression, meaning):
             return None
         return CaseMatch(suggestion.reason, expression, meaning, suggestion.example)
+
+    def _doubtful(self, suggestion: ModelSuggestion, focus: Language) -> bool:
+        """The model is not sure itself, or its word is not in the language being practised.
+
+        Seen with real sentences: "maybe a ranch?" (English) got the hint "fazenda". Quiet first.
+        """
+        unsure = suggestion.confidence is not None and suggestion.confidence < self._min_confidence
+        hint_in, said_in = suggestion.expression_language, suggestion.meaning_language
+        wrong_side = hint_in is not None and hint_in != focus.value
+        same_side = said_in == focus.value and suggestion.reason is Reason.CODE_SWITCH
+        return unsure or wrong_side or same_side  # same_side: a synonym, not a translation
+
+    def _made_up(self, text: str, suggestion: ModelSuggestion) -> bool:
+        """A code switch names a word of the other language: it has to be in the sentence.
+
+        Seen with a real model: "pass me the bathroom" got "toilet", for a "banheiro" nobody said.
+        """
+        if suggestion.reason is not Reason.CODE_SWITCH or not suggestion.meaning:
+            return False
+        said, hint = normalized(text), suggestion.expression or ""
+        return not (has_phrase(said, suggestion.meaning) or has_phrase(said, hint))
 
     def _show(self, match: CaseMatch, context: SessionContext) -> Decision:
         hint = self._factory.hint_for(match, context)
