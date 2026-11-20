@@ -148,3 +148,10 @@ def test_memory_store_hides_events_with_no_user_and_resets() -> None:
     store.apply([_event()])
     store.reset()
     assert store.words_for("ana") == []
+
+
+@pytest.mark.parametrize(
+    "said", ["meu divorcio foi dificil", "meu divórcio foi difícil", "he has cancer"]
+)
+def test_serious_topics_stay_quiet_with_or_without_accents(said: str) -> None:
+    assert is_serious(said)

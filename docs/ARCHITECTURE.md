@@ -29,7 +29,7 @@ services/backend/src/mochi_backend/
                     subtle_cases (5-9), decision_flow, learning_rules, memory_store, round_engine,
                     model_port + openai_hint_model, service.Intelligence
 packages/contracts/   Pydantic models (+ JSON examples and exported JSON Schema)
-packages/fixtures/    decisions.json: 66 sentences with expected decisions
+packages/fixtures/    decisions.json: 72 sentences with expected decisions
 ```
 
 Ports (Protocols) wrap every third-party dependency: `AgoraAgentClient`, `RtcTokenIssuer`, `HintModel`,

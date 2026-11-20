@@ -56,7 +56,8 @@ Agora's docs do not name the header that carries `llm.api_key`. We send the key 
 
 ## D-13 `agora-token-builder` produces `006` tokens
 The package named in Agora's own tutorial builds AccessToken v1. Kept because it is the documented path;
-whether Agora and the Pi's IoT SDK accept `006` is untested (see `VERIFIED.md`).
+Agora's `join` accepted a `006` token built for the agent uid (tested 2026-11-20, see `VERIFIED.md`);
+whether the Pi's IoT SDK accepts a `006` token is still untested.
 
 ## D-14 Dev routes are off by default
 `MOCHI_ENABLE_DEV_ROUTES` defaults to `false` (the route is not mounted). `scripts/start-dev.sh` turns it on;
@@ -129,4 +130,37 @@ Deferred or not changed, with the reason:
 - **Cost guard:** `idle_timeout` is now sent on `join` (`MOCHI_AGENT_IDLE_TIMEOUT_SECONDS`, default 60). The docs do
   not say what happens when the Pi never joins, and Start is public (AGENTS 8: no sign-in), so a stray Start can hold
   an agent open. Proposal, not built: auto-Stop after a maximum session length (for example 30 minutes).
+
+## D-20: second review round (post-fix audit, 2026-11-20)
+
+Fixed, each with a regression test:
+- **One commit lock** (`GatewayCore.commit`) is held while a turn publishes its results and while Stop, Reset,
+  round start and round finish publish theirs. Nothing from an in-flight turn arrives after Stop or Reset, a round
+  finish cannot bring a card back after Reset, and a turn that was deciding when a round started cannot cover the game
+  screen (only a wake phrase may still speak). `activity/start` publishes the session state before the `/speak` call,
+  which now runs outside the lock.
+- **WebSocket connect is atomic** (`EventHub.connect`): snapshot, send and register under the hub lock, so a client
+  sees each event once and in order; a dead client is dropped at its first failed send; a snapshot never changes
+  which secrets are protected. The route frees the client in `finally` and tolerates binary frames.
+- **`/join` and `/speak` are not retried** (a retried join after a read timeout could create a second billed agent);
+  `/leave` still is.
+- **SSE chunks** carry `id`, `object`, `created`, `model`; the empty reply is an empty-content chunk plus a stop
+  chunk plus `[DONE]`. `Bearer` matches case-insensitively. We could not confirm Agora needs these fields; they are
+  the standard OpenAI shape.
+- **Silence:** the speaking window never shortens; Stop and Reset close it (matters for `mute_speaker`).
+- **Quiet by default without a model:** cues match whole words ("training" and "the rainbow" no longer mean
+  umbrella); a wake phrase must carry an ask or a foreign word ("Oi Mochi, it's raining outside" stays quiet);
+  serious topics match with accents dropped. The `marker_for` docstring example was wrong, not the rule.
+- **Eval:** rows marked `eval: false` (no-model unit tests) are skipped; an empty list exits with a message.
+
+Not changed, with the reason:
+- `_look_alike` and `_stock_word` for `focus = pt-BR`: `focus` is fixed to `en` for the demo.
+- Token refresh margin when the TTL is 300 s or less, and extra `Settings` bounds: the default TTL is 3600 s and
+  the values are operator-set.
+- Docker env edge cases (`export`, inline comments, CRLF): the project `.env` uses none of them.
+- Rule edge cases off the demo path (grave accents, proper-noun stripping, partner-name escaping).
+- `/join` failure detail echoes the Agora URL: the App ID is already public through the device-state endpoint.
+- `_hint_users` growth: bounded by hints per session and cleared on Reset.
+- Contract-side items (`IsoTimestamp` regex, `export_schema` arguments, `learning_event.updated.json`) belong to
+  Matheus: proposals only.
 

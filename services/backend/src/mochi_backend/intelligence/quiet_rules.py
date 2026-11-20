@@ -5,13 +5,13 @@ from datetime import timedelta
 
 from mochi_backend.intelligence.language_guess import strip_proper_nouns
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
-from mochi_backend.intelligence.tokens import lowered, normalized
+from mochi_backend.intelligence.tokens import folded, lowered, normalized
 from mochi_backend.platform.clock import parse_iso_z
 from mochi_contracts import GameState, SessionContext
 
 _SERIOUS = re.compile(
     r"\b(?:funeral|passed away|died|death|cancer|divorce|hospital|diagnos\w*|depress\w*|"
-    r"grieving|morreu|falecimento|luto|câncer|divórcio)\b"
+    r"grieving|morreu|falecimento|luto|divorcio)\b"  # matched on accent-folded text
 )
 _ONLY_THINKING = re.compile(
     r"^(?:(?:hmm+|um+|uh+|well|let me think|let's see|one moment|so)[\s,.…]*)+$"
@@ -42,7 +42,7 @@ def cooldown_active(context: SessionContext, ttl_seconds: float) -> bool:
 
 def is_serious(text: str) -> bool:
     """True for personal or serious conversation. Example: "My father died last year." -> True."""
-    return _SERIOUS.search(lowered(text)) is not None
+    return _SERIOUS.search(folded(text)) is not None
 
 
 def is_just_thinking(text: str) -> bool:

@@ -32,9 +32,11 @@ async def passed(fixture: DecisionFixture, model: HintModel) -> bool:
 async def main() -> int:
     """Print PASS/FAIL per fixture and the overall rate; exit 1 when any fixture fails."""
     model = real_model()
-    # case "model" rows script the fake model's answer and share texts with opposite expectations,
-    # so a real model cannot satisfy them all; they are unit tests, not an eval.
-    scored = [f for f in load_fixtures() if f.case != "model"]
+    # case "model" rows and rows marked eval=false script the fake or null model and can share a
+    # sentence with opposite expectations, so a real model cannot satisfy them: unit tests only.
+    scored = [f for f in load_fixtures() if f.case != "model" and f.eval]
+    if not scored:
+        sys.exit("no fixtures to score; check packages/fixtures/decisions.json")
     results = [(f, await passed(f, model)) for f in scored]
     for fixture, ok in results:
         print(("PASS  " if ok else "FAIL  ") + f"{fixture.id}: {fixture.text}")

@@ -32,6 +32,17 @@ def find_entry(text: str, context: SessionContext, lexicon: Lexicon) -> LexiconE
     return words[0] if words else lexicon.entry_for_cues(lowered(text))
 
 
+def mochi_entry(text: str, context: SessionContext, lexicon: Lexicon) -> LexiconEntry | None:
+    """The word someone asks Mochi about: a foreign word, or a description after an explicit ask.
+
+    "Oi Mochi, it's raining outside" describes nothing being asked, so it finds no entry.
+    """
+    foreign = lexicon.entries_with_word(normalized(text), other_language(context.focus))
+    if foreign:
+        return foreign[0]
+    return lexicon.entry_for_cues(text) if asks_for_word(text) else None
+
+
 def _asked_match(text: str, context: SessionContext, lexicon: Lexicon) -> CaseMatch | None:
     entry = find_entry(text, context, lexicon)
     if entry is None:

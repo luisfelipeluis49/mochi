@@ -9,10 +9,11 @@ from mochi_backend.intelligence.language_guess import (
     strip_proper_nouns,
 )
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
+from mochi_backend.intelligence.subtle_cases import marker_for
 from mochi_backend.intelligence.tokens import has_phrase, normalized, words_of
 from mochi_backend.intelligence.wake_phrase import has_wake_phrase, without_wake_phrase
 from mochi_backend.intelligence.word_owner import owner_for
-from mochi_contracts import Language
+from mochi_contracts import Language, Reason
 from tests.factories import ANA, BEN, make_context
 
 LEXICON = Lexicon.load()
@@ -101,3 +102,19 @@ def test_owner_is_none_when_rule_does_not_apply() -> None:
     assert (
         owner_for(make_context(participants=[BEN, BEN.model_copy(update={"user_id": "x"})])) is None
     )
+
+
+@pytest.mark.parametrize("said", ["I am training today", "look at the rainbow", "it is draining"])
+def test_cues_match_whole_words_only(said: str) -> None:
+    assert Lexicon.load().entry_for_cues(said) is None
+
+
+def test_cues_still_match_real_descriptions() -> None:
+    lexicon = Lexicon.load()
+    assert lexicon.entry_for_cues("It's raining and I forgot my") is not None
+    assert lexicon.entry_for_cues("We should make it later.") is not None
+
+
+def test_the_two_agents_examples_for_hesitation_cases() -> None:
+    assert marker_for("It's raining and I forgot my… um…") is Reason.TRAILS_OFF  # case 5
+    assert marker_for("We should… we need to… make it later.") is Reason.RESTARTS  # case 7

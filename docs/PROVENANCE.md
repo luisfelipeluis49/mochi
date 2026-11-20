@@ -8,7 +8,7 @@ section 5.5) and mark it `pre-existing` or `during hackathon`.
 |---|---|---|---|---|
 | Repository scaffold, tooling, Makefile, CI workflow | Luís (built by a coding agent) | 2026-11-19 | pre-existing | ruff, mypy strict, pytest, architecture-rules test |
 | `packages/contracts` (Pydantic models, examples, JSON Schema) | Matheus's area, built here by request | 2026-11-19 | pre-existing | mirrors AGENTS 6 (v0.4); two provisional models |
-| `packages/fixtures/decisions.json` | Kauê's area, built here by request | 2026-11-19 | pre-existing | 66 sentences |
+| `packages/fixtures/decisions.json` | Kauê's area, built here by request | 2026-11-19 | pre-existing | 72 sentences |
 | `services/backend/.../intelligence/` | Kauê's area, built here by request | 2026-11-19 | pre-existing | rules, lexicon, model port, rounds, memory |
 | `services/backend/.../gateway/` | Luís | 2026-11-19 | pre-existing | turn pipeline, hub, session/device/activity, Agora adapter |
 | `services/backend/.../platform/`, `settings.py`, `composition.py`, `app.py` | Luís | 2026-11-19 | pre-existing | |

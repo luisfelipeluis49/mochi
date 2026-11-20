@@ -24,6 +24,15 @@ def _without_accents(word: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
+def folded(text: str) -> str:
+    """Lowercase, apostrophes straightened and accents removed, punctuation kept.
+
+    For regex rules that must survive speech-to-text dropping diacritics.
+    Example: `folded("Divórcio")` is `"divorcio"`.
+    """
+    return _without_accents(lowered(text))
+
+
 def normalized(text: str) -> str:
     """Words joined by single spaces for phrase search, accents removed.
 

@@ -64,8 +64,9 @@ call Stop; see the auto-stop proposal in DECISIONS D-19.
 The Agora tutorial (https://docs.agora.io/en/ai/build/build-server-client) uses the PyPI package
 `agora-token-builder` (pinned in `uv.lock`; installed 1.0.0). It exposes
 `RtcTokenBuilder.buildTokenWithUid(appId, cert, channel, uid, role, privilegeExpiredTs)` and, on this
-machine, produces **`006`-prefixed (AccessToken v1) tokens**, not AccessToken2 (`007`). Not checked: whether
-a `007` builder is on PyPI, and whether the Pi's IoT SDK and the agent accept `006`. **Test a real join first.**
+machine, produces **`006`-prefixed (AccessToken v1) tokens**, not AccessToken2 (`007`). Tested 2026-11-20:
+Agora's `join` accepted the agent-uid `006` token (see "Tested against real Agora" above). Not checked: whether
+a `007` builder is on PyPI, and whether the Pi's IoT SDK accepts a `006` token for the Pi uid.
 This is not the Agora Python RTC *SDK* that AGENTS forbids on the Pi (that rule is about the Pi; the backend only builds tokens).
 
 ## Conflicts with AGENTS.md

@@ -2,7 +2,7 @@
 
 import asyncio
 
-from mochi_backend.intelligence.clear_cases import asks_for_word, detect_clear, find_entry
+from mochi_backend.intelligence.clear_cases import asks_for_word, detect_clear, mochi_entry
 from mochi_backend.intelligence.hint_builder import (
     CaseMatch,
     HintFactory,
@@ -16,6 +16,7 @@ from mochi_backend.intelligence.model_port import HintModel, ModelRequest
 from mochi_backend.intelligence.quiet_rules import quiet_reason
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
+from mochi_backend.intelligence.tokens import normalized
 from mochi_backend.intelligence.wake_phrase import has_wake_phrase, without_wake_phrase
 from mochi_backend.platform.clock import Clock
 from mochi_contracts import (
@@ -132,9 +133,11 @@ class DecisionFlow:
 
     async def _answer_mochi(self, turn: Turn, context: SessionContext) -> Decision:
         rest = without_wake_phrase(turn.text)
-        entry = find_entry(rest, context, self._lexicon)
+        if not normalized(rest):
+            return ignore()  # just "Oi Mochi": nothing was asked, so no model call
+        entry = mochi_entry(rest, context, self._lexicon)
         match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
-        if match is None:
+        if match is None and asks_for_word(rest):
             match = await self._ask_model(rest, [], context)
         if match is None:
             return ignore()

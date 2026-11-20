@@ -250,6 +250,22 @@
   }
  },
  {
+  "id": "asks_mochi-55",
+  "case": "asks_mochi",
+  "text": "Oi Mochi, it's raining outside.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-56",
+  "case": "asks_mochi",
+  "text": "Hi Mochi, the weather is nice today.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
   "id": "trails_off-27",
   "case": "trails_off",
   "text": "It's raining and I forgot my… um…",
@@ -526,7 +542,8 @@
   "text": "I'm actually working from home today.",
   "expect": {
    "decision": "IGNORE"
-  }
+  },
+  "eval": false
  },
  {
   "id": "look_alike-54",
@@ -534,7 +551,8 @@
   "text": "I pretend to travel in July.",
   "expect": {
    "decision": "IGNORE"
-  }
+  },
+  "eval": false
  },
  {
   "id": "not_understood-51",

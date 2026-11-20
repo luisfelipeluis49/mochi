@@ -75,9 +75,13 @@ class Lexicon:
         return [e for e in self.entries if has_phrase(normalized_text, e.word(language))]
 
     def entry_for_cues(self, lowered_text: str) -> LexiconEntry | None:
-        """First entry one of whose cue phrases appears in the text (description of a word)."""
+        """First entry one of whose cue phrases appears as whole words (a described word).
+
+        "it's raining" has the cue "raining"; "training" and "the rainbow" do not.
+        """
+        words = normalized(lowered_text)
         for entry in self.entries:
-            if any(cue in lowered_text for cue in entry.cues):
+            if any(has_phrase(words, cue) for cue in entry.cues):
                 return entry
         return None
 

@@ -11,7 +11,7 @@ Append one entry per checkpoint: what works and how to see it.
 
 ## Intelligence (M0-M4 intelligence rows)
 - `decide()` cases 1-9, quiet rules, whose-word rule, learning states, `handle()` rounds, memory.
-  See it: `make -C services/backend test`; 66 sentences in `packages/fixtures/decisions.json`.
+  See it: `make -C services/backend test`; 72 sentences in `packages/fixtures/decisions.json`.
 
 ## Gateway (M0-M4 gateway rows)
 - Turn endpoint (shared key, SSE), `/dev` turn, hub with per-connection routing and leak guard, live hint
@@ -27,3 +27,11 @@ Append one entry per checkpoint: what works and how to see it.
 - Smoke and the walkthrough now assert a plain sentence produces IGNORE and publishes nothing (outside any cooldown).
 - Real mode requires an https `MOCHI_PUBLIC_URL`; `/readyz` no longer reads ready for localhost in real mode.
 - Stale-schema check is also a pytest; rule exceptions inventoried in DECISIONS D-17.
+
+## Real Agora, then three outside reviews (2026-11-20)
+- Real `join`/`leave`/`speak` worked from a local backend and from Render with Agora-managed deepgram + minimax
+  (DECISIONS D-18). Managed `ares` is not available on our SKU.
+- Review fixes with regression tests (DECISIONS D-19, D-20): session/turn/reset races behind one commit lock,
+  atomic WebSocket connect, no `/join` retries, full OpenAI chunk shape, whole-word cue matching, a wake phrase
+  needs an ask, false friends need a model, accent folding. 72 fixtures. See it: `make -C services/backend verify`.
+

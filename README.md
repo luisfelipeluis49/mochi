@@ -115,8 +115,9 @@ break a live demo. `numInstances: 1`. WebSockets work behind Render's proxy with
 | 3 | Audio both ways on the Pi without hearing itself | **Unverified** (Matheus) | Say `Oi Mochi, what's the word for fila?`; Mochi answers; confirm the answer is not logged as a new `turn` |
 | 4 | Tap anywhere registers in the kiosk browser | **Unverified** (Tasnim/Matheus) | Start a round; tap 20 times; each tap must register |
 
-Also open: whether Agora accepts the `006` tokens this builder produces, and which uid the agent token must be
-built for. Details in `VERIFIED.md`.
+Verified against real Agora on 2026-11-20: it accepts the `006` tokens this builder produces, with the token
+built for the agent uid (`join` returned an agent). Whether the Pi's IoT SDK accepts a `006` token is still open.
+Details in `VERIFIED.md`.
 
 ## Layout, rules, tests
 

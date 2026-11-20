@@ -21,7 +21,11 @@ _DESCRIBING = re.compile(
 
 
 def marker_for(text: str) -> Reason | None:
-    """The hesitation marker in a turn, if any. "We should… we need to…" -> restarts."""
+    """The hesitation marker in a turn, if any.
+
+    "We should… we need to… make it later." -> restarts (two fragments, then the sentence goes on);
+    "It's raining and I forgot my… um…" -> trails_off (it ends in a pause).
+    """
     low = lowered(text)
     if _NOT_UNDERSTOOD.search(low):
         return Reason.NOT_UNDERSTOOD

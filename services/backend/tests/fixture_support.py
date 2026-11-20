@@ -41,6 +41,7 @@ class DecisionFixture(BaseModel):
     round_active: bool = False
     participants: str | None = None
     model: ModelSuggestion | None = None
+    eval: bool = True  # False: a no-model unit test that a real-model eval must not score
 
 
 def load_fixtures() -> list[DecisionFixture]:
