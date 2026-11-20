@@ -43,6 +43,7 @@ Observed, not just read in docs:
   `.../leave` worked; a second Start/Stop cycle worked. So the `006` token and the agent-uid token were accepted.
 - **Managed `ares` ASR is rejected** on our project: `vendor 'ares' is not available for the current SKU when
   credential_mode is 'managed'` (HTTP 400, `InvalidFieldValue`). Docs list ARES as managed; this project cannot use it.
+  **Corrected below:** it is the `credential_mode` field that is rejected, not ARES.
 - **Managed `deepgram` ASR (`nova-3`, `language: multi`) and managed `minimax` TTS (`speech-2.8-turbo`) were accepted.**
   Accepted is not the same as working: that the agent transcribes pt-BR, or speaks pt-BR, is still unverified (needs a mic).
 - `POST .../speak` (activity host line) raised no error. Azure/Microsoft needs your own Azure key (BYOK) and was not tried.
@@ -75,3 +76,21 @@ This is not the Agora Python RTC *SDK* that AGENTS forbids on the Pi (that rule 
   say either (see above). No contract change needed.
 - AGENTS 9.2 assumes an empty reply is possible; the docs' samples always stream at least one chunk. Our
   empty reply is a stream with one empty-content chunk, a stop chunk and `[DONE]`.
+
+## ARES without a credential mode (2026-11-20, second Agora project, `join_body()` sent as is)
+
+Four `POST .../join` calls with this backend's own request body, each left again at once:
+
+| `asr` block | `turn_detection.language` | Result |
+|---|---|---|
+| `{"vendor": "ares", "keywords": ["Mochi"]}` | `["en-US", "pt-PT"]` | **200**, agent `RUNNING` |
+| `{"vendor": "ares", "language": "en-US"}` | not sent | **200**, agent `RUNNING` |
+| the first, plus `"credential_mode": "managed"` | `["en-US", "pt-PT"]` | 400 `vendor 'ares' is not available for the current SKU when credential_mode is 'managed'` |
+| `{"vendor": "ares", "language": "en-US,pt-BR", "credential_mode": "managed"}` | not sent | 400, same message |
+
+So ARES takes no `credential_mode`. `properties.asr.keywords` is documented for ARES (join page, up to 128).
+The first row is what Agora's own Python SDK (`agora-agents`, `AresSTT`) sends, and what the defaults now
+produce. That call used token authentication (`Authorization: agora token=<token>` built from the App ID and
+App Certificate, the method the authentication page recommends); Basic authentication is unchanged here.
+ARES has no Brazilian Portuguese: `pt-PT` is its Portuguese.
+

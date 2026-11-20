@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
     mochi_asr_vendor: str = "ares"
-    mochi_asr_language: str = "en-US"
+    mochi_asr_language: str = (
+        "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT is its Portuguese
+    )
+    mochi_asr_keywords: list[str] = ["Mochi"]
     mochi_asr_params: VendorParams = {}
     mochi_asr_credential_mode: str = ""
     mochi_tts_vendor: str = "minimax"

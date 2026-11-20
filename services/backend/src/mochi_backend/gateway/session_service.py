@@ -54,19 +54,27 @@ class SessionService:
         self._config = config
         self._start_lock = asyncio.Lock()
 
-    async def start(self) -> SessionState:
-        """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state."""
+    async def start(self, agent_on_device: bool = False) -> SessionState:
+        """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state.
+
+        `agent_on_device`: the device runs the agent itself (and reports each sentence through
+        `POST /api/devices/{id}/turns`), so none is started here.
+        """
         async with self._start_lock:
             if self._store.capturing:
                 return self._store.session_state()
             generation = self._store.generation
-            agent_id = await self._start_agent()
+            agent_id = None if agent_on_device else await self._start_agent()
             if generation != self._store.generation:
                 self._logger.log("start_superseded", {"agent_id": agent_id})
-                await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
+                await self._discard(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
             self._begin(agent_id)
             return await self._publish_state()
+
+    async def _discard(self, agent_id: str | None) -> None:
+        if agent_id is not None:
+            await self._stop_agent(agent_id)
 
     async def stop(self) -> SessionState:
         """Stop capturing at once, then the agent. Idempotent; a gone agent is fine."""
@@ -85,9 +93,9 @@ class SessionService:
             await self._stop_agent(agent_id)  # after local capture is off: the Pi sees false now
         return state
 
-    def _begin(self, agent_id: str) -> None:
+    def _begin(self, agent_id: str | None) -> None:
         expires = self._clock.now() + timedelta(seconds=self._config.token_ttl_seconds)
-        self._store.agent_id = agent_id
+        self._store.agent_id, self._store.agent_on_device = agent_id, agent_id is None
         self._store.pi_token = self._issue(self._config.pi_uid)
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
@@ -95,6 +103,7 @@ class SessionService:
 
     def _end_locally(self) -> None:
         self._store.agent_id, self._store.pi_token = None, None
+        self._store.agent_on_device = False
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
         self._store.end_game()  # an unfinished round must not keep the next session deaf
         self._hub.forget_secrets()

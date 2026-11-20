@@ -116,13 +116,27 @@ def _vendor_block(
     return block
 
 
+def _languages(tuning: SpeechTuning) -> list[JsonValue]:
+    return [part.strip() for part in tuning.asr_language.split(",") if part.strip()]
+
+
+def _asr_block(tuning: SpeechTuning) -> dict[str, JsonValue]:
+    """One language goes in `asr.language`; several go in `turn_detection.language` instead."""
+    languages = _languages(tuning)
+    extra: dict[str, JsonValue] = {"language": languages[0]} if len(languages) == 1 else {}
+    if tuning.asr_keywords:
+        extra["keywords"] = list(tuning.asr_keywords)
+    return _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, extra)
+
+
 def _speech_blocks(tuning: SpeechTuning) -> dict[str, JsonValue]:
-    language: dict[str, JsonValue] = {"language": tuning.asr_language}
-    asr = _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, language)
     tts = _vendor_block(tuning.tts_vendor, tuning.tts_credential_mode, tuning.tts_params, {})
     vad: dict[str, JsonValue] = {"silence_duration_ms": tuning.end_of_speech_silence_ms}
     turns: dict[str, JsonValue] = {"config": {"end_of_speech": {"mode": "vad", "vad_config": vad}}}
-    return {"asr": asr, "tts": tts, "turn_detection": turns}
+    languages = _languages(tuning)
+    if len(languages) > 1:
+        turns["language"] = languages
+    return {"asr": _asr_block(tuning), "tts": tts, "turn_detection": turns}
 
 
 def join_body(request: AgentStartRequest, name: str) -> JsonValue:

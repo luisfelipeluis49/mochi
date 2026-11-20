@@ -317,11 +317,32 @@ def test_join_body_uses_the_verified_field_names() -> None:
     assert props["idle_timeout"] == 60  # verified field: seconds after the Pi leaves
 
 
+def test_join_body_for_ares_puts_several_languages_in_turn_detection() -> None:
+    """The shape Agora accepted on 2026-11-20 (VERIFIED.md): no credential mode, no asr.language."""
+    tuning = SpeechTuning(asr_vendor="ares", asr_language="en-US, pt-PT", asr_keywords=("Mochi",))
+    request = AgentStartRequest("chan", 1002, 1001, "tok", "https://x/y", "k", tuning)
+    body = join_body(request, "mochi_001")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    props = body["properties"]
+    assert props["asr"] == {"vendor": "ares", "keywords": ["Mochi"]}
+    turns = props["turn_detection"]
+    assert isinstance(turns, dict) and turns["language"] == ["en-US", "pt-PT"]
+
+
+def test_join_body_with_one_language_keeps_it_in_asr() -> None:
+    body = join_body(REQUEST, "mochi_001")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    props = body["properties"]
+    assert props["asr"] == {"vendor": "ares", "language": "en-US"}
+    turns = props["turn_detection"]
+    assert isinstance(turns, dict) and "language" not in turns
+
+
 def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -> None:
     voice: dict[str, JsonValue] = {"voice_id": "English_captivating_female1", "speed": 1.0}
     tuning = SpeechTuning(
-        asr_vendor="ares",
-        asr_language="en-US,pt-BR",
+        asr_vendor="deepgram",
+        asr_language="en-US",
         asr_credential_mode="managed",
         tts_vendor="minimax",
         tts_credential_mode="managed",
@@ -332,8 +353,8 @@ def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -
     assert isinstance(body, dict) and isinstance(body["properties"], dict)
     props = body["properties"]
     assert props["asr"] == {
-        "vendor": "ares",
-        "language": "en-US,pt-BR",
+        "vendor": "deepgram",
+        "language": "en-US",
         "credential_mode": "managed",
     }
     assert props["tts"] == {

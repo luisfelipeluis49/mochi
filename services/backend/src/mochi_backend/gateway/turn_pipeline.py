@@ -152,8 +152,8 @@ class TurnPipeline:
             await self._hub.publish(kind, stored)
 
     async def _reply(self, speak: Speak | None) -> str:
-        if speak is None:
-            return ""
+        if speak is None or self._store.agent_on_device:
+            return ""  # nothing to say, or the device's own agent is the one answering
         await self._hub.publish(EventType.AGENT_SPEAK_REQUESTED, speak)
         self._silence.begin_speaking(speak.text)
         return speak.text

@@ -49,7 +49,7 @@ when run from source.
 1. In the Agora Console create a project with an App Certificate; create RESTful API keys.
 2. Copy `.env.example` to `.env`; set `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`, `AGORA_REST_KEY`,
    `AGORA_REST_SECRET`, `MOCHI_TURN_KEY` (any long random string), and `MOCHI_AGORA_MODE=real`.
-3. Speech vendors: `.env.example` already holds a working, key-free pair (Agora-managed deepgram ASR + minimax TTS). Otherwise set `MOCHI_ASR_VENDOR`, `MOCHI_ASR_PARAMS`, `MOCHI_TTS_VENDOR`,
+3. Speech vendors: `.env.example` already holds a working, key-free pair (Agora's ARES ASR for English and Portuguese + Agora-managed minimax TTS). Otherwise set `MOCHI_ASR_VENDOR`, `MOCHI_ASR_PARAMS`, `MOCHI_TTS_VENDOR`,
    `MOCHI_TTS_PARAMS` (JSON objects; see `services/backend/src/mochi_backend/gateway/agora/VERIFIED.md`).
 4. Give the backend a public HTTPS address: `scripts/tunnel.sh` (cloudflared or ngrok) or Render, and set
    `MOCHI_PUBLIC_URL` to it.
@@ -70,7 +70,7 @@ when run from source.
 | `MODEL_API_KEY` | - | language-model key (optional) |
 | `MOCHI_MODEL_BASE_URL`, `MOCHI_MODEL_NAME` | OpenAI, `gpt-4o-mini` | OpenAI-compatible model |
 | `MOCHI_CHANNEL`, `MOCHI_PI_UID`, `MOCHI_AGENT_UID`, `MOCHI_TOKEN_TTL_SECONDS` | `mochi-demo`, 1001, 1002, 3600 | RTC channel, uids, token life |
-| `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | ares, `en-US`, empty, `{}` | speech-to-text (`.env.example` uses Agora-managed deepgram) |
+| `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_KEYWORDS`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | ares, `en-US,pt-PT`, `["Mochi"]`, empty, `{}` | speech-to-text. ARES takes no credential mode; Deepgram settings are a comment in `.env.example` (DECISIONS D-22) |
 | `MOCHI_TTS_VENDOR`, `MOCHI_TTS_CREDENTIAL_MODE`, `MOCHI_TTS_PARAMS` | minimax, empty, `{}` | text-to-speech (`.env.example` uses Agora-managed minimax) |
 | `MOCHI_END_OF_SPEECH_SILENCE_MS` | 900 | pause that ends a turn (VAD) |
 | `MOCHI_AGENT_IDLE_TIMEOUT_SECONDS` | 60 | Agora `idle_timeout`: the agent exits this long after the Pi leaves (0 = never; hard cap 72 h) |

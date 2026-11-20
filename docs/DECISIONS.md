@@ -179,3 +179,27 @@ Not changed, with the reason:
   (`docs/REAL_TURN_RUNBOOK.md`, section 4).
 - **New dependency:** `scripts/test-client/index.html` loads the Agora Web SDK from a CDN. Development only.
 
+## D-22: a device may run the agent itself; ears are ARES (hardware branch, 2026-11-20)
+
+**Contract proposals (AGENTS 6.4), added by the hardware owner; additive, nothing existing changes shape:**
+- `POST /api/sessions/demo/start` takes an optional body `{"agent": "device"}`. The backend then starts no Agora
+  agent: the device runs its own (Mochi's character: personality, face, volume, voices; see
+  `hardware/pi-bridge/README.md`). Without the body, or with `{"agent": "backend"}`, everything is as before.
+- `POST /api/devices/home_pi_01/turns {"text"}`: the device reports each finished sentence its agent transcribed.
+  Same pipeline as a turn from Agora (`decide()`, learning events, hints to the right screens). It answers
+  `{"decision": Decision}`.
+- In such a session the backend says nothing itself: no reply text, no `agent.speak.requested`, and
+  `speaker_muted` is always false (`SessionStore.agent_on_device`). The device's agent answers every sentence,
+  so "quiet by default" (AGENTS 1) does not hold there; it still holds for the backend's own agent.
+- **Not done:** what the device's agent says is not published to the other screens, and the game's host lines
+  (`ActivityService`) are not spoken in a device-run session (there is no backend agent to say them).
+
+**Ears: ARES instead of Deepgram.** Defaults, `.env.example` and `render.yaml` now use `ares` with
+`en-US,pt-PT` and the keyword `Mochi`. D-18's "managed `ares` is not available on our SKU" was the
+`credential_mode`, not the project: on a second Agora project the same request failed with that exact message
+when `credential_mode` was `managed` and returned 200 without it (`VERIFIED.md`). Several languages are sent as
+`turn_detection.language` and `asr.language` is then omitted, which is the request Agora's own SDK builds.
+`MOCHI_ASR_KEYWORDS` is new. On mixed English and Portuguese ARES made far fewer mistakes than Deepgram
+`nova-3` `multi` in the hardware owner's tests. **Not verified:** that ARES is accepted on the Render project
+(expected, same request); Deepgram settings are kept as a comment in `.env.example`.
+

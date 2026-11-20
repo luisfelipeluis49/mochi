@@ -42,6 +42,8 @@ class SessionStore:
         self.mode = SessionMode.TOGETHER
         self.capturing = False
         self.agent_id: str | None = None
+        # True while the device runs the agent itself: we started none, and it does the talking.
+        self.agent_on_device = False
         self.pi_token: str | None = None
         self.pi_token_expires_at: datetime | None = None
         self.activity: Activity = idle_activity()

@@ -40,14 +40,17 @@ services:
       - key: MOCHI_CHANNEL
         value: mochi-demo
       # Agora-managed speech vendors: no vendor keys needed (tested against real Agora, see VERIFIED.md)
+      # Ears: ARES (Agora's own), English and Portuguese at once; no credential mode (see .env.example)
       - key: MOCHI_ASR_VENDOR
-        value: deepgram
+        value: ares
       - key: MOCHI_ASR_LANGUAGE
-        value: en-US
+        value: en-US,pt-PT
+      - key: MOCHI_ASR_KEYWORDS
+        value: '["Mochi"]'
       - key: MOCHI_ASR_CREDENTIAL_MODE
-        value: managed
+        value: ""
       - key: MOCHI_ASR_PARAMS
-        value: '{"url":"wss://api.deepgram.com/v1/listen","model":"nova-3","language":"multi"}'
+        value: "{}"
       - key: MOCHI_TTS_VENDOR
         value: minimax
       - key: MOCHI_TTS_CREDENTIAL_MODE

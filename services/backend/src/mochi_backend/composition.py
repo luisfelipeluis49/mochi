@@ -79,6 +79,20 @@ def default_adapters(settings: Settings) -> Adapters:
     return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
 
 
+def _speech_tuning(settings: Settings) -> SpeechTuning:
+    return SpeechTuning(
+        asr_vendor=settings.mochi_asr_vendor,
+        asr_language=settings.mochi_asr_language,
+        asr_keywords=tuple(settings.mochi_asr_keywords),
+        asr_params=settings.mochi_asr_params,
+        asr_credential_mode=settings.mochi_asr_credential_mode,
+        tts_vendor=settings.mochi_tts_vendor,
+        tts_params=settings.mochi_tts_params,
+        tts_credential_mode=settings.mochi_tts_credential_mode,
+        end_of_speech_silence_ms=settings.mochi_end_of_speech_silence_ms,
+    )
+
+
 def _session_config(settings: Settings) -> SessionConfig:
     return SessionConfig(
         app_id=settings.agora_app_id,
@@ -89,16 +103,7 @@ def _session_config(settings: Settings) -> SessionConfig:
         llm_url=settings.mochi_public_url.rstrip("/") + LLM_PATH,
         llm_key=settings.mochi_turn_key,
         idle_timeout_seconds=settings.mochi_agent_idle_timeout_seconds,
-        tuning=SpeechTuning(
-            asr_vendor=settings.mochi_asr_vendor,
-            asr_language=settings.mochi_asr_language,
-            asr_params=settings.mochi_asr_params,
-            asr_credential_mode=settings.mochi_asr_credential_mode,
-            tts_vendor=settings.mochi_tts_vendor,
-            tts_params=settings.mochi_tts_params,
-            tts_credential_mode=settings.mochi_tts_credential_mode,
-            end_of_speech_silence_ms=settings.mochi_end_of_speech_silence_ms,
-        ),
+        tuning=_speech_tuning(settings),
     )
 
 
