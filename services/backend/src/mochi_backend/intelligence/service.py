@@ -74,9 +74,10 @@ class Intelligence:
         """
         self._talk.use(character)
 
-    def called(self) -> None:
-        """Someone called Mochi on the device (its wake phrase): the next sentence is for it."""
-        self._talk.called()
+    def session_started(self, woken: bool) -> None:
+        """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
+        to it, so the next sentence is for it. Otherwise Mochi waits for its name."""
+        self._talk.begin(woken)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None

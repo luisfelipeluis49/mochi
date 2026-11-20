@@ -44,6 +44,14 @@ def last_user_text(messages: list[ChatMessage]) -> str:
     return ""
 
 
+def last_user_position(messages: list[ChatMessage]) -> int:
+    """Index of the last `user` message, -1 when there is none. Example: [system, user] -> 1."""
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].role == "user":
+            return index
+    return -1
+
+
 def _text_of(content: str | list[ContentPart] | None) -> str:
     if content is None:
         return ""
@@ -71,7 +79,9 @@ async def chat_completions(
     expected = container.settings.mochi_turn_key.encode()
     if not hmac.compare_digest(presented_key(x_mochi_key, authorization).encode(), expected):
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
-    outcome = await container.pipeline.handle_heard(last_user_text(body.messages))
+    outcome = await container.pipeline.handle_heard(
+        last_user_text(body.messages), last_user_position(body.messages)
+    )
     created = int(container.core.clock.now().timestamp())
     if not body.stream:
         return JSONResponse(completion_json(outcome.reply, created))

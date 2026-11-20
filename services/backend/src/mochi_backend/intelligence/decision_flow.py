@@ -10,7 +10,11 @@ from mochi_backend.intelligence.hint_builder import (
     already_saved,
     match_from_entry,
 )
-from mochi_backend.intelligence.language_guess import has_foreign_word, is_mostly
+from mochi_backend.intelligence.language_guess import (
+    has_foreign_word,
+    is_mostly,
+    spoken_language,
+)
 from mochi_backend.intelligence.learning_rules import assisted_updates
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.mochi_talk import MochiTalk
@@ -43,12 +47,6 @@ _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode d
 def ignore() -> Decision:
     """The silent decision."""
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
-
-
-def _saying(decision: Decision, line: str, context: SessionContext) -> Decision:
-    """The same decision, with Mochi saying `line` aloud."""
-    speak = Speak(text=line, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
-    return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
 
 
 @dataclass(frozen=True)
@@ -94,20 +92,44 @@ class DecisionFlow:
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
         quiet = quiet_reason(turn.text, context, self._lexicon, self._ttl)
-        match = None if quiet else await self._find_match(turn.text, context)
+        match, line = await self._match_and_line(turn, context, bool(quiet))
         shown = self._show(match, context) if match else ignore()
-        line = await self._follow_up(turn, context, match)
-        return _saying(shown, line, context) if line else shown
+        return self._saying(shown, line, turn) if line else shown
 
-    async def _find_match(self, text: str, context: SessionContext) -> CaseMatch | None:
+    async def _match_and_line(
+        self, turn: Turn, context: SessionContext, quiet: bool
+    ) -> tuple[CaseMatch | None, str | None]:
+        """The word the rules find in the sentence, and Mochi's line if it may be for Mochi.
+
+        When finding the word needs the hint model, both models are asked at the same time: a
+        person waiting for Mochi's answer should not wait for two calls one after the other.
+        """
+        if quiet:
+            return None, await self._follow_up(turn, context, None)
+        found = self._by_rules(turn.text, context)
+        if not self._needs_model(found, turn.text, context):
+            return found, await self._follow_up(turn, context, found)
+        return await asyncio.gather(
+            self._by_model(found, turn.text, context), self._follow_up(turn, context, None)
+        )
+
+    def _by_rules(self, text: str, context: SessionContext) -> CaseMatch | None:
         history = [t.text for t in context.recent_turns]
-        found = detect_clear(text, context, self._lexicon) or detect_subtle(
+        return detect_clear(text, context, self._lexicon) or detect_subtle(
             text, history, context, self._lexicon
         )
-        if found is not None and found.reason is Reason.LOOK_ALIKE:
+
+    def _needs_model(self, found: CaseMatch | None, text: str, context: SessionContext) -> bool:
+        if found is not None:
+            return found.reason is Reason.LOOK_ALIKE  # a false friend is only a candidate
+        return self._worth_asking_model(text, context)
+
+    async def _by_model(
+        self, found: CaseMatch | None, text: str, context: SessionContext
+    ) -> CaseMatch | None:
+        history = [t.text for t in context.recent_turns]
+        if found is not None:
             return await self._confirmed_by_model(found, text, history, context)
-        if found or not self._worth_asking_model(text, context):
-            return found
         return await self._ask_model(text, history, context)
 
     async def _confirmed_by_model(
@@ -169,30 +191,46 @@ class DecisionFlow:
         maybe_for_mochi = self._talk.listening() or says_mochi(turn.text)
         if context.activity is not None or not maybe_for_mochi:
             return None  # during a round only the wake phrase makes Mochi speak
-        word, meaning = (match.expression, match.meaning) if match else (None, None)
-        return await self._talk.reply(turn.text, named=False, word=word, meaning=meaning)
+        return await self._line(turn, match, named=False)
 
-    async def _word_asked(self, rest: str, context: SessionContext) -> CaseMatch | None:
-        entry = mochi_entry(rest, context, self._lexicon)
-        match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
-        if match is None and asks_for_word(rest):
-            match = await self._ask_model(rest, [], context)
-        return match
+    def _language_of(self, text: str) -> Language:
+        """The language the sentence is in; unclear ones follow the last sentence Mochi answered."""
+        return spoken_language(text, self._lexicon, self._talk.language)
+
+    async def _line(self, turn: Turn, match: CaseMatch | None, *, named: bool) -> str | None:
+        word, meaning = (match.expression, match.meaning) if match else (None, None)
+        return await self._talk.reply(
+            turn.text,
+            named=named,
+            language=self._language_of(turn.text),
+            word=word,
+            meaning=meaning,
+        )
 
     async def _answer_mochi(self, turn: Turn, context: SessionContext) -> Decision:
         rest = without_wake_phrase(turn.text)
         if not normalized(rest):
             self._talk.called()  # just "Oi Mochi": nothing was asked yet, the next sentence is
-        match = await self._word_asked(rest, context)
+        entry = mochi_entry(rest, context, self._lexicon)
+        match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
+        if match is None and asks_for_word(rest):  # a word outside the lexicon: ask both at once
+            match, line = await asyncio.gather(
+                self._ask_model(rest, [], context), self._line(turn, None, named=True)
+            )
+        else:
+            line = await self._line(turn, match, named=True)
         if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
-            line = await self._talk.reply(turn.text, named=True)
-            return _saying(ignore(), line, context) if line else ignore()
+            return self._saying(ignore(), line, turn) if line else ignore()
         shown = self._show(
             CaseMatch(Reason.ASKS_MOCHI, match.expression, match.meaning, match.example), context
-        )
-        line = await self._talk.reply(
-            turn.text, named=True, word=match.expression, meaning=match.meaning
         )
         text = line or _ANSWER_LINES[context.focus].format(w=match.expression)
         speak = Speak(text=text, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
         return shown.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
+
+    def _saying(self, decision: Decision, line: str, turn: Turn) -> Decision:
+        """The same decision, with Mochi saying `line` aloud in the language of the sentence."""
+        speak = Speak(
+            text=line, language=self._language_of(turn.text), reason=SpeakReason.ASKS_MOCHI
+        )
+        return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})

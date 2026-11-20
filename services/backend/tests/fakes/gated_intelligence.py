@@ -43,9 +43,9 @@ class GatedIntelligence:
         """Delegate."""
         self._inner.reset()
 
-    def called(self) -> None:
+    def session_started(self, woken: bool) -> None:
         """Delegate."""
-        self._inner.called()
+        self._inner.session_started(woken)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None

@@ -35,8 +35,8 @@ class IntelligencePort(Protocol):
         """Clear saved words and any game."""
         ...
 
-    def called(self) -> None:
-        """Mochi was called on the device (its wake phrase): the next sentence is for it."""
+    def session_started(self, woken: bool) -> None:
+        """A session begins. `woken`: Mochi was called on the device; it listens for an answer."""
         ...
 
     def device_status(

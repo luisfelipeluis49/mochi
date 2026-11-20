@@ -6,6 +6,7 @@ import pytest
 
 from mochi_backend.intelligence.character_port import CharacterRequest, DeviceStatus, Exchange
 from mochi_backend.intelligence.mochi_talk import spoken_line
+from mochi_backend.intelligence.model_port import ModelSuggestion
 from mochi_backend.intelligence.openai_character_model import (
     OpenAiCharacterModel,
     messages_for,
@@ -15,7 +16,7 @@ from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.http_client import HttpResponse, HttpTransportError
 from mochi_backend.platform.ids import SequentialIdGenerator
-from mochi_contracts import DecisionKind
+from mochi_contracts import DecisionKind, Language, Reason
 from tests.factories import active_round, make_context, make_turn
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
@@ -134,7 +135,7 @@ async def test_just_its_name_gets_a_short_answer_and_opens_the_conversation() ->
 
 async def test_the_wake_phrase_on_the_device_opens_the_conversation() -> None:
     woken = _brain(FakeCharacterModel("[mood happy] Oi!"))
-    woken.called()
+    woken.session_started(woken=True)
     assert (await woken.decide(make_turn("Tudo bem?"), make_context())).speak is not None
 
 
@@ -154,7 +155,7 @@ async def test_its_name_without_a_greeting_lets_mochi_judge_whether_it_was_calle
 async def test_during_a_round_mochi_only_answers_to_its_name() -> None:
     mochi = FakeCharacterModel("[mood happy] Hello!")
     brain = _brain(mochi)
-    brain.called()
+    brain.session_started(woken=True)
     playing = make_context(activity=active_round())
     decision = await brain.decide(make_turn("It is something you open."), playing)
     assert decision.speak is None and mochi.requests == []
@@ -200,9 +201,56 @@ def test_the_chat_carries_the_talk_so_far_and_notes_for_this_sentence() -> None:
     )
     messages = messages_for(request, "PROMPT")
     roles = [m["role"] for m in messages if isinstance(m, dict)]
-    assert roles == ["system", "user", "assistant", "system", "system", "user"]
+    assert roles == ["system", "user", "assistant", "system", "system", "system", "user"]
     assert "umbrella" in json.dumps(messages[3]) and "[quiet]" in json.dumps(messages[4])
+    assert "so your reply is in English" in json.dumps(messages[5])
     assert messages[-1] == {"role": "user", "content": "Umbrella?"}
+
+
+def test_the_reply_language_and_how_likely_the_sentence_is_for_mochi_are_spelled_out() -> None:
+    overheard = CharacterRequest(
+        text="Tudo bem?", history=[], status=DeviceStatus(), named=False, language=Language.PT_BR
+    )
+    notes = json.dumps(messages_for(overheard, "PROMPT"), ensure_ascii=False)
+    assert (
+        "so your reply is in Brazilian Portuguese" in notes
+        and "meant for the other person" in notes
+    )
+    woken = overheard.model_copy(update={"woken": True})
+    assert "most likely for you" in json.dumps(messages_for(woken, "PROMPT"))
+    named = CharacterRequest(text="Oi Mochi!", history=[], status=DeviceStatus())
+    assert "[quiet]" not in json.dumps(messages_for(named, "PROMPT"))
+
+
+async def test_mochi_is_told_the_language_of_each_sentence_and_whether_it_was_woken() -> None:
+    mochi = FakeCharacterModel("[mood happy] ok")
+    brain = _brain(mochi)
+    brain.session_started(woken=True)
+    await brain.decide(make_turn("How is your temperature?"), make_context())
+    await brain.decide(make_turn("Você está quente?"), make_context())
+    await brain.decide(make_turn("Coca-Cola?"), make_context())  # unclear: follows the last one
+    assert [r.language for r in mochi.requests] == [Language.EN, Language.PT_BR, Language.PT_BR]
+    assert all(r.woken for r in mochi.requests)
+    brain.session_started(woken=False)  # the operator started this one: two people talking
+    await brain.decide(make_turn("Hi Mochi, are you there?"), make_context())
+    assert mochi.requests[-1].woken is False and mochi.requests[-1].history == []
+
+
+async def test_when_the_hint_model_is_needed_mochi_does_not_wait_for_it() -> None:
+    """Both models are asked at once: the word then reaches the screens but not Mochi's line."""
+    hints = FakeHintModel(
+        ModelSuggestion(decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="cancel")
+    )
+    mochi = FakeCharacterModel("[mood happy] ok")
+    tuning = IntelligenceSettings(character_timeout_seconds=6.0, follow_up_seconds=15.0)
+    brain = Intelligence(
+        clock=FakeClock(), ids=SequentialIdGenerator(), model=hints, settings=tuning
+    )
+    brain.speak_as(mochi)
+    brain.session_started(woken=True)
+    decision = await brain.decide(make_turn("How do you say cancelar?"), make_context())
+    assert decision.decision is DecisionKind.SPEAK and decision.hint is not None
+    assert decision.hint.expression == "cancel" and mochi.requests[0].word is None
 
 
 REQUEST = CharacterRequest(text="Hi Mochi!", history=[], status=DeviceStatus())

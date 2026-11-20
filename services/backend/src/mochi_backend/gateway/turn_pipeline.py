@@ -83,18 +83,15 @@ class TurnPipeline:
         async with self._lock:
             return await self._handle(text.strip())
 
-    async def handle_heard(self, heard: str) -> TurnOutcome:
-        """A turn as Agora sends it: everything said since Mochi last spoke.
+    async def handle_heard(self, heard: str, position: int) -> TurnOutcome:
+        """A turn as Agora sends it: everything said since Mochi last finished speaking.
 
-        Only the part not handled before is run through the chain. Example: "A." got silence, then
-        Agora sends "A.  B.": only "B." is a new turn.
+        `position` is the index of that user message in the request. Only the part not handled
+        before is run through the chain. Example: "A." got silence, then Agora sends "A.  B." at
+        the same position: only "B." is a new turn.
         """
         async with self._lock:
-            said = heard.strip()
-            outcome = await self._handle(self._store.new_speech(said))
-            # After a spoken reply Agora starts a fresh message; after silence it keeps appending.
-            self._store.unanswered = "" if outcome.reply else said
-            return outcome
+            return await self._handle(self._store.new_speech(heard.strip(), position))
 
     async def _handle(self, text: str) -> TurnOutcome:
         if not text or not self._store.capturing:
@@ -171,6 +168,8 @@ class TurnPipeline:
         self._tell_device(decision, written)
         if decision.speak is None or not text:
             return ""
+        does = " ".join(f"[{kind} {value}]".replace(" ]", "]") for kind, value in written)
+        self._logger.log("reply", {"text": text, "commands": does})
         speak: Speak = decision.speak.model_copy(update={"text": text})
         await self._hub.publish(EventType.AGENT_SPEAK_REQUESTED, speak)
         self._silence.begin_speaking(text)

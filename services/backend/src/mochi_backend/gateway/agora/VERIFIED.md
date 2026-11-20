@@ -134,3 +134,14 @@ the microphone, the agent's voice watched by its loudness:
   person stopped talking. That includes `MOCHI_END_OF_SPEECH_SILENCE_MS` (900) and the reply is not streamed.
 - Not judged by a person: how the voice sounds, and whether the device hears its own voice as a new turn.
 
+## First conversation with a person at the microphone (2026-11-20)
+
+- **A reply the person talks over is not committed by Agora:** Mochi answered `Like,.`, the person kept
+  talking, and the next request carried `Like,.  It's a hot day today, man.` in the same user message. So the
+  earlier text is stripped whenever the message at the same position grows, not only after silence
+  (`SessionStore.new_speech`).
+- Learning a voice, the volume command and the temperature command worked from speech through to the device.
+- The first sound came 3.0 to 3.5 s after the person stopped (before: 3.4 to 4.1 s) with
+  `MOCHI_END_OF_SPEECH_SILENCE_MS=600` and the model connection kept open; the model call itself is 0.9 to 1.3 s.
+- What Mochi says is now in the log (`reply`: text and the commands it wrote).
+

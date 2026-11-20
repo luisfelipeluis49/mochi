@@ -49,7 +49,7 @@ class SessionStore:
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
         self.commands: list[DeviceCommand] = []  # for the device, newest last (this session's)
-        self.unanswered = ""  # what Agora last sent and got silence for (see `new_speech`)
+        self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
 
     def invalidate(self) -> None:
@@ -64,15 +64,18 @@ class SessionStore:
         """Hand the device more to do; it reads them from its state. Only the last few are kept."""
         self.commands = [*self.commands, *commands][-QUEUE_LIMIT:]
 
-    def new_speech(self, heard: str) -> str:
-        """The part of `heard` that has not been handled yet.
+    def new_speech(self, heard: str, position: int) -> str:
+        """The part of `heard` that has not been handled yet; remembers `heard` for next time.
 
-        Agora sends everything said since Mochi last spoke as ONE user message: after a silent
-        reply, the next request repeats the earlier sentences and appends the new one (seen in a
-        live session, VERIFIED.md). Example: after "A." got silence, `new_speech("A.  B.")` is "B.".
+        Agora sends everything said since Mochi last finished speaking as ONE user message: after
+        a silent reply, or a reply the person talked over, the next request repeats the earlier
+        sentences and appends the new one (seen in live sessions, VERIFIED.md). `position` is the
+        index of that message in the request. Example: after "A." at position 1,
+        `new_speech("A.  B.", 1)` is "B.".
         """
-        earlier = self.unanswered
-        if earlier and heard.startswith(earlier):
+        earlier_position, earlier = self.last_heard
+        self.last_heard = (position, heard)
+        if earlier and position == earlier_position and heard.startswith(earlier):
             return heard[len(earlier) :].strip()
         return heard
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.character_port import CharacterRequest, DeviceStatus
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
+from mochi_contracts import Language
 
 CHARACTER_FILE = Path(__file__).parent / "character.md"
 MIN_VOLUME = (
@@ -15,9 +16,32 @@ WORD_NOTE = (
     "The word or expression they are looking for is: {word} (it means: {meaning}). "
     "Teach exactly this one, and show it."
 )
-UNNAMED_NOTE = (
-    "Nobody clearly called you with this sentence. If it is meant for the other person, or they "
-    "are only talking about you, reply with exactly [quiet]."
+# No example words in these notes: the model repeats an example given this close to the sentence.
+LANGUAGE_NOTES = {
+    Language.EN: (
+        "The next sentence is in English, so your reply is in English. Do not put Portuguese "
+        "words inside an English sentence. Only if you are teaching a Portuguese word or phrase "
+        "right now, give it one short sentence of its own that is entirely in Portuguese; "
+        "otherwise use no Portuguese at all."
+    ),
+    Language.PT_BR: (
+        "The next sentence is in Brazilian Portuguese, so your reply is in Brazilian Portuguese. "
+        "Do not put English words inside a Portuguese sentence. Only if you are teaching an "
+        "English word or phrase right now, give it one short sentence of its own that is "
+        "entirely in English; otherwise use no English at all."
+    ),
+}
+# Two people talking to each other: Mochi stays out unless the sentence is clearly for it.
+OVERHEARD_NOTE = (
+    "Nobody clearly called you with the next sentence. If it is meant for the other person, or "
+    "they are only talking about you, or it is a filler or an unfinished start, reply with "
+    "exactly [quiet]."
+)
+# The person woke Mochi to talk to it: what they say next is for Mochi unless it clearly is not.
+IN_TALK_NOTE = (
+    "Nobody said your name in the next sentence, but this person called you to talk with you, so "
+    "it is most likely for you: answer it. Reply with exactly [quiet] only when it is clearly "
+    "said to another person, or it is just a filler or an unfinished start."
 )
 
 
@@ -67,7 +91,9 @@ def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:
         note = WORD_NOTE.format(word=request.word, meaning=request.meaning or "unknown")
         messages.append({"role": "system", "content": note})
     if not request.named:
-        messages.append({"role": "system", "content": UNNAMED_NOTE})
+        note = IN_TALK_NOTE if request.woken else OVERHEARD_NOTE
+        messages.append({"role": "system", "content": note})
+    messages.append({"role": "system", "content": LANGUAGE_NOTES[request.language]})
     messages.append({"role": "user", "content": request.text})
     return messages
 

@@ -79,10 +79,8 @@ class SessionService:
         next sentence is meant for it.
         """
         async with self._start_lock:
-            if woken_by:
-                self._intelligence.called()
             if self._store.capturing:
-                return self._store.session_state()
+                return self._already_running(bool(woken_by))
             generation = self._store.generation
             agent_id = await self._start_agent(greeting_for(woken_by, self._config))
             if generation != self._store.generation:
@@ -90,7 +88,13 @@ class SessionService:
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
             self._begin(agent_id)
+            self._intelligence.session_started(bool(woken_by))
             return await self._publish_state()
+
+    def _already_running(self, woken: bool) -> SessionState:
+        if woken:  # called on the device while a session runs: Mochi listens to that person now
+            self._intelligence.session_started(woken)
+        return self._store.session_state()
 
     async def stop(self) -> SessionState:
         """Stop capturing at once, then the agent. Idempotent; a gone agent is fine."""
@@ -116,11 +120,11 @@ class SessionService:
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
         self._store.mode, self._store.commands = SessionMode.TOGETHER, []
-        self._store.unanswered = ""
+        self._store.last_heard = (-1, "")
 
     def _end_locally(self) -> None:
         self._store.agent_id, self._store.pi_token = None, None
-        self._store.commands, self._store.unanswered = [], ""
+        self._store.commands, self._store.last_heard = [], (-1, "")
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
         self._store.end_game()  # an unfinished round must not keep the next session deaf
         self._hub.forget_secrets()

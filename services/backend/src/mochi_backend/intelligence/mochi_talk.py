@@ -16,6 +16,7 @@ from mochi_backend.intelligence.character_port import (
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.clock import Clock
+from mochi_contracts import Language
 
 QUIET = "[quiet]"
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
@@ -42,11 +43,20 @@ class MochiTalk:
         self._follow_up = timedelta(seconds=settings.follow_up_seconds)
         self._history: list[Exchange] = []
         self._until: datetime | None = None
+        self._woken = False
+        self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
     def use(self, model: CharacterModel) -> None:
         """Swap the model that writes the lines."""
         self._model = model
+
+    def begin(self, woken: bool) -> None:
+        """A session starts. `woken`: someone called Mochi on the device to talk to it, so the
+        next sentence is for it; otherwise two people talk and Mochi waits for its name."""
+        self._history, self._until, self._woken = [], None, woken
+        if woken:
+            self.called()
 
     def called(self) -> None:
         """Someone called Mochi without asking anything yet: the next sentence is for it."""
@@ -58,12 +68,21 @@ class MochiTalk:
 
     def reset(self) -> None:
         """Forget the conversation (demo reset)."""
-        self._history, self._until = [], None
+        self._history, self._until, self._woken = [], None, False
 
     async def reply(
-        self, text: str, *, named: bool, word: str | None = None, meaning: str | None = None
+        self,
+        text: str,
+        *,
+        named: bool,
+        language: Language,
+        word: str | None = None,
+        meaning: str | None = None,
     ) -> str | None:
-        """Mochi's line for `text`, or None (no model, too slow, or it chose to stay quiet)."""
+        """Mochi's line for `text`, or None (no model, too slow, or it chose to stay quiet).
+
+        `language` is the one the sentence is in; the reply is asked for in the same.
+        """
         request = CharacterRequest(
             text=text,
             history=self._recent(),
@@ -71,6 +90,8 @@ class MochiTalk:
             word=word,
             meaning=meaning,
             named=named,
+            language=language,
+            woken=self._woken,
         )
         try:
             answer = await asyncio.wait_for(self._model.reply(request), self._timeout)
@@ -78,6 +99,7 @@ class MochiTalk:
             return None
         line = spoken_line(answer)
         if line is not None:
+            self.language = language
             self._remember(text, line)
         return line
 

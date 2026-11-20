@@ -4,6 +4,8 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
+from mochi_contracts import Language
+
 
 class Exchange(BaseModel):
     """One line of the recent talk between a person and Mochi."""
@@ -30,6 +32,8 @@ class CharacterRequest(BaseModel):
     word: str | None = None  # the expression the rules found: the reply must teach exactly this
     meaning: str | None = None
     named: bool = True  # False: nobody clearly called Mochi; it may answer [quiet]
+    language: Language = Language.EN  # the language the sentence is in: the reply's language
+    woken: bool = False  # the person woke Mochi to talk to it (not a talk between two people)
 
 
 class CharacterModel(Protocol):

@@ -182,6 +182,24 @@ def test_after_mochi_spoke_the_next_message_is_taken_whole() -> None:
     assert _turn_texts(harness) == [ask, "Thank you."]
 
 
+def test_a_reply_the_person_talked_over_does_not_make_the_old_part_a_turn_again() -> None:
+    """Seen live: Mochi answered "Like,." and the person kept talking; Agora sent both again."""
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    ask = "Oi Mochi, what's the word for fila?"
+    client.post(URL, json=_turn(ask), headers=KEY)
+    client.post(URL, json=_turn(f"{ask}  I mean the line of people."), headers=KEY)
+    assert _turn_texts(harness) == [ask, "I mean the line of people."]
+
+
+def test_what_mochi_said_is_in_the_log() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Oi Mochi, what's the word for fila?"), headers=KEY)
+    replies = [fields for name, fields in harness.logger.lines if name == "reply"]
+    assert replies == [{"text": "You can say: queue.", "commands": ""}]
+
+
 def test_a_new_session_does_not_remember_the_last_ones_unanswered_sentences() -> None:
     client, harness = _client()
     client.post("/api/sessions/demo/start")

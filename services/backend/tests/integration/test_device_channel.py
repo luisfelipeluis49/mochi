@@ -118,6 +118,7 @@ def test_woken_by_its_wake_phrase_mochi_greets_in_that_language_and_listens() ->
     assert harness.agora.started[0].greeting == "Oi! Pode falar."
     reply = client.post("/dev/sessions/demo/turn", json={"text": "Tudo bem com você?"}).json()
     assert reply["reply"] == "Tudo ótimo!" and mochi.requests[0].named is False
+    assert mochi.requests[0].woken is True and mochi.requests[0].language.value == "pt-BR"
     client.post("/api/sessions/demo/stop")
     client.post("/api/sessions/demo/start", json={"woken_by": "hey mochi"})
     assert harness.agora.started[1].greeting == "Hi! I'm listening."

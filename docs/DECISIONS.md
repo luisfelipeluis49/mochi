@@ -228,3 +228,23 @@ voice as a new turn; the first sound comes 3.3 to 4.2 s after the person stops (
 who is speaking is only told to the model, not used for "whose word is it" (AGENTS 7.3, a `Turn` has no speaker).
 The prompt exists twice (here and in `hardware/pi-bridge/config/mochi.toml` for the Pi's stand-in mode).
 
+## D-24: what the first spoken conversation changed in Mochi's character (2026-11-20)
+
+One person talked with Mochi for five minutes. Three things were wrong and came from the prompt, not the code:
+it sent the person to "Ana" and "Ben" who were not there, it answered English questions in Portuguese (copying a
+Portuguese example), and it put Portuguese words inside English sentences, which the voice reads with an
+English accent.
+- The prompt no longer names anyone or assumes a second person, and its examples give the turn back to the
+  speaker. Names come only from what was said or from a recognised voice.
+- The backend tells the model the language of each sentence (`language_guess.spoken_language`; unclear ones
+  follow the last sentence answered) and asks for the reply in that language, with a taught word as a sentence
+  of its own. An example word in that note gets repeated by the model, so the note has none.
+- `IntelligencePort.called()` became `session_started(woken)`: in a session the device was woken for, a sentence
+  without Mochi's name is most likely still for it; in one the operator started, Mochi leans to `[quiet]`.
+  Fillers and unfinished starts get `[quiet]` in both.
+- Speed: the hint model and Mochi's reply are asked at the same time when both are needed, and
+  `HttpxClient` keeps its connection open between sentences.
+The same prompt changes went into the Pi's stand-in (`hardware/pi-bridge/config/mochi.toml`).
+**Still imperfect** (seen in replays with the real model): an occasional word of the other language inside a
+sentence, and the hint model inventing hints in a talk with Mochi ("hamburger", reason `asks_partner`).
+
