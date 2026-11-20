@@ -21,6 +21,7 @@ class FakeAgoraClient:
         self.speak_error: AgoraError | None = None
         self.start_gate: asyncio.Event | None = None  # when set, start_agent waits for it
         self.stop_gate: asyncio.Event | None = None  # when set, stop_agent waits for it
+        self.speak_gate: asyncio.Event | None = None  # when set, speak waits for it
         self.start_entered = asyncio.Event()
         self.stop_entered = asyncio.Event()
 
@@ -46,6 +47,8 @@ class FakeAgoraClient:
 
     async def speak(self, agent_id: str, text: str) -> None:
         """Record the spoken line (or raise the scripted error)."""
+        if self.speak_gate is not None:
+            await self.speak_gate.wait()
         if self.speak_error is not None:
             raise self.speak_error
         self.spoken.append((agent_id, text))

@@ -1,6 +1,7 @@
 """The hub: the only publisher. It sets every envelope field and routes per connection."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -41,6 +42,18 @@ class Connection:
     sender: Sender
 
 
+@dataclass(frozen=True)
+class _Outbound:
+    """One envelope, serialized once, with whether a protected secret appears in its text."""
+
+    envelope: Envelope
+    text: str
+    leaks: bool
+
+
+SnapshotSource = Callable[[], list[tuple[EventType, EventPayload]]]
+
+
 class EventHub:
     """Registry of connections plus the single global sequence counter."""
 
@@ -67,6 +80,11 @@ class EventHub:
         self._connections.append(connection)
         return connection
 
+    @property
+    def connection_count(self) -> int:
+        """How many clients are registered right now."""
+        return len(self._connections)
+
     def unregister(self, connection: Connection) -> None:
         """Remove a client (idempotent)."""
         self._connections = [c for c in self._connections if c is not connection]
@@ -87,29 +105,56 @@ class EventHub:
     async def publish(self, event_type: EventType, payload: EventPayload) -> Envelope:
         """Wrap `payload` in an envelope and send it to every connection entitled to it."""
         async with self._lock:
-            envelope = self._envelope(event_type, self._prepared(event_type, payload))
-            await asyncio.gather(*(self._deliver(c, envelope) for c in list(self._connections)))
-            self._log(envelope)
-            return envelope
+            self._note_secrets(event_type, payload)
+            outbound = self._outbound(event_type, payload)
+            await asyncio.gather(*(self._deliver(c, outbound) for c in list(self._connections)))
+            self._log(outbound.envelope)
+            return outbound.envelope
 
-    async def send_to(
-        self, connection: Connection, event_type: EventType, payload: EventPayload
-    ) -> None:
-        """Send one event to one connection (used for the snapshot on connect)."""
+    async def connect(
+        self, target: ConnectionTarget, sender: Sender, snapshot: SnapshotSource
+    ) -> Connection | None:
+        """Send `snapshot()` to a new client, then start broadcasting to it; None if it is gone.
+
+        All under the publish lock: the snapshot is read after any publish in flight has finished
+        and the client is registered before the next one starts, so it sees each event once and
+        in order. A dead client is dropped at its first failed send, not after three.
+        """
         async with self._lock:
-            envelope = self._envelope(event_type, self._prepared(event_type, payload))
-            await self._deliver(connection, envelope)
+            connection = Connection(target, sender)
+            if not await self._send_snapshot(connection, snapshot()):
+                return None
+            self._connections.append(connection)
+            return connection
 
-    def _prepared(self, event_type: EventType, payload: EventPayload) -> EventPayload:
+    async def _send_snapshot(
+        self, connection: Connection, events: list[tuple[EventType, EventPayload]]
+    ) -> bool:
+        for event_type, payload in events:
+            if not await self._deliver(connection, self._outbound(event_type, payload)):
+                return False
+        return True
+
+    def _note_secrets(self, event_type: EventType, payload: EventPayload) -> None:
+        """Only publishing changes what is protected; a snapshot never does."""
         if isinstance(payload, PrivatePrompt):
             self.protect_secret(payload.secret_word)
+        if (
+            isinstance(payload, Activity)
+            and event_type is EventType.ACTIVITY_STATE_CHANGED
+            and payload.state is not GameState.ACTIVE_ROUND
+        ):
+            self._secrets.clear()  # the round is over: the word may be shown
+
+    def _outbound(self, event_type: EventType, payload: EventPayload) -> _Outbound:
         if isinstance(payload, Activity) and event_type is EventType.ACTIVITY_STATE_CHANGED:
-            return self._public_activity(payload)
-        return payload
+            payload = self._public_activity(payload)
+        envelope = self._envelope(event_type, payload)
+        leaks = self._secrets.leaks(envelope.payload)  # once per event, not once per client
+        return _Outbound(envelope, envelope.model_dump_json(), leaks)
 
     def _public_activity(self, activity: Activity) -> Activity:
         if activity.state is not GameState.ACTIVE_ROUND:
-            self._secrets.clear()  # the round is over: the word may be shown
             return activity
         if activity.revealed_word is None and not self._secrets.leaks(activity):
             return activity
@@ -137,19 +182,22 @@ class EventHub:
             return self._hint_users.get(envelope.payload.hint_id)
         return hint_user_of(envelope.payload)
 
-    async def _deliver(self, connection: Connection, envelope: Envelope) -> None:
+    async def _deliver(self, connection: Connection, outbound: _Outbound) -> bool:
+        """Send if this client is entitled to the event. False only when the client failed."""
+        envelope = outbound.envelope
         hint_user = self._hint_user(envelope)
         if not is_recipient(envelope.type, envelope.payload, connection.target, hint_user):
-            return
-        text = envelope.model_dump_json()
-        if connection.target.kind == "audience" and self._secrets.leaks(envelope.payload):
+            return True
+        if connection.target.kind == "audience" and outbound.leaks:
             self._logger.log("secret_leak_blocked", {"type": envelope.type.value, "error": "leak"})
-            return
+            return True
         try:
-            await asyncio.wait_for(connection.sender.send_text(text), self._send_timeout)
+            await asyncio.wait_for(connection.sender.send_text(outbound.text), self._send_timeout)
         except (ConnectionError, RuntimeError, OSError, TimeoutError) as error:
             self._logger.log("connection_dropped", {"reason": repr(error)})
             self.unregister(connection)
+            return False
+        return True
 
     def _log(self, envelope: Envelope) -> None:
         self._logger.log(

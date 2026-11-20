@@ -1,5 +1,6 @@
 """The collaborators almost every gateway service needs, bundled so constructors stay small."""
 
+import asyncio
 from dataclasses import dataclass
 
 from mochi_backend.gateway.event_hub import EventHub
@@ -24,3 +25,6 @@ class GatewayCore:
     clock: Clock
     ids: IdGenerator
     logger: EventLogger
+    # Held while a turn, Stop, Reset or a round change publishes its results, so none of them
+    # interleaves with another. Not re-entrant: take it only at those entry points.
+    commit: asyncio.Lock

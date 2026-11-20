@@ -26,27 +26,30 @@ class ActivityService:
         self._logger = core.logger
         self._pipeline = pipeline
         self._agora = agora
+        self._commit = core.commit
 
     async def start(self) -> Activity:
         """Start a round: public state to everyone, the secret to the Home view only."""
-        result = self._run(ActivityCommand(type="start", result=None))
-        self._store.mode = SessionMode.ACTIVITY
-        if result.private_prompt is not None:
-            self._hub.protect_secret(result.private_prompt.secret_word)
-        await self._publish_activity(result.activity)
-        if result.private_prompt is not None:
-            await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
-        await self._announce(result.speak)
-        await self._publish_session()
+        async with self._commit:
+            result = self._run(ActivityCommand(type="start", result=None))
+            self._store.mode = SessionMode.ACTIVITY
+            if result.private_prompt is not None:
+                self._hub.protect_secret(result.private_prompt.secret_word)
+            await self._publish_activity(result.activity)
+            if result.private_prompt is not None:
+                await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
+            await self._publish_session()
+        await self._announce(result.speak)  # outside the lock: a slow /speak must not freeze Stop
         return result.activity
 
     async def finish(self, outcome: RoundResult) -> Activity:
         """Record guessed/skipped: reveal the word, update cards, go back to `together`."""
-        result = self._run(ActivityCommand(type="result", result=outcome))
-        self._store.mode = SessionMode.TOGETHER
-        await self._publish_activity(result.activity)
-        await self._pipeline.save_learning_events(result.learning_events)
-        await self._publish_session()
+        async with self._commit:
+            result = self._run(ActivityCommand(type="result", result=outcome))
+            self._store.mode = SessionMode.TOGETHER
+            await self._publish_activity(result.activity)
+            await self._pipeline.save_learning_events(result.learning_events)
+            await self._publish_session()
         return result.activity
 
     def _run(self, command: ActivityCommand) -> ActivityResult:

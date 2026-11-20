@@ -45,6 +45,8 @@ class SessionService:
         self._store = core.store
         self._hub = core.hub
         self._live_hint = core.live_hint
+        self._silence = core.silence
+        self._commit = core.commit
         self._clock = core.clock
         self._logger = core.logger
         self._agora = agora
@@ -72,10 +74,13 @@ class SessionService:
         agent_id = self._store.agent_id
         was_playing = self._store.activity.state is not GameState.IDLE
         self._end_locally()
-        await self._live_hint.clear()
-        state = await self._publish_state()
-        if was_playing:
-            await self._hub.publish(EventType.ACTIVITY_STATE_CHANGED, self._store.activity)
+        async with (
+            self._commit
+        ):  # a turn that is mid-publish finishes first, then everything is cleared
+            await self._live_hint.clear()
+            state = await self._publish_state()
+            if was_playing:
+                await self._hub.publish(EventType.ACTIVITY_STATE_CHANGED, self._store.activity)
         if agent_id is not None:
             await self._stop_agent(agent_id)  # after local capture is off: the Pi sees false now
         return state
@@ -93,6 +98,7 @@ class SessionService:
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
         self._store.end_game()  # an unfinished round must not keep the next session deaf
         self._hub.forget_secrets()
+        self._silence.finished_speaking()  # a speaking window must not outlive the session
 
     def _issue(self, uid: int) -> str:
         return self._tokens.issue(self._config.channel, uid, self._config.token_ttl_seconds)

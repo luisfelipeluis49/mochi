@@ -56,7 +56,8 @@ def presented_key(x_mochi_key: str | None, authorization: str | None) -> str:
     """The shared key from our own header, else from `Authorization: Bearer`."""
     if x_mochi_key:
         return x_mochi_key
-    return (authorization or "").removeprefix("Bearer ").strip()
+    scheme, _, token = (authorization or "").strip().partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
 
 
 @router.post("/agora/llm/demo/chat/completions", response_model=None)
@@ -71,10 +72,11 @@ async def chat_completions(
     if not hmac.compare_digest(presented_key(x_mochi_key, authorization).encode(), expected):
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
     outcome = await container.pipeline.handle_turn(last_user_text(body.messages))
+    created = int(container.core.clock.now().timestamp())
     if not body.stream:
-        return JSONResponse(completion_json(outcome.reply))
-    return StreamingResponse(_stream(outcome.reply), media_type="text/event-stream")
+        return JSONResponse(completion_json(outcome.reply, created))
+    return StreamingResponse(_stream(outcome.reply, created), media_type="text/event-stream")
 
 
-def _stream(reply: str) -> Iterator[str]:
-    yield from sse_events(reply)
+def _stream(reply: str, created: int) -> Iterator[str]:
+    yield from sse_events(reply, created)

@@ -88,6 +88,16 @@ def test_dev_route_and_agora_route_publish_the_same_events() -> None:
     assert dev[-2:] == ["learning_event.created", "hint.created"]
 
 
+def test_a_binary_frame_does_not_leak_the_connection() -> None:
+    client, harness = _client()
+    hub = harness.container.core.hub
+    with client.websocket_connect("/ws?user=ana") as ana:
+        ana.receive_json()
+        assert hub.connection_count == 1
+        ana.send_bytes(b"\x00\x01")  # receive_text() used to raise KeyError here
+    assert hub.connection_count == 0
+
+
 def test_dev_route_is_absent_unless_enabled() -> None:
     harness = make_harness()
     client = TestClient(create_app(harness.container))

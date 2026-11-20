@@ -1,5 +1,6 @@
 """Composition root: builds every dependency from `Settings`. Nothing else constructs adapters."""
 
+import asyncio
 from dataclasses import dataclass
 
 from mochi_backend.gateway.activity_service import ActivityService
@@ -119,6 +120,7 @@ def _core(settings: Settings, adapters: Adapters) -> GatewayCore:
         clock=adapters.clock,
         ids=adapters.ids,
         logger=adapters.logger,
+        commit=asyncio.Lock(),
     )
 
 
@@ -134,6 +136,7 @@ def _pipeline(settings: Settings, core: GatewayCore) -> TurnPipeline:
             ids=core.ids,
             logger=core.logger,
             decide_timeout_seconds=settings.mochi_decide_timeout_seconds,
+            commit_lock=core.commit,
         )
     )
 
@@ -164,6 +167,6 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
         activity=ActivityService(core, pipeline, adapters.agora),
         devices=_devices(core, adapters, config),
         connections=ConnectionService(core.hub, core.store, core.live_hint),
-        demo_reset=DemoReset(core.store, core.hub, core.live_hint, core.intelligence),
+        demo_reset=DemoReset(core),
         intelligence_name=adapters.intelligence_name,
     )

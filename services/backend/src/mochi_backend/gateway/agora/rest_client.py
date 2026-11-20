@@ -57,7 +57,7 @@ class AgoraRestClient:
     async def stop_agent(self, agent_id: str) -> None:
         """POST /agents/{id}/leave. A 404 means the agent is already gone."""
         url = f"{self._root}/agents/{agent_id}/leave"
-        reply = await self._post(url, None)
+        reply = await self._post(url, None, attempts=2)  # leaving twice is harmless
         if reply.status == HTTP_NOT_FOUND:
             raise AgentAlreadyStoppedError(f"agent {agent_id!r} not found at {url}")
         if reply.status != HTTP_OK:
@@ -73,20 +73,22 @@ class AgoraRestClient:
         if reply.status != HTTP_OK:
             raise AgoraError(_describe(url, reply, "200"))
 
-    async def _post(self, url: str, payload: JsonValue) -> HttpResponse:
+    async def _post(self, url: str, payload: JsonValue, attempts: int = 1) -> HttpResponse:
+        """POST once, or up to `attempts` times for calls that are safe to repeat (/leave only)."""
         last_error: HttpTransportError | None = None
-        for _attempt in range(2):
+        reply: HttpResponse | None = None
+        for _attempt in range(attempts):
             try:
                 reply = await self._http.post_json(url, self._headers, payload, TIMEOUT_SECONDS)
             except HttpTransportError as error:
-                last_error = error
+                last_error, reply = error, None
                 continue
             if reply.status < HTTP_SERVER_ERROR:
                 return reply
-            last_error = None
-        if last_error is not None:
-            raise AgoraError(f"POST {url} failed twice: {last_error}")
-        return reply
+        if reply is not None:
+            return reply  # the last 5xx; the caller reports it with its body
+        suffix = "s" if attempts > 1 else ""
+        raise AgoraError(f"POST {url} failed after {attempts} attempt{suffix}: {last_error}")
 
 
 def _describe(url: str, reply: HttpResponse, expected: str) -> str:

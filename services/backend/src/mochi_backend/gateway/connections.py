@@ -5,7 +5,7 @@ from mochi_backend.gateway.event_hub import Connection, EventHub, Sender
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.roster import HOME_DEVICE_ID, USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
-from mochi_contracts import EventType
+from mochi_contracts import EventPayload, EventType
 
 
 def parse_target(query: dict[str, str]) -> ConnectionTarget:
@@ -31,15 +31,18 @@ class ConnectionService:
         self._store = store
         self._live_hint = live_hint
 
-    async def accept(self, target: ConnectionTarget, sender: Sender) -> Connection:
-        """Register `sender`, then send session state, activity state and any live hint."""
-        connection = self._hub.register(target, sender)
-        state = self._store.session_state()
-        await self._hub.send_to(connection, EventType.SESSION_STATE_CHANGED, state)
-        await self._hub.send_to(connection, EventType.ACTIVITY_STATE_CHANGED, self._store.activity)
+    async def accept(self, target: ConnectionTarget, sender: Sender) -> Connection | None:
+        """Send session state, activity state and any live hint, then register; None if gone."""
+        return await self._hub.connect(target, sender, self._snapshot)
+
+    def _snapshot(self) -> list[tuple[EventType, EventPayload]]:
+        events: list[tuple[EventType, EventPayload]] = [
+            (EventType.SESSION_STATE_CHANGED, self._store.session_state()),
+            (EventType.ACTIVITY_STATE_CHANGED, self._store.activity),
+        ]
         if self._live_hint.current is not None:
-            await self._hub.send_to(connection, EventType.HINT_CREATED, self._live_hint.current)
-        return connection
+            events.append((EventType.HINT_CREATED, self._live_hint.current))
+        return events
 
     def close(self, connection: Connection) -> None:
         """Forget a client that went away."""

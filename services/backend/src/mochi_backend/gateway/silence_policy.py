@@ -27,7 +27,11 @@ class SilencePolicy:
     def begin_speaking(self, text: str) -> None:
         """Open a speaking window: 0.6 s plus 0.45 s per word by default."""
         seconds = self._base + self._per_word * len(text.split())
-        self._speaking_until = self._clock.now() + timedelta(seconds=seconds)
+        until = self._clock.now() + timedelta(seconds=seconds)
+        # A short line right after a long one must not close the longer window early.
+        self._speaking_until = (
+            until if self._speaking_until is None else max(self._speaking_until, until)
+        )
 
     def finished_speaking(self) -> None:
         """Close the window early (when Agora says the agent stopped speaking)."""

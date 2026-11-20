@@ -19,6 +19,7 @@ from mochi_contracts import (
     Decision,
     DecisionKind,
     EventType,
+    GameState,
     LearningEvent,
     SessionContext,
     Speak,
@@ -52,6 +53,7 @@ class PipelineDeps:
     ids: IdGenerator
     logger: EventLogger
     decide_timeout_seconds: float
+    commit_lock: asyncio.Lock
 
 
 class TurnPipeline:
@@ -68,6 +70,7 @@ class TurnPipeline:
         self._logger = deps.logger
         self._timeout = deps.decide_timeout_seconds
         self._lock = asyncio.Lock()
+        self._commit = deps.commit_lock
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -89,13 +92,24 @@ class TurnPipeline:
         self._logger.log("turn", {"segment_id": turn.segment_id, "text": text})
         generation = self._store.generation
         decision = await self._decide(turn)
-        if generation != self._store.generation or not self._store.capturing:
+        async with self._commit:  # Stop, Reset and round changes wait until this turn is done
+            return await self._commit_turn(turn, decision, generation)
+
+    async def _commit_turn(self, turn: Turn, decision: Decision, generation: int) -> TurnOutcome:
+        if self._superseded(decision, generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
-            return TurnOutcome("", silent_decision())  # Stop or Reset arrived while deciding
+            return TurnOutcome("", silent_decision())
         await self._publish_results(decision)
         reply = await self._reply(decision.speak)
         self._store.remember(turn, decision.hint)
         return TurnOutcome(reply, decision)
+
+    def _superseded(self, decision: Decision, generation: int) -> bool:
+        """True when Stop/Reset came while deciding, or a round started (wake phrases may speak)."""
+        if generation != self._store.generation or not self._store.capturing:
+            return True
+        playing = self._store.activity.state is GameState.ACTIVE_ROUND
+        return playing and decision.decision is not DecisionKind.SPEAK
 
     async def _decide(self, turn: Turn) -> Decision:
         started = self._clock.now()

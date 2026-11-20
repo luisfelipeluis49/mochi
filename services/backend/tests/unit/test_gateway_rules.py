@@ -363,16 +363,31 @@ async def test_start_agent_posts_to_join_with_basic_auth_and_returns_the_id() ->
 
 
 async def test_start_agent_retries_once_on_5xx_then_fails_with_a_readable_error() -> None:
-    client, http = _client(
-        HttpResponse(502, "bad gateway"), HttpResponse(200, '{"agent_id": "A2"}')
-    )
-    assert await client.start_agent(REQUEST) == "A2" and len(http.posts) == 2
     failing, _ = _client(HttpResponse(400, '{"detail":"bad"}'))
     with pytest.raises(AgoraError, match=r"returned 400; expected 200"):
         await failing.start_agent(REQUEST)
-    down, _ = _client(HttpTransportError("down"), HttpTransportError("down"))
-    with pytest.raises(AgoraError, match="failed twice"):
+
+
+async def test_join_and_speak_are_never_retried_but_leave_is() -> None:
+    """A retried /join after a read timeout could put a second billed agent in the channel."""
+    flaky, http = _client(HttpResponse(502, "bad gateway"), HttpResponse(200, '{"agent_id": "A2"}'))
+    with pytest.raises(AgoraError, match="returned 502"):
+        await flaky.start_agent(REQUEST)
+    assert len(http.posts) == 1
+    down, http = _client(HttpTransportError("down"), HttpResponse(200, '{"agent_id": "A3"}'))
+    with pytest.raises(AgoraError, match="failed after 1 attempt"):
         await down.start_agent(REQUEST)
+    assert len(http.posts) == 1
+    speaker, http = _client(HttpTransportError("down"), HttpResponse(200, "{}"))
+    with pytest.raises(AgoraError, match="failed after 1 attempt"):
+        await speaker.speak("A1", "hi")
+    assert len(http.posts) == 1
+    leaver, http = _client(HttpTransportError("down"), HttpResponse(200, ""))
+    await leaver.stop_agent("A1")
+    assert len(http.posts) == 2
+    gone, _ = _client(HttpTransportError("down"), HttpTransportError("down"))
+    with pytest.raises(AgoraError, match="failed after 2 attempts"):
+        await gone.stop_agent("A1")
 
 
 async def test_stop_and_speak_use_the_documented_endpoints() -> None:
