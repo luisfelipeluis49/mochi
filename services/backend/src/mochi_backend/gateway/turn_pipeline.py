@@ -82,6 +82,19 @@ class TurnPipeline:
         async with self._lock:
             return await self._handle(text.strip())
 
+    async def handle_heard(self, heard: str) -> TurnOutcome:
+        """A turn as Agora sends it: everything said since Mochi last spoke.
+
+        Only the part not handled before is run through the chain. Example: "A." got silence, then
+        Agora sends "A.  B.": only "B." is a new turn.
+        """
+        async with self._lock:
+            said = heard.strip()
+            outcome = await self._handle(self._store.new_speech(said))
+            # After a spoken reply Agora starts a fresh message; after silence it keeps appending.
+            self._store.unanswered = "" if outcome.reply else said
+            return outcome
+
     async def _handle(self, text: str) -> TurnOutcome:
         if not text or not self._store.capturing:
             self._logger.log("turn_ignored_not_capturing", {"text_len": len(text)})

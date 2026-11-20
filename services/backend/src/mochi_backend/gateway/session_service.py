@@ -91,10 +91,12 @@ class SessionService:
         self._store.pi_token = self._issue(self._config.pi_uid)
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
+        self._store.unanswered = ""
         self._store.mode = SessionMode.TOGETHER
 
     def _end_locally(self) -> None:
         self._store.agent_id, self._store.pi_token = None, None
+        self._store.unanswered = ""
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
         self._store.end_game()  # an unfinished round must not keep the next session deaf
         self._hub.forget_secrets()

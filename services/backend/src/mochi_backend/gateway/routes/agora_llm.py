@@ -71,7 +71,7 @@ async def chat_completions(
     expected = container.settings.mochi_turn_key.encode()
     if not hmac.compare_digest(presented_key(x_mochi_key, authorization).encode(), expected):
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
-    outcome = await container.pipeline.handle_turn(last_user_text(body.messages))
+    outcome = await container.pipeline.handle_heard(last_user_text(body.messages))
     created = int(container.core.clock.now().timestamp())
     if not body.stream:
         return JSONResponse(completion_json(outcome.reply, created))

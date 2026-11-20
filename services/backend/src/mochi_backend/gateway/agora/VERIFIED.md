@@ -101,3 +101,20 @@ synthetic clip) and an English sentence correctly. ARES has no Brazilian Portugu
 Those calls used token authentication (`Authorization: agora token=<token>`, a token for RTC and RTM built by
 the SDK from the App ID and App Certificate). The `006` RTC token this backend builds is **not** accepted
 there (401 `Invalid channel-name or uid`), so Basic authentication with the REST key pair stays.
+
+## First real audio through the turn endpoint (2026-11-20, synthetic speech through the Pi's C bridge)
+
+A local backend in real mode behind a tunnel, the Pi's bridge joined as uid 1001, speech clips fed in place of
+the microphone, the agent's voice watched by its loudness:
+
+- **An empty reply keeps the agent silent** (AGENTS 12.1): an ordinary sentence and a hint sentence produced no
+  audio at all. `empty_reply` works; `mute_speaker` is not needed.
+- **Agora sends everything said since the agent last spoke as ONE user message.** After a silent reply the next
+  request repeats the earlier sentences and appends the new one, joined by two spaces:
+  `"A."`, then `"A.  B."`, then `"A.  B.  C."` (one message, `messages` has length 1). A sound that was not
+  recognised triggers a request with the same text again. `TurnPipeline.handle_heard` therefore treats only the
+  new part as a turn (`SessionStore.new_speech`). After a spoken reply the next user message starts fresh.
+- The request has `stream: true` and `stream_options: {"include_usage": true}`; user content is a plain string.
+- Heard: `Yesterday I went to the fair with my mother.` arrived as `Yesterday went to the fair with my mother.`;
+  `Oi Mochi` said on its own arrived as `Wait, Mochi.` (the wake phrase regex does not match that).
+

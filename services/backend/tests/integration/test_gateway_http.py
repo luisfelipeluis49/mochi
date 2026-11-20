@@ -156,6 +156,41 @@ def test_session_device_and_activity_endpoints() -> None:
     assert client.post("/api/demo/reset").json()["capturing"] is False
 
 
+def _turn_texts(harness: Harness) -> list[object]:
+    return [fields["text"] for name, fields in harness.logger.lines if name == "turn"]
+
+
+def test_agora_repeats_unanswered_sentences_and_only_the_new_one_is_a_turn() -> None:
+    """Seen live: after a silent reply the next request carries the old sentences too."""
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    first = "Yesterday I went to the fair with my mother."
+    second = "I need to adiar my meeting tomorrow."
+    for content in (first, f"{first}  {second}", f"{first}  {second}", f"{first}  {second}  Okay."):
+        assert client.post(URL, json=_turn(content), headers=KEY).status_code == 200
+    assert _turn_texts(harness) == [first, second, "Okay."]  # the exact repeat is not a turn
+
+
+def test_after_mochi_spoke_the_next_message_is_taken_whole() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    ask = "Oi Mochi, what's the word for fila?"
+    spoken, _ = parse_stream(client.post(URL, json=_turn(ask), headers=KEY).text)
+    assert spoken == "You can say: queue."
+    client.post(URL, json=_turn("Thank you."), headers=KEY)
+    assert _turn_texts(harness) == [ask, "Thank you."]
+
+
+def test_a_new_session_does_not_remember_the_last_ones_unanswered_sentences() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Nice weather today."), headers=KEY)
+    client.post("/api/sessions/demo/stop")
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Nice weather today. Really."), headers=KEY)
+    assert _turn_texts(harness)[-1] == "Nice weather today. Really."
+
+
 def test_default_ears_are_ares_in_english_and_portuguese() -> None:
     client, harness = _client()
     client.post("/api/sessions/demo/start")

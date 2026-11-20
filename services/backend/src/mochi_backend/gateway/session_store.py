@@ -47,6 +47,7 @@ class SessionStore:
         self.activity: Activity = idle_activity()
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
+        self.unanswered = ""  # what Agora last sent and got silence for (see `new_speech`)
         self.generation = 0
 
     def invalidate(self) -> None:
@@ -56,6 +57,18 @@ class SessionStore:
         before it changes anything and drops itself when it differs.
         """
         self.generation += 1
+
+    def new_speech(self, heard: str) -> str:
+        """The part of `heard` that has not been handled yet.
+
+        Agora sends everything said since Mochi last spoke as ONE user message: after a silent
+        reply, the next request repeats the earlier sentences and appends the new one (seen in a
+        live session, VERIFIED.md). Example: after "A." got silence, `new_speech("A.  B.")` is "B.".
+        """
+        earlier = self.unanswered
+        if earlier and heard.startswith(earlier):
+            return heard[len(earlier) :].strip()
+        return heard
 
     def end_game(self) -> None:
         """Back to IDLE and `together` without touching history (used by Stop)."""
