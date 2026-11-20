@@ -40,16 +40,25 @@ chimes = true
 min_volume = 20
 
 [backend]
-# "test_agent": start a stand-in Agora agent directly (scripts/test_agent.py's agent).
-# "mochi_backend": ask Luis's backend (POST /api/sessions/demo/start, GET device state). While the
-#                   session runs the Pi keeps reading the device state: the backend can end the
-#                   session or silence the speaker.
+# Who runs the session.
+# "test_agent":    the Pi alone: Mochi's own agent ([test_agent] below), nobody else is told anything.
+# "mochi_backend": Luis's backend runs the session (POST /api/sessions/demo/start, GET device state):
+#                  it knows when Mochi is listening and can end the session. See `agent` below.
 kind = "test_agent"
 mochi_backend_url = "http://localhost:8000"
 device_id = "home_pi_01"
+# Who talks when kind = "mochi_backend":
+# "character": Mochi's own agent, exactly as with "test_agent": its character, ears and voice
+#              ([test_agent] below), its face, volume, temperature and voices. Every sentence it hears
+#              is reported to the backend, which decides the hints and saved words for the other
+#              screens. If the backend cannot be reached Mochi still talks, without those.
+# "backend":   the backend's own agent: quiet by default, short fixed lines, none of the above.
+agent = "character"
 # Seconds between two reads of the device state during a session.
 poll_interval_s = 0.3
 
+# Mochi's own agent: who Mochi is, what it hears with and how it sounds. Used by kind = "test_agent"
+# and by kind = "mochi_backend" with agent = "character".
 [test_agent]
 channel = "mochi-test"
 bridge_uid = 1001
