@@ -10,7 +10,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
-from mochi_device.backends import MochiBackend
+from mochi_device.backends import JoinInfo, MochiBackend, WithFallback
 from mochi_device.main import Supervisor
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
@@ -204,6 +204,56 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(OSError):
             await self.backend.start()
         await self.backend.stop()  # must not raise: the supervisor has to get back to listening
+
+
+class Runner:
+    """Stands in for either backend; `broken` makes start fail."""
+
+    def __init__(self, channel: str, broken: bool = False):
+        self.channel, self.broken = channel, broken
+        self.calls: list = []
+
+    async def start(self, wake_phrase=None):
+        self.calls.append(("start", wake_phrase))
+        if self.broken:
+            raise OSError("connection refused")
+        return JoinInfo("app", self.channel, 1001, "tok")
+
+    async def stop(self):
+        self.calls.append("stop")
+
+    def set_voices(self, known, speaker):
+        self.calls.append(("voices", known, speaker))
+
+    async def voice_enrolled(self, name, lang, learned):
+        self.calls.append(("enrolled", name))
+
+
+class WithFallbackTest(unittest.IsolatedAsyncioTestCase):
+    async def test_the_backend_runs_the_session_when_it_can(self):
+        backend, own = Runner("mochi-demo"), Runner("mochi-test")
+        both = WithFallback(backend, own)
+        self.assertEqual((await both.start("oi mochi")).channel, "mochi-demo")
+        await both.voice_enrolled("Ana", "pt", True)
+        await both.stop()
+        self.assertEqual(backend.calls, [("start", "oi mochi"), ("enrolled", "Ana"), "stop"])
+        self.assertEqual(own.calls, [])
+
+    async def test_mochis_own_agent_takes_the_session_when_the_backend_cannot(self):
+        backend, own = Runner("mochi-demo", broken=True), Runner("mochi-test")
+        both = WithFallback(backend, own)
+        self.assertEqual((await both.start("hi mochi")).channel, "mochi-test")
+        await both.stop()
+        self.assertEqual(own.calls, [("start", "hi mochi"), "stop"])
+        self.assertEqual(backend.calls, [("start", "hi mochi")])  # never asked to stop what it never ran
+        backend.broken = False  # the backend is back: the next session is its again
+        self.assertEqual((await both.start()).channel, "mochi-demo")
+
+    async def test_both_are_told_whose_voices_are_known(self):
+        backend, own = Runner("a"), Runner("b")
+        WithFallback(backend, own).set_voices(["Ana"], "Ana")
+        self.assertEqual(backend.calls, own.calls)
+        self.assertEqual(own.calls, [("voices", ["Ana"], "Ana")])
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):

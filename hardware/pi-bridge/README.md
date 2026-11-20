@@ -88,7 +88,9 @@ Who runs the session is `[backend].kind` in the config (`mochi_device/backends.p
     voice.
   The Pi reports its volume, temperature, the voices it knows and who is talking
   (`POST .../status`) whenever one changes, and how learning a voice ended (`POST .../voices`).
-  Set `mochi_backend_url` to where the backend runs.
+  Set `mochi_backend_url` to where the backend runs. If the backend cannot start a session (down,
+  unreachable), Mochi's own agent takes that one (`fallback = "test_agent"`), so Mochi always
+  answers when called.
 - `test_agent` (the default): a stand-in agent, for working without the backend.
 
 The stand-in's character and the way it helps (clue first, the word in a sentence,

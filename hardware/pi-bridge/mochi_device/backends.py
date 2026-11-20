@@ -471,11 +471,52 @@ class MochiBackend:
             print(f"[mochi] backend stop: {e!r}"[:300], flush=True)
 
 
+class WithFallback:
+    """The backend runs the session when it can. When it cannot start one (it is down, or cannot be
+    reached), Mochi's own agent runs that session instead, so Mochi always answers when called."""
+
+    def __init__(self, backend, own_agent):
+        self.backend, self.own_agent = backend, own_agent
+        self.active = None  # whoever runs the current session
+
+    async def start(self, wake_phrase: str | None = None) -> JoinInfo:
+        try:
+            join = await self.backend.start(wake_phrase)
+            self.active = self.backend
+            return join
+        except Exception as e:
+            print(f"[mochi] the backend could not start a session ({e!r}); Mochi's own agent takes this one"[:300],
+                  flush=True)
+        self.active = self.own_agent
+        return await self.own_agent.start(wake_phrase)
+
+    async def stop(self) -> None:
+        active, self.active = self.active, None
+        if active:
+            await active.stop()
+
+    def set_voices(self, known: list[str], speaker: str | None) -> None:
+        self.backend.set_voices(known, speaker)
+        self.own_agent.set_voices(known, speaker)
+
+    async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
+        if self.active:
+            await self.active.voice_enrolled(name, lang, learned)
+
+
 def make_backend(cfg: dict, on_event=None):
     b = cfg["backend"]
     if b["kind"] == "test_agent":
         return TestAgentBackend(cfg["test_agent"], Device(cfg["audio"]), on_event)
     if b["kind"] == "mochi_backend":
-        return MochiBackend(b["mochi_backend_url"], b["device_id"], Device(cfg["audio"]), on_event,
-                            float(b.get("poll_interval_s", 0.3)))
+        device = Device(cfg["audio"])
+        backend = MochiBackend(b["mochi_backend_url"], b["device_id"], device, on_event,
+                               float(b.get("poll_interval_s", 0.3)))
+        if b.get("fallback", "test_agent") != "test_agent":
+            return backend
+        if not (os.environ.get("AGORA_APP_ID") and os.environ.get("AGORA_APP_CERTIFICATE")):
+            print("[mochi] no fallback: Mochi's own agent needs AGORA_APP_ID and AGORA_APP_CERTIFICATE in .env",
+                  flush=True)
+            return backend
+        return WithFallback(backend, TestAgentBackend(cfg["test_agent"], device, on_event))
     raise SystemExit(f"unknown backend.kind {b['kind']!r}")
