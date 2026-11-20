@@ -282,3 +282,24 @@ From a second spoken conversation:
 - OpenAI transcription pasted its prompt's word list into a transcript; see `VERIFIED.md` and
   `gateway/prompt_echo.py`.
 
+## D-27: the main promise end to end: just listen, silent hints for any word (2026-11-20)
+
+Asked for by the hardware owner; it changes intelligence code (Kauê's), so it is recorded here.
+- **Detection.** With perfect hearing the rules found the right hint in 6 of 16 mixed sentences: a word outside
+  the 20-word lexicon has no mark they can see. While two people talk and Mochi only watches, the hint model now
+  judges every sentence of three words or more (`IntelligenceSettings.judge_every_sentence`), with instructions
+  that the hint is the word the person needed; a reply that returns the word they said is swapped or dropped
+  (`_needed_word`). Result: 16 of 16, no hint on 12 ordinary sentences (names, grammar slips, serious talk).
+  `scripts/eval-intelligence.sh`: 68/75 before, 82/85 now with ten new `beyond_lexicon` fixtures; the three
+  failures are the false friends that failed before. Adding false-friend examples to the instructions fixed two
+  and caused two wrong hints, so it was taken out again: silence matters more.
+  Cost: one model call per sentence in that mode. Hints stay limited to words, never grammar (AGENTS 7.2).
+- **Getting there from the wake phrase.** Someone who woke Mochi has its attention. `[listen]` (written by Mochi
+  when it is asked to just listen, or told that people will talk to each other) makes it only watch; its name
+  still gets an answer; `[chat]` brings it back. Both are read in `MochiTalk`, not sent to the device.
+- **Live** (real Agora, real models, spoken clips): woken, told to just listen, then "Can you pass me the garfo,
+  please?" gave silence and `show fork` on the device; two ordinary sentences gave nothing; "Eu esqueci minha
+  wallet em casa." gave `show carteira`; "Hey Mochi, how do you say fila in English?" was answered aloud.
+- **Not built:** escalation when a hint is not enough (to be agreed with the team); using the device's speaker
+  recognition to choose whose hint it is.
+
