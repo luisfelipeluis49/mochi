@@ -116,26 +116,20 @@ def _vendor_block(
     return block
 
 
-def _languages(tuning: SpeechTuning) -> list[JsonValue]:
-    return [part.strip() for part in tuning.asr_language.split(",") if part.strip()]
-
-
 def _asr_block(tuning: SpeechTuning) -> dict[str, JsonValue]:
-    """One language goes in `asr.language`; several go in `turn_detection.language` instead."""
-    languages = _languages(tuning)
-    extra: dict[str, JsonValue] = {"language": languages[0]} if len(languages) == 1 else {}
+    extra: dict[str, JsonValue] = {"language": tuning.asr_language}
     if tuning.asr_keywords:
         extra["keywords"] = list(tuning.asr_keywords)
     return _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, extra)
 
 
 def _speech_blocks(tuning: SpeechTuning) -> dict[str, JsonValue]:
+    """Several languages ("en-US,pt-PT") are one comma-separated string, also in turn detection."""
     tts = _vendor_block(tuning.tts_vendor, tuning.tts_credential_mode, tuning.tts_params, {})
     vad: dict[str, JsonValue] = {"silence_duration_ms": tuning.end_of_speech_silence_ms}
     turns: dict[str, JsonValue] = {"config": {"end_of_speech": {"mode": "vad", "vad_config": vad}}}
-    languages = _languages(tuning)
-    if len(languages) > 1:
-        turns["language"] = languages
+    if "," in tuning.asr_language:
+        turns["language"] = tuning.asr_language
     return {"asr": _asr_block(tuning), "tts": tts, "turn_detection": turns}
 
 

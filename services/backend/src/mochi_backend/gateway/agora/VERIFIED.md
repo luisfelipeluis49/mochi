@@ -77,20 +77,27 @@ This is not the Agora Python RTC *SDK* that AGENTS forbids on the Pi (that rule 
 - AGENTS 9.2 assumes an empty reply is possible; the docs' samples always stream at least one chunk. Our
   empty reply is a stream with one empty-content chunk, a stop chunk and `[DONE]`.
 
-## ARES without a credential mode (2026-11-20, second Agora project, `join_body()` sent as is)
+## ARES: no credential mode, languages as one string (2026-11-20, second Agora project)
 
-Four `POST .../join` calls with this backend's own request body, each left again at once:
+**Accepted is not the same as working.** Four `POST .../join` calls with this backend's request body:
 
 | `asr` block | `turn_detection.language` | Result |
 |---|---|---|
-| `{"vendor": "ares", "keywords": ["Mochi"]}` | `["en-US", "pt-PT"]` | **200**, agent `RUNNING` |
-| `{"vendor": "ares", "language": "en-US"}` | not sent | **200**, agent `RUNNING` |
-| the first, plus `"credential_mode": "managed"` | `["en-US", "pt-PT"]` | 400 `vendor 'ares' is not available for the current SKU when credential_mode is 'managed'` |
+| `{"vendor": "ares", "keywords": ["Mochi"]}` | `["en-US", "pt-PT"]` (a list) | 200, but **Portuguese was not recognised** in a live session: a Portuguese sentence arrived as empty text, "Oi Mochi" as "Wait, Mochi." |
+| `{"vendor": "ares", "language": "en-US"}` | not sent | 200 |
+| the first, plus `"credential_mode": "managed"` | list | 400 `vendor 'ares' is not available for the current SKU when credential_mode is 'managed'` |
 | `{"vendor": "ares", "language": "en-US,pt-BR", "credential_mode": "managed"}` | not sent | 400, same message |
 
-So ARES takes no `credential_mode`. `properties.asr.keywords` is documented for ARES (join page, up to 128).
-The first row is what Agora's own Python SDK (`agora-agents`, `AresSTT`) sends, and what the defaults now
-produce. That call used token authentication (`Authorization: agora token=<token>` built from the App ID and
-App Certificate, the method the authentication page recommends); Basic authentication is unchanged here.
-ARES has no Brazilian Portuguese: `pt-PT` is its Portuguese.
+So ARES takes no `credential_mode` (that field, not the project, caused D-18's rejection).
 
+**What Agora's own Python SDK sends** (`agora-agents`, captured from the hardware stand-in without sending):
+`"asr": {"vendor": "ares", "keywords": ["Mochi"], "language": "en-US,pt-PT"}` and
+`"turn_detection": {..., "language": "en-US,pt-PT"}`: one comma-separated string, in both places. `join_body()`
+now builds exactly this. With it, a live session through this backend transcribed
+`Como se diz fila em inglês?` as `Como se desfila em inglês.` (the same near-miss the stand-in gets on that
+synthetic clip) and an English sentence correctly. ARES has no Brazilian Portuguese: `pt-PT` is its Portuguese.
+`properties.asr.keywords` is documented for ARES (join page, up to 128).
+
+Those calls used token authentication (`Authorization: agora token=<token>`, a token for RTC and RTM built by
+the SDK from the App ID and App Certificate). The `006` RTC token this backend builds is **not** accepted
+there (401 `Invalid channel-name or uid`), so Basic authentication with the REST key pair stays.

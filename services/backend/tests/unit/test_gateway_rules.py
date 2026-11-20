@@ -317,19 +317,19 @@ def test_join_body_uses_the_verified_field_names() -> None:
     assert props["idle_timeout"] == 60  # verified field: seconds after the Pi leaves
 
 
-def test_join_body_for_ares_puts_several_languages_in_turn_detection() -> None:
-    """The shape Agora accepted on 2026-11-20 (VERIFIED.md): no credential mode, no asr.language."""
-    tuning = SpeechTuning(asr_vendor="ares", asr_language="en-US, pt-PT", asr_keywords=("Mochi",))
+def test_join_body_for_ares_sends_several_languages_as_one_string_in_both_places() -> None:
+    """The request Agora's own SDK sends for ARES (captured 2026-11-20, see VERIFIED.md)."""
+    tuning = SpeechTuning(asr_vendor="ares", asr_language="en-US,pt-PT", asr_keywords=("Mochi",))
     request = AgentStartRequest("chan", 1002, 1001, "tok", "https://x/y", "k", tuning)
     body = join_body(request, "mochi_001")
     assert isinstance(body, dict) and isinstance(body["properties"], dict)
     props = body["properties"]
-    assert props["asr"] == {"vendor": "ares", "keywords": ["Mochi"]}
+    assert props["asr"] == {"vendor": "ares", "language": "en-US,pt-PT", "keywords": ["Mochi"]}
     turns = props["turn_detection"]
-    assert isinstance(turns, dict) and turns["language"] == ["en-US", "pt-PT"]
+    assert isinstance(turns, dict) and turns["language"] == "en-US,pt-PT"
 
 
-def test_join_body_with_one_language_keeps_it_in_asr() -> None:
+def test_join_body_with_one_language_keeps_it_out_of_turn_detection() -> None:
     body = join_body(REQUEST, "mochi_001")
     assert isinstance(body, dict) and isinstance(body["properties"], dict)
     props = body["properties"]

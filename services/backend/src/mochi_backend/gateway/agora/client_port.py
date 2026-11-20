@@ -21,7 +21,7 @@ class SpeechTuning:
     """ASR/TTS/turn-detection settings passed through from the environment."""
 
     asr_vendor: str = "ares"
-    asr_language: str = "en-US"  # several, comma-separated, for a recogniser that takes a list
+    asr_language: str = "en-US"  # several for ARES: one comma-separated string, "en-US,pt-PT"
     asr_keywords: tuple[str, ...] = ()  # words the recogniser should expect (ARES only)
     asr_params: VendorParams = field(default_factory=dict)
     asr_credential_mode: str = ""
