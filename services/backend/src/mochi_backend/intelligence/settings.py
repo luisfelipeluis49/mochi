@@ -17,6 +17,7 @@ class IntelligenceSettings:
     # the ones the rules find suspicious: a word outside the lexicon has no other way to be noticed.
     judge_every_sentence: bool = True
     min_words_to_judge: int = 3  # "Yes." and "Thank you." are not worth a model call
+    hear_window_seconds: float = 120.0  # "can you pronounce it?" means a hint this recent
     hint_min_confidence: float = 0.7  # a hint the model itself doubts is not shown (quiet first)
     # "two_turns": no unasked hint for two turns after one (AGENTS 7.2). "while_shown": only until
     # the earlier hint has left the screen, and never the same word twice in a row (DECISIONS D-29).

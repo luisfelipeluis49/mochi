@@ -25,7 +25,10 @@ the sentence, and it must not be a word of the focus language. A real focus-lang
 merely fits badly is never a code switch: do not offer a synonym or a better-fitting word for it.
 - says_unknown: they say they forgot or do not know a word, or ask how to say something, and it \
 is clear which word (from the sentence, `asked_about` or `recent`). With `asked_about` the hint \
-is for exactly that and nothing else in the sentence.
+is for exactly that and nothing else in the sentence. An explicit question about a word you \
+understand always gets an answer, also for a dish or a thing the focus language has no word of \
+its own for: then `expression` is two or three words that describe it ("pão de queijo" -> \
+"cheese bread"), never the same word again.
 - asks_partner: the same, asked of the other person by name. asks_mochi: asked of Mochi.
 - trails_off, restarts: they stop or keep restarting where a word is missing, and what they said \
 makes the missing word clear.
@@ -37,7 +40,8 @@ something else here.
 IGNORE all of this:
 - ordinary sentences, fillers, thinking aloud, self-corrections;
 - greetings, goodbyes, thanks and exclamations in either language ("tchau", "oi", "obrigado", \
-"nossa", "né", "bye"), and names, brands, dishes and places: people switch for these on purpose;
+"nossa", "né", "bye"), and names, brands, dishes and places: people switch for these on purpose \
+(unless they ASK how to say one: see says_unknown);
 - a normal word of the focus language, also an unusual one;
 - grammar or pronunciation slips (this is about words, never grammar);
 - personal or serious talk, and anything about a third language;

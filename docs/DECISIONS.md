@@ -395,3 +395,29 @@ turns (`learning_rules`, as before); it is only no longer cheered.
 Still wrong: a word the recogniser turned into a non-word ("postone", "guardy shoe") is sometimes guessed
 at. A word list for both languages would settle it (is the "said" word a word at all?), which means adding
 data files; not done. False friends (case 8) are unchanged at 0 of 3 beyond the lexicon.
+
+## D-30: asked how a word sounds, Mochi says it (2026-11-20)
+
+Seen in a conversation on the Pi: the hint "cortar o cabelo" was shown, then "você pode pronunciar para
+mim?" got silence, three times. A word on a screen does not tell how it sounds.
+- **Rule** (`intelligence/aloud.py`, `DecisionFlow._said_aloud`): a turn that asks about the sound of a word
+  ("pronounce", "pronúncia", "say it for me", "fala pra mim", "em voz alta") makes Mochi say the hint shown
+  last (at most two minutes after it left the screen) and show it again. A word in quotes is said as it
+  is, unless it is what that hint stands for. A turn that both needs a word and asks for its sound gets
+  the hint and the sound.
+- **What it says:** only the word, twice ("cortar o cabelo. cortar o cabelo."), with no model call: nothing
+  else for the voice to mispronounce, and no wait.
+- **This is the one time Mochi speaks without its name**, which goes beyond AGENTS 7.1 case 4. Kept narrow:
+  not "say that again" (people say that to each other), not when the partner is asked by name, not during
+  a round, and not while Mochi is part of the talk (it answers in its own words then). **For the team.**
+From the same conversation:
+- "How do you say feijoada in English?" was asked four times and got nothing: the dish rule
+  (`deliberate_switch`) silenced it. A question is not a dish dropped in on purpose; the model is told to
+  answer with a short description when there is no word ("black bean stew"). "How to say ..." counts as
+  asking, and "how do you say feijoada in" (cut off before the language) names "feijoada".
+- "The reunião will atrasar." got nothing: its two borrowed words made it count as Portuguese. The small
+  words of a sentence decide its language now; lexicon words only break a tie (`language_guess._evidence`).
+- The answer checks moved to `intelligence/answer_checks.py` (file size rule).
+Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
+nothing, because that hint was still on the screen (`while_shown`).
+

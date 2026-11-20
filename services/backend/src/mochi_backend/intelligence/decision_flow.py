@@ -4,6 +4,17 @@ import asyncio
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
+from mochi_backend.intelligence.aloud import wants_to_hear, word_to_hear
+from mochi_backend.intelligence.answer_checks import (
+    in_its_language,
+    language_named,
+    made_up,
+    only_extends,
+    only_the_word,
+    open_ask,
+    right_way_round,
+    same_words,
+)
 from mochi_backend.intelligence.clear_cases import (
     addressed_partner,
     asked_term,
@@ -12,7 +23,6 @@ from mochi_backend.intelligence.clear_cases import (
     mochi_entry,
     question_itself,
     unfinished_question,
-    wanted_language,
 )
 from mochi_backend.intelligence.hedged import first_answer
 from mochi_backend.intelligence.hint_builder import (
@@ -40,8 +50,6 @@ from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
 from mochi_backend.intelligence.tokens import (
-    folded,
-    has_phrase,
     normalized,
     words_of,
 )
@@ -62,24 +70,8 @@ from mochi_contracts import (
     Turn,
 )
 
-_STEM_LETTERS = 3  # "adi" joins "adiar" and "adiei"; longer would miss the verb forms
 _SAME_THOUGHT = timedelta(seconds=20)  # a question and its second half are no further apart
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
-
-
-def _needed_word(text: str, expression: str, meaning: str | None) -> tuple[str | None, str | None]:
-    """A hint must be the word the person NEEDED. A model sometimes returns the word they said.
-
-    Then the two fields are the wrong way round ("garfo" / "fork" for "pass me the garfo"):
-    swap them. With nothing to swap in, there is no hint.
-    Example: `_needed_word("pass me the garfo", "garfo", "fork")` is `("fork", "garfo")`.
-    """
-    said = normalized(text)
-    if not has_phrase(said, expression):
-        return expression, meaning
-    if meaning and not has_phrase(said, meaning):
-        return meaning, expression
-    return None, None
 
 
 def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
@@ -96,91 +88,6 @@ def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
     if gap > _SAME_THOUGHT:
         return turn
     return turn.model_copy(update={"text": f"{before.text} {turn.text}"})
-
-
-def same_words(one: str, other: str) -> bool:
-    """Example: `same_words("Fork", "fork ")` -> True."""
-    return normalized(one) == normalized(other)
-
-
-def _language_named(label: str | None) -> Language | None:
-    """The language a model's label means. Example: "en-US", "English", "EN" -> English."""
-    low = (label or "").strip().lower()
-    if low.startswith(("en", "ing")):
-        return Language.EN
-    return Language.PT_BR if low.startswith(("pt", "por")) else None
-
-
-def _open_ask(text: str) -> bool:
-    """A question about a word that does not say which language it wants the word in."""
-    return asks_for_word(text) and wanted_language(text) is None
-
-
-def _in_its_language(context: SessionContext, match: CaseMatch) -> SessionContext:
-    """The context a hint is built in: the match's own language when it carries one."""
-    if match.language is None or match.language is context.focus:
-        return context
-    return context.model_copy(update={"focus": match.language})
-
-
-def _right_way_round(text: str, answer: ModelSuggestion) -> ModelSuggestion | None:
-    """The answer with `expression` as the word needed; None when there is nothing to show.
-
-    A model sometimes returns the two words swapped (see `_needed_word`); then their language
-    labels are swapped back with them.
-    """
-    if not answer.expression:
-        return None
-    expression, meaning = _needed_word(text, answer.expression, answer.meaning)
-    if expression is None or expression == answer.expression:
-        return answer if expression else None
-    labels = {
-        "expression_language": answer.meaning_language,
-        "meaning_language": answer.expression_language,
-    }
-    return answer.model_copy(update={"expression": expression, "meaning": meaning, **labels})
-
-
-def _stems(phrase: str) -> set[str]:
-    """How each word starts, without accents: enough to match "garfo" with "garfos"."""
-    return {folded(word)[:_STEM_LETTERS] for word in words_of(phrase)}
-
-
-def _made_up(text: str, answer: ModelSuggestion) -> bool:
-    """A code switch names a word of the other language: it has to be in the sentence.
-
-    Seen with a real model: "pass me the bathroom" got "toilet", for a "banheiro" nobody said.
-    Word beginnings are compared, so "garfos" and "adiei" still count for "garfo" and "adiar".
-    """
-    if answer.reason is not Reason.CODE_SWITCH or not answer.meaning:
-        return False
-    return not (_stems(answer.meaning) & _stems(text))
-
-
-def _only_the_word(text: str, answer: ModelSuggestion, context: SessionContext) -> bool:
-    """True when the whole turn is a word that was already in the air, and no question about it.
-
-    Someone who says only "Molho para salada?" right after being given it is trying the word
-    out or checking it, not stuck. A word nobody mentioned before ("Dor de cabeça...") is.
-    """
-    words = [w for w in (answer.expression, answer.meaning) if w]
-    if asks_for_word(text) or normalized(text) not in {normalized(w) for w in words}:
-        return False
-    earlier = [normalized(t.text) for t in context.recent_turns]
-    earlier += [normalized(h.expression) for h in context.recent_hints]
-    return any(has_phrase(before, word) for before in earlier for word in words)
-
-
-def _only_extends(expression: str, meaning: str | None) -> bool:
-    """A "hint" that just adds to the word they said is an invention, not a translation.
-
-    Seen with a real sentence: "pass me the bathroom" got "bathroom key" for "bathroom".
-    """
-    if not meaning:
-        return False
-    return has_phrase(normalized(expression), meaning) or has_phrase(
-        normalized(meaning), expression
-    )
 
 
 def ignore() -> Decision:
@@ -220,6 +127,7 @@ class DecisionFlow:
         self._min_confidence = settings.hint_min_confidence
         self._cooldown = settings.hint_cooldown
         self._hedge_after = settings.hedge_after_seconds
+        self._hear_window = settings.hear_window_seconds
 
     async def run(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is."""
@@ -236,6 +144,10 @@ class DecisionFlow:
         context = session_context.model_copy(update={"focus": spoken})
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
+        return self._said_aloud(turn, context) or await self._watching(turn, context)
+
+    async def _watching(self, turn: Turn, context: SessionContext) -> Decision:
+        """Two people talk and nobody called Mochi: a hint when one is needed, else nothing."""
         # A round, a serious talk, thinking aloud or a name keep Mochi quiet whatever came before.
         quiet = lasting_quiet_reason(turn.text, context, self._lexicon) or self._held_back(
             turn, context
@@ -243,8 +155,42 @@ class DecisionFlow:
         match, line = await self._match_and_line(turn, context, bool(quiet))
         if match and self._just_shown(match, turn, context):
             match = None
-        shown = self._show(match, _in_its_language(context, match)) if match else ignore()
-        return self._saying(shown, line, turn) if line else shown
+        shown = self._show(match, in_its_language(context, match)) if match else ignore()
+        if line:
+            return self._saying(shown, line, turn)
+        hint = shown.hint
+        if hint is None or not self._may_be_heard(turn, context):
+            return shown
+        return self._reading_out(shown, hint.expression, hint.target_language)
+
+    def _may_be_heard(self, turn: Turn, context: SessionContext) -> bool:
+        """Someone asked how a word sounds, and it is for Mochi to answer.
+
+        Not when the partner was asked by name, not during a round (only the wake phrase speaks
+        there), and not while Mochi is part of the talk: then it answers in its own words.
+        """
+        asked = wants_to_hear(turn.text) and not addressed_partner(turn.text, context)
+        return asked and context.activity is None and not self._talk.attentive
+
+    def _said_aloud(self, turn: Turn, context: SessionContext) -> Decision | None:
+        """ "Can you pronounce it?" about a word just shown: Mochi says it, and shows it again.
+
+        The one time Mochi speaks without its name (DECISIONS D-30): the person asked outright,
+        and a word on a screen does not tell how it sounds. None when this is not such a turn.
+        """
+        if not self._may_be_heard(turn, context):
+            return None
+        word = word_to_hear(turn, context, self._hear_window)
+        if word is None or isinstance(word, str):
+            return self._reading_out(ignore(), word, context.focus) if word else None
+        match = CaseMatch(word.reason, word.expression, word.meaning, word.example)
+        again = self._show(match, context.model_copy(update={"focus": word.target_language}))
+        return self._reading_out(again, word.expression, word.target_language)
+
+    def _reading_out(self, decision: Decision, word: str, language: Language) -> Decision:
+        """The same decision, with Mochi saying just the word, twice: nothing else to mishear."""
+        speak = Speak(text=f"{word}. {word}.", language=language, reason=SpeakReason.ASKS_MOCHI)
+        return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
 
     def _held_back(self, turn: Turn, context: SessionContext) -> str | None:
         """ "cooldown" while an unasked hint has to wait; someone asking outright never waits.
@@ -355,10 +301,10 @@ class DecisionFlow:
         """The model's answer as a hint, or None: no hint, incomplete, unsure or off the rules."""
         if suggestion is None or suggestion.decision != "SHOW_HINT":
             return None
-        answer = _right_way_round(text, suggestion)
+        answer = right_way_round(text, suggestion)
         if answer is None or not answer.reason or self._rejected(text, answer, context):
             return None
-        language = _language_named(answer.expression_language) if _open_ask(text) else None
+        language = language_named(answer.expression_language) if open_ask(text) else None
         return CaseMatch(
             answer.reason, answer.expression or "", answer.meaning, answer.example, language
         )
@@ -366,11 +312,11 @@ class DecisionFlow:
     def _rejected(self, text: str, answer: ModelSuggestion, context: SessionContext) -> bool:
         """The checks that keep a wrong or unwanted hint off the screen (DECISIONS D-29)."""
         word, said = answer.expression or "", answer.meaning
-        if self._doubtful(answer, context.focus, _open_ask(text)) or _made_up(text, answer):
+        if self._doubtful(answer, context.focus, open_ask(text)) or made_up(text, answer):
             return True
-        if _only_the_word(text, answer, context):
+        if only_the_word(text, answer, context):
             return True  # "Molho para salada?": trying out a word they were just given
-        return not asks_for_word(text) and _only_extends(word, said)
+        return not asks_for_word(text) and only_extends(word, said)
 
     def _doubtful(self, answer: ModelSuggestion, focus: Language, open_ask: bool) -> bool:
         """The model is not sure itself, or its word is not in the language being practised.
@@ -380,8 +326,8 @@ class DecisionFlow:
         a word of the other, so there the model's own label decides and is not held against it.
         """
         unsure = answer.confidence is not None and answer.confidence < self._min_confidence
-        hint_in = _language_named(answer.expression_language)
-        said_in = _language_named(answer.meaning_language)
+        hint_in = language_named(answer.expression_language)
+        said_in = language_named(answer.meaning_language)
         wrong_side = not open_ask and hint_in is not None and hint_in is not focus
         same_side = said_in is focus and answer.reason is Reason.CODE_SWITCH
         return unsure or wrong_side or same_side  # same_side: a synonym, not a translation

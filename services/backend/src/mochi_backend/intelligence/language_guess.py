@@ -48,16 +48,34 @@ def _word_language(word: str) -> Language | None:
     return None
 
 
-def count_by_language(text: str, lexicon: Lexicon) -> dict[Language, int]:
-    """Words per language. Example: "I need to adiar my meeting" -> EN 4, PT_BR 1."""
+def _frame_words(text: str) -> dict[Language, int]:
+    """The small words that build the sentence, per language (accented words count as pt-BR)."""
     counts = {Language.EN: 0, Language.PT_BR: 0}
     for word in words_of(_HESITATION.sub(" ", text)):
         found = _word_language(word)
         if found is not None:
             counts[found] += 1
+    return counts
+
+
+def count_by_language(text: str, lexicon: Lexicon) -> dict[Language, int]:
+    """Words per language. Example: "I need to adiar my meeting" -> EN 4, PT_BR 1."""
+    counts = _frame_words(text)
     for language in counts:
         counts[language] += len(lexicon.entries_with_word(normalized(text), language))
     return counts
+
+
+def _evidence(text: str, lexicon: Lexicon) -> dict[Language, int]:
+    """Which language the sentence is built in: its small words decide, the lexicon breaks a tie.
+
+    Lexicon words are the ones people borrow. Seen live: "The reunião will atrasar." counted as
+    Portuguese because of its two borrowed words, so it got no hint.
+    """
+    frame = _frame_words(text)
+    if frame[Language.EN] != frame[Language.PT_BR]:
+        return frame
+    return count_by_language(text, lexicon)
 
 
 def spoken_language(text: str, lexicon: Lexicon, fallback: Language) -> Language:
@@ -66,7 +84,7 @@ def spoken_language(text: str, lexicon: Lexicon, fallback: Language) -> Language
     Two people share one mic and each speaks their own language, so the language is decided
     per turn, not once per session. Example: "Eu esqueci meu umbrella" -> pt-BR.
     """
-    counts = count_by_language(strip_proper_nouns(text), lexicon)
+    counts = _evidence(strip_proper_nouns(text), lexicon)
     if counts[Language.EN] == counts[Language.PT_BR]:
         return fallback
     return Language.EN if counts[Language.EN] > counts[Language.PT_BR] else Language.PT_BR
@@ -74,7 +92,7 @@ def spoken_language(text: str, lexicon: Lexicon, fallback: Language) -> Language
 
 def is_mostly(text: str, lexicon: Lexicon, language: Language) -> bool:
     """True when `language` has strictly more evidence than the other language."""
-    counts = count_by_language(text, lexicon)
+    counts = _evidence(text, lexicon)
     return counts[language] > counts[other_language(language)]
 
 

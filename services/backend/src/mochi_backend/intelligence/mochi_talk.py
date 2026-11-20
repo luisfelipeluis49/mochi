@@ -64,6 +64,11 @@ class MochiTalk:
         """Someone called Mochi without asking anything yet: the next sentence is for it."""
         self._until = self._clock.now() + self._follow_up
 
+    @property
+    def attentive(self) -> bool:
+        """True while Mochi is part of the talk (woken to chat); False while it only watches."""
+        return self._attentive
+
     def listening(self) -> bool:
         """True while a sentence that does not say "Mochi" may still be meant for it.
 

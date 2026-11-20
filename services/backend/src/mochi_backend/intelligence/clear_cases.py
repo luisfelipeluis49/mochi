@@ -9,7 +9,7 @@ from mochi_backend.intelligence.tokens import lowered, normalized, words_of
 from mochi_contracts import Language, Reason, SessionContext
 
 ASK_PATTERN = re.compile(
-    r"how do you say|how do i say|what(?:'s| is) the word for|what do you call|"
+    r"how (?:do (?:you|i)|to|can i|would you) say|what(?:'s| is) the word for|what do you call|"
     r"i don'?t know (?:the word|how to say)|i can'?t remember the word|i forgot the word|"
     r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra|esqueci a palavra"
 )
@@ -22,13 +22,14 @@ _MAX_SHORT_ASK_WORDS = 3
 
 
 _ASKED = re.compile(
-    r"how do (?:you|i) say|what(?:'s| is) the word for|what do you call|"
+    r"how (?:do (?:you|i)|to|can i|would you) say|what(?:'s| is) the word for|what do you call|"
     r"i don'?t know (?:the word(?: for)?|how to say)|"
     r"i (?:can'?t remember|forgot) the word(?: for)?|"
     r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de)|"
     r"esqueci a palavra(?: para| pra| de)?"
 )
 # "How do you say that?" points at a word said elsewhere: it names nothing itself
+_CUT_OFF = re.compile(r"\s+(?:in|em)$")
 _POINTING = frozenset(
     {"that", "it", "this", "isso", "isto", "aquilo", "esse", "essa", "este", "esta"}
 )
@@ -97,6 +98,7 @@ def _named_after_ask(low: str) -> str:
     rest = _TO_SENTENCE_END.match(low, asks[-1].end())
     term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
     term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
+    term = _CUT_OFF.sub("", term)  # "how do you say feijoada in" / "... In English"
     return "" if term in _POINTING else term
 
 

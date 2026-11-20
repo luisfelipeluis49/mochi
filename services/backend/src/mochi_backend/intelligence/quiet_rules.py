@@ -3,6 +3,7 @@
 import re
 from datetime import timedelta
 
+from mochi_backend.intelligence.clear_cases import asks_for_word
 from mochi_backend.intelligence.language_guess import strip_proper_nouns
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import folded, lowered, normalized
@@ -76,11 +77,13 @@ def lasting_quiet_reason(text: str, context: SessionContext, lexicon: Lexicon) -
 
     These hold whatever was shown before: a round, a serious talk, thinking aloud, a name.
     """
+    asked = asks_for_word(text)
     checks = (
         ("round_active", round_is_active(context)),
         ("serious_conversation", is_serious(text)),
         ("thinking_or_self_correction", is_just_thinking(text)),
-        ("deliberate_switch", is_deliberate_switch(text, context, lexicon)),
+        # "How do you say feijoada in English?" is a question, not a dish dropped in on purpose
+        ("deliberate_switch", is_deliberate_switch(text, context, lexicon) and not asked),
     )
     return next((name for name, applies in checks if applies), None)
 
