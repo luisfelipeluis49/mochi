@@ -1,9 +1,15 @@
 """The intelligence object the gateway uses through its port: decide, handle, apply, words_for."""
 
-from mochi_backend.intelligence.decision_flow import DecisionFlow
+from mochi_backend.intelligence.character_port import (
+    CharacterModel,
+    DeviceStatus,
+    NullCharacterModel,
+)
+from mochi_backend.intelligence.decision_flow import DecisionFlow, Minds
 from mochi_backend.intelligence.hint_builder import HintFactory
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
+from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel
 from mochi_backend.intelligence.round_engine import RoundEngine
 from mochi_backend.intelligence.settings import IntelligenceSettings
@@ -36,11 +42,12 @@ class Intelligence:
         factory = HintFactory(clock, ids, tuning.hint_ttl_seconds)
         self._memory = MemoryStore()
         self._rounds = RoundEngine(clock, ids, book)
+        self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
         self._flow = DecisionFlow(
             clock=clock,
             factory=factory,
             lexicon=book,
-            model=model,
+            minds=Minds(model, self._talk),
             settings=tuning,
         )
 
@@ -60,7 +67,31 @@ class Intelligence:
         """One person's saved words, newest first."""
         return self._memory.words_for(user_id)
 
+    def speak_as(self, character: CharacterModel) -> None:
+        """Give Mochi the model that writes its lines (without one it keeps its fixed lines).
+
+        Example: `brain.speak_as(OpenAiCharacterModel(http, url, "gpt-4.1-mini", key, 6.0))`.
+        """
+        self._talk.use(character)
+
+    def session_started(self, woken: bool) -> None:
+        """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
+        to it, so the next sentence is for it. Otherwise Mochi waits for its name."""
+        self._talk.begin(woken)
+
+    def device_status(
+        self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
+    ) -> None:
+        """What the device reports about itself; Mochi can talk about it.
+
+        Example: `device_status(80, 52, ["Ana"], "Ana")`.
+        """
+        self._talk.status = DeviceStatus(
+            volume=volume, temperature=temperature, voices=voices, speaker=speaker
+        )
+
     def reset(self) -> None:
-        """Clear saved words and any unfinished round (demo reset)."""
+        """Clear saved words, any unfinished round and Mochi's conversation (demo reset)."""
         self._memory.reset()
         self._rounds.reset()
+        self._talk.reset()

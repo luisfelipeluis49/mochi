@@ -8,6 +8,7 @@ from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.connections import ConnectionService
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
+from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.session_service import SessionService
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
@@ -24,6 +25,7 @@ class AppContainer:
     sessions: SessionService
     activity: ActivityService
     devices: DeviceService
+    device_link: DeviceLink
     connections: ConnectionService
     demo_reset: DemoReset
     intelligence_name: str

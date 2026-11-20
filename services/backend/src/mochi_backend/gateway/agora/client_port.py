@@ -12,6 +12,10 @@ class AgoraError(Exception):
     """An Agora call failed. The message names the endpoint, status and expected shape."""
 
 
+class AgoraRejectedError(AgoraError):
+    """Agora refused the request itself (a 4xx): the same request would be refused again."""
+
+
 class AgentAlreadyStoppedError(AgoraError):
     """The agent was already gone when we tried to stop it (tolerated)."""
 
@@ -21,7 +25,8 @@ class SpeechTuning:
     """ASR/TTS/turn-detection settings passed through from the environment."""
 
     asr_vendor: str = "ares"
-    asr_language: str = "en-US"
+    asr_language: str = "en-US"  # several for ARES: one comma-separated string, "en-US,pt-PT"
+    asr_keywords: tuple[str, ...] = ()  # words the recogniser should expect (ARES only)
     asr_params: VendorParams = field(default_factory=dict)
     asr_credential_mode: str = ""
     tts_vendor: str = "minimax"
@@ -42,6 +47,7 @@ class AgentStartRequest:
     llm_key: str
     tuning: SpeechTuning
     idle_timeout_seconds: int = 60
+    greeting: str = ""  # said once when the device joins; empty = Mochi starts silent
 
 
 class AgoraAgentClient(Protocol):

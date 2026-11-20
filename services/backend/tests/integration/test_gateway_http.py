@@ -144,6 +144,7 @@ def test_session_device_and_activity_endpoints() -> None:
         "capturing": False,
         "agora": None,
         "speaker_muted": False,
+        "commands": [],
     }
     started = client.post("/api/sessions/demo/start").json()
     assert started["capturing"] is True and started["status"] == "active"
@@ -154,6 +155,98 @@ def test_session_device_and_activity_endpoints() -> None:
     assert done["state"] == "ROUND_RESULT" and done["revealed_word"] == "umbrella"
     assert client.post("/api/sessions/demo/stop").json()["capturing"] is False
     assert client.post("/api/demo/reset").json()["capturing"] is False
+
+
+def _turn_texts(harness: Harness) -> list[object]:
+    return [fields["text"] for name, fields in harness.logger.lines if name == "turn"]
+
+
+def test_agora_repeats_unanswered_sentences_and_only_the_new_one_is_a_turn() -> None:
+    """Seen live: after a silent reply the next request carries the old sentences too."""
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    first = "Yesterday I went to the fair with my mother."
+    second = "I need to adiar my meeting tomorrow."
+    for content in (first, f"{first}  {second}", f"{first}  {second}", f"{first}  {second}  Okay."):
+        assert client.post(URL, json=_turn(content), headers=KEY).status_code == 200
+    assert _turn_texts(harness) == [first, second, "Okay."]  # the exact repeat is not a turn
+
+
+def test_after_mochi_spoke_the_next_message_is_taken_whole() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    ask = "Oi Mochi, what's the word for fila?"
+    spoken, _ = parse_stream(client.post(URL, json=_turn(ask), headers=KEY).text)
+    assert spoken == "You can say: queue."
+    client.post(URL, json=_turn("Thank you."), headers=KEY)
+    assert _turn_texts(harness) == [ask, "Thank you."]
+
+
+def test_a_reply_the_person_talked_over_does_not_make_the_old_part_a_turn_again() -> None:
+    """Seen live: Mochi answered "Like,." and the person kept talking; Agora sent both again."""
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    ask = "Oi Mochi, what's the word for fila?"
+    client.post(URL, json=_turn(ask), headers=KEY)
+    client.post(URL, json=_turn(f"{ask}  I mean the line of people."), headers=KEY)
+    assert _turn_texts(harness) == [ask, "I mean the line of people."]
+
+
+def test_what_mochi_said_is_in_the_log() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Oi Mochi, what's the word for fila?"), headers=KEY)
+    replies = [fields for name, fields in harness.logger.lines if name == "reply"]
+    assert replies == [{"text": "You can say: queue.", "commands": ""}]
+
+
+def test_a_new_session_does_not_remember_the_last_ones_unanswered_sentences() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Nice weather today."), headers=KEY)
+    client.post("/api/sessions/demo/stop")
+    client.post("/api/sessions/demo/start")
+    client.post(URL, json=_turn("Nice weather today. Really."), headers=KEY)
+    assert _turn_texts(harness)[-1] == "Nice weather today. Really."
+
+
+def test_without_a_model_key_the_ears_are_ares_with_the_lexicon_as_keywords() -> None:
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    tuning = harness.agora.started[0].tuning
+    assert (tuning.asr_vendor, tuning.asr_language) == ("ares", "en-US,pt-PT")
+    assert tuning.asr_keywords[0] == "Mochi" and "guarda-chuva" in tuning.asr_keywords
+    assert "umbrella" in tuning.asr_keywords and tuning.asr_credential_mode == ""
+    assert len(harness.agora.attempts) == 1
+
+
+def test_with_a_model_key_the_ears_are_openai_transcription_with_a_prompt() -> None:
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    client.post("/api/sessions/demo/start")
+    tuning = harness.agora.started[0].tuning
+    assert (tuning.asr_vendor, tuning.asr_language, tuning.asr_keywords) == ("openai", "en-US", ())
+    listening = tuning.asr_params["input_audio_transcription"]
+    assert isinstance(listening, dict) and listening["model"] == "gpt-4o-transcribe"
+    assert listening["language"] == "en" and "guarda-chuva" in str(listening["prompt"])
+    assert "never translate" in str(listening["prompt"])
+    assert tuning.asr_params["api_key"] == "sk-test"
+
+
+def test_when_agora_refuses_the_first_ears_the_session_starts_with_ares() -> None:
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    harness.agora.refused_ears = {"openai"}
+    assert client.post("/api/sessions/demo/start").json()["capturing"] is True
+    assert [r.tuning.asr_vendor for r in harness.agora.attempts] == ["openai", "ares"]
+    assert harness.agora.started[0].tuning.asr_keywords[0] == "Mochi"
+    assert "ears_fallback" in harness.logger.names()
+
+
+def test_a_timeout_is_not_tried_again_with_other_ears() -> None:
+    """The first agent may be running: a second start could put two agents in the channel."""
+    client, harness = _client({"MODEL_API_KEY": "sk-test"})
+    harness.agora.start_error = AgoraError("POST /join failed after 1 attempt: timeout")
+    assert client.post("/api/sessions/demo/start").status_code == 502
+    assert len(harness.agora.attempts) == 1
 
 
 def test_error_statuses_are_readable() -> None:

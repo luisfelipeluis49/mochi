@@ -9,6 +9,7 @@ from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_contracts import (
     Hint,
+    Language,
     LearningEvent,
     LearningState,
     Reason,
@@ -25,6 +26,9 @@ class CaseMatch:
     expression: str
     meaning: str | None
     example: str | None
+    # Set when the word is in another language than the sentence suggests: "Como se diz
+    # abacaxi?" is asked in Portuguese for an English word. None: the context's focus.
+    language: Language | None = None
 
 
 def match_from_entry(entry: LexiconEntry, reason: Reason, context: SessionContext) -> CaseMatch:

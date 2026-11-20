@@ -8,9 +8,11 @@ from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
+    AgoraRejectedError,
     SpeechTuning,
 )
 from mochi_backend.platform.http_client import (
+    HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
     HTTP_OK,
     HTTP_SERVER_ERROR,
@@ -48,7 +50,9 @@ class AgoraRestClient:
         url = f"{self._root}/join"
         reply = await self._post(url, join_body(request, self._ids.new("mochi")))
         if reply.status != HTTP_OK:
-            raise AgoraError(_describe(url, reply, "200 with a JSON body containing agent_id"))
+            refused = HTTP_BAD_REQUEST <= reply.status < HTTP_SERVER_ERROR
+            problem = AgoraRejectedError if refused else AgoraError
+            raise problem(_describe(url, reply, "200 with a JSON body containing agent_id"))
         try:
             return _JoinReply.model_validate_json(reply.body).agent_id
         except ValidationError as error:
@@ -96,13 +100,16 @@ def _describe(url: str, reply: HttpResponse, expected: str) -> str:
 
 
 def _llm_block(request: AgentStartRequest) -> JsonValue:
-    return {
+    block: dict[str, JsonValue] = {
         "url": request.llm_url,
         "api_key": request.llm_key,
         "headers": {KEY_HEADER: request.llm_key},
         "style": "openai",
         "max_history": 8,
     }
+    if request.greeting:
+        block["greeting_message"] = request.greeting
+    return block
 
 
 def _vendor_block(
@@ -116,13 +123,21 @@ def _vendor_block(
     return block
 
 
+def _asr_block(tuning: SpeechTuning) -> dict[str, JsonValue]:
+    extra: dict[str, JsonValue] = {"language": tuning.asr_language}
+    if tuning.asr_keywords:
+        extra["keywords"] = list(tuning.asr_keywords)
+    return _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, extra)
+
+
 def _speech_blocks(tuning: SpeechTuning) -> dict[str, JsonValue]:
-    language: dict[str, JsonValue] = {"language": tuning.asr_language}
-    asr = _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, language)
+    """Several languages ("en-US,pt-PT") are one comma-separated string, also in turn detection."""
     tts = _vendor_block(tuning.tts_vendor, tuning.tts_credential_mode, tuning.tts_params, {})
     vad: dict[str, JsonValue] = {"silence_duration_ms": tuning.end_of_speech_silence_ms}
     turns: dict[str, JsonValue] = {"config": {"end_of_speech": {"mode": "vad", "vad_config": vad}}}
-    return {"asr": asr, "tts": tts, "turn_detection": turns}
+    if "," in tuning.asr_language:
+        turns["language"] = tuning.asr_language
+    return {"asr": _asr_block(tuning), "tts": tts, "turn_detection": turns}
 
 
 def join_body(request: AgentStartRequest, name: str) -> JsonValue:

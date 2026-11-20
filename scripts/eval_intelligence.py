@@ -20,7 +20,8 @@ def real_model() -> HintModel:
         sys.exit("MODEL_API_KEY is not set; export it or put it in .env")
     base = os.environ.get("MOCHI_MODEL_BASE_URL", "https://api.openai.com/v1")
     name = os.environ.get("MOCHI_MODEL_NAME", "gpt-4o-mini")
-    return OpenAiHintModel(HttpxClient(), base, name, key, MODEL_TIMEOUT_SECONDS)
+    effort = os.environ.get("MOCHI_MODEL_REASONING_EFFORT", "")  # "none" for the gpt-5 family
+    return OpenAiHintModel(HttpxClient(), base, name, key, MODEL_TIMEOUT_SECONDS).thinking(effort)
 
 
 async def passed(fixture: DecisionFixture, model: HintModel) -> bool:

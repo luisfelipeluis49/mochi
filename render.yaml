@@ -40,20 +40,26 @@ services:
       - key: MOCHI_CHANNEL
         value: mochi-demo
       # Agora-managed speech vendors: no vendor keys needed (tested against real Agora, see VERIFIED.md)
+      # Ears (.env.example, DECISIONS D-25): OpenAI transcription when MODEL_API_KEY is set (the key then goes
+      # to Agora with each session start), otherwise ARES with the lexicon as keywords.
       - key: MOCHI_ASR_VENDOR
-        value: deepgram
+        value: openai
       - key: MOCHI_ASR_LANGUAGE
         value: en-US
+      - key: MOCHI_ARES_LANGUAGE
+        value: en-US,pt-PT
+      - key: MOCHI_ASR_KEYWORDS
+        value: '["Mochi"]'
       - key: MOCHI_ASR_CREDENTIAL_MODE
-        value: managed
+        value: ""
       - key: MOCHI_ASR_PARAMS
-        value: '{"url":"wss://api.deepgram.com/v1/listen","model":"nova-3","language":"multi"}'
+        value: "{}"
       - key: MOCHI_TTS_VENDOR
         value: minimax
       - key: MOCHI_TTS_CREDENTIAL_MODE
         value: managed
       - key: MOCHI_TTS_PARAMS
-        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100}}'
+        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100},"language_boost":"auto"}'
       - key: MOCHI_AGENT_IDLE_TIMEOUT_SECONDS
         value: "60" # agent leaves 60 s after the Pi does (billing guard)
       - key: MOCHI_CORS_ORIGINS

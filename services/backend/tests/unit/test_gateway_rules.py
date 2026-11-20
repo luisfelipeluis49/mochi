@@ -8,6 +8,7 @@ from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
     AgoraError,
+    AgoraRejectedError,
     SpeechTuning,
 )
 from mochi_backend.gateway.agora.rest_client import AgoraRestClient, join_body
@@ -302,6 +303,17 @@ def _client(*replies: HttpResponse | HttpTransportError) -> tuple[AgoraRestClien
     return AgoraRestClient(http, "APPID", "rk", "rest-secret-xyz", SequentialIdGenerator()), http
 
 
+async def test_a_refusal_from_agora_is_told_apart_from_a_failure() -> None:
+    """A 4xx would be refused again as it is (other ears may work); a 5xx may have half-started."""
+    refused, _ = _client(HttpResponse(400, '{"reason": "InvalidFieldValue"}'))
+    with pytest.raises(AgoraRejectedError):
+        await refused.start_agent(REQUEST)
+    broken, _ = _client(HttpResponse(503, "busy"))
+    with pytest.raises(AgoraError) as raised:
+        await broken.start_agent(REQUEST)
+    assert not isinstance(raised.value, AgoraRejectedError)
+
+
 def test_join_body_uses_the_verified_field_names() -> None:
     body = join_body(REQUEST, "mochi_001")
     assert isinstance(body, dict) and body["name"] == "mochi_001"
@@ -317,11 +329,32 @@ def test_join_body_uses_the_verified_field_names() -> None:
     assert props["idle_timeout"] == 60  # verified field: seconds after the Pi leaves
 
 
+def test_join_body_for_ares_sends_several_languages_as_one_string_in_both_places() -> None:
+    """The request Agora's own SDK sends for ARES (captured 2026-11-20, see VERIFIED.md)."""
+    tuning = SpeechTuning(asr_vendor="ares", asr_language="en-US,pt-PT", asr_keywords=("Mochi",))
+    request = AgentStartRequest("chan", 1002, 1001, "tok", "https://x/y", "k", tuning)
+    body = join_body(request, "mochi_001")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    props = body["properties"]
+    assert props["asr"] == {"vendor": "ares", "language": "en-US,pt-PT", "keywords": ["Mochi"]}
+    turns = props["turn_detection"]
+    assert isinstance(turns, dict) and turns["language"] == "en-US,pt-PT"
+
+
+def test_join_body_with_one_language_keeps_it_out_of_turn_detection() -> None:
+    body = join_body(REQUEST, "mochi_001")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    props = body["properties"]
+    assert props["asr"] == {"vendor": "ares", "language": "en-US"}
+    turns = props["turn_detection"]
+    assert isinstance(turns, dict) and "language" not in turns
+
+
 def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -> None:
     voice: dict[str, JsonValue] = {"voice_id": "English_captivating_female1", "speed": 1.0}
     tuning = SpeechTuning(
-        asr_vendor="ares",
-        asr_language="en-US,pt-BR",
+        asr_vendor="deepgram",
+        asr_language="en-US",
         asr_credential_mode="managed",
         tts_vendor="minimax",
         tts_credential_mode="managed",
@@ -332,8 +365,8 @@ def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -
     assert isinstance(body, dict) and isinstance(body["properties"], dict)
     props = body["properties"]
     assert props["asr"] == {
-        "vendor": "ares",
-        "language": "en-US,pt-BR",
+        "vendor": "deepgram",
+        "language": "en-US",
         "credential_mode": "managed",
     }
     assert props["tts"] == {

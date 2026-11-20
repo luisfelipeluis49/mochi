@@ -47,8 +47,28 @@ class Settings(BaseSettings):
     mochi_log_level: str = "INFO"
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
-    mochi_asr_vendor: str = "ares"
-    mochi_asr_language: str = "en-US"
+    mochi_model_reasoning_effort: str = ""  # "none" for the gpt-5 family; empty for the rest
+    mochi_hint_cooldown: Literal["two_turns", "while_shown"] = "two_turns"  # DECISIONS D-29
+    # Mochi's own voice: with a model key it answers in character when spoken to (DECISIONS D-23)
+    mochi_character_enabled: bool = True
+    mochi_character_model_name: str = "gpt-5.4-mini"
+    mochi_character_reasoning_effort: str = "none"  # empty for models without it (gpt-4.1-mini)
+    mochi_character_timeout_seconds: float = 6.0
+    mochi_follow_up_seconds: float = 20.0
+    mochi_greeting_en: str = "Hi! I'm listening."
+    mochi_greeting_pt: str = "Oi! Pode falar."
+    # Ears (DECISIONS D-25). "openai" needs MODEL_API_KEY; without one, or when Agora refuses the
+    # request, ARES with keywords is used instead.
+    mochi_asr_vendor: str = "openai"
+    mochi_asr_language: str = "en-US"  # the main language, for every vendor but ARES
+    mochi_asr_openai_model: str = "gpt-4o-transcribe"
+    mochi_asr_prompt: str = (
+        "Two people are practising languages. They speak English and Brazilian Portuguese and "
+        "often mix both in one sentence. Write every word in the language it was spoken in; "
+        "never translate."
+    )
+    mochi_ares_language: str = "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT stands in
+    mochi_asr_keywords: list[str] = ["Mochi"]  # names to expect; the lexicon's words are added
     mochi_asr_params: VendorParams = {}
     mochi_asr_credential_mode: str = ""
     mochi_tts_vendor: str = "minimax"
@@ -86,6 +106,17 @@ class Settings(BaseSettings):
     def model_configured(self) -> bool:
         """True when a model key is present (otherwise only the rule-based cases run)."""
         return bool(self.model_api_key)
+
+    @property
+    def character_configured(self) -> bool:
+        """True when Mochi writes its own lines (a model key, and not switched off)."""
+        return self.model_configured and self.mochi_character_enabled
+
+    @property
+    def turn_timeout_seconds(self) -> float:
+        """How long one turn may take to decide: the hint rules, plus Mochi's own reply if any."""
+        extra = self.mochi_character_timeout_seconds if self.character_configured else 0.0
+        return self.mochi_decide_timeout_seconds + extra
 
 
 def _masked(name: str, value: object) -> str:

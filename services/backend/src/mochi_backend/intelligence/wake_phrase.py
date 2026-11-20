@@ -6,6 +6,13 @@ import re
 _WAKE = re.compile(
     r"\b(?:hi|hey|hello|oi|ol[áa]|ei)[,\s]+m[oô](?:ch|sh|tch|x)(?:ie|i|y)\b", re.IGNORECASE
 )
+# Its name alone. Speech-to-text often loses the greeting: "Oi Mochi" arrived as "Wait, Mochi."
+_NAME = re.compile(r"\bm[oô](?:ch|sh|tch|x)(?:ie|i|y)\b", re.IGNORECASE)
+
+
+def says_mochi(text: str) -> bool:
+    """True when the name is in the turn, greeted or not. Example: "Wait, Mochi." -> True."""
+    return _NAME.search(text) is not None
 
 
 def has_wake_phrase(text: str) -> bool:

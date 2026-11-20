@@ -104,6 +104,14 @@ async def test_a_failing_or_slow_decide_means_silence() -> None:
         def reset(self) -> None:
             return None
 
+        def session_started(self, woken: bool) -> None:
+            return None
+
+        def device_status(
+            self, volume: int | None, temperature: int | None, voices: list[str], who: str | None
+        ) -> None:
+            return None
+
     harness = await _started(intelligence=Broken())
     outcome = await harness.say(ADIAR)
     assert outcome.reply == "" and outcome.decision.decision is DecisionKind.IGNORE

@@ -34,3 +34,13 @@ class IntelligencePort(Protocol):
     def reset(self) -> None:
         """Clear saved words and any game."""
         ...
+
+    def session_started(self, woken: bool) -> None:
+        """A session begins. `woken`: Mochi was called on the device; it listens for an answer."""
+        ...
+
+    def device_status(
+        self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
+    ) -> None:
+        """What the device reports about itself (speaker level, temperature, voices it knows)."""
+        ...

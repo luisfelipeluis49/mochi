@@ -179,3 +179,245 @@ Not changed, with the reason:
   (`docs/REAL_TURN_RUNBOOK.md`, section 4).
 - **New dependency:** `scripts/test-client/index.html` loads the Agora Web SDK from a CDN. Development only.
 
+## D-22: ears are ARES instead of Deepgram (hardware branch, 2026-11-20)
+
+Defaults, `.env.example` and `render.yaml` now use `ares` with `en-US,pt-PT` and the keyword `Mochi`. D-18's
+"managed `ares` is not available on our SKU" was the `credential_mode`, not the project: on a second Agora
+project the same request failed with that exact message when `credential_mode` was `managed` and returned 200
+without it (`VERIFIED.md`). Several languages are one comma-separated string (`en-US,pt-PT`) in both
+`asr.language` and `turn_detection.language`, which is what Agora's own SDK sends; a list is accepted but then
+only English is recognised (seen in a live session).
+`MOCHI_ASR_KEYWORDS` is new. On mixed English and
+Portuguese ARES made far fewer mistakes than Deepgram `nova-3` `multi` in the hardware owner's tests.
+**Not verified:** that ARES is accepted on the Render project (expected, same request); the Deepgram settings
+are kept as a comment in `.env.example`. Not a contract change (AGENTS 6 does not cover vendor settings).
+
+## D-23: Mochi's character lives in the backend; a device channel for its body (2026-11-20)
+
+The hardware owner's stand-in agent (personality, face moods, volume by voice, temperature, learning voices)
+answered every sentence, which breaks "quiet by default". Its character is now part of the one agent the
+backend runs, and only speaks when Mochi is spoken to.
+
+**Behaviour (intelligence).** Unchanged without `MODEL_API_KEY`. With it:
+- A sentence with the wake phrase is answered by a model in character (`intelligence/character.md`, the
+  stand-in's prompt), also when no word is asked ("Mochi, speak louder"). When the rules found a word, the hint
+  is shown as before and the model is told to teach exactly that word; if the model fails or takes longer than
+  `MOCHI_CHARACTER_TIMEOUT_SECONDS`, the fixed line is spoken.
+- For `MOCHI_FOLLOW_UP_SECONDS` after Mochi spoke, the next sentence is also given to the model, so a person can
+  answer Mochi without saying its name. The model replies `[quiet]` when the sentence was not for it, and the
+  normal rules then run. Never during a game round.
+- The turn timeout grows by the character timeout (`Settings.turn_timeout_seconds`); the hint model keeps its own.
+
+**Contract proposals (AGENTS 6.4), all additive:**
+- `GET /api/devices/home_pi_01/state` gains `commands: [{command_id, kind, value}]`: what Mochi wrote in square
+  brackets (`mood`, `show`, `volume`, `temp`, `enroll`, `forget`), stripped from the spoken text, plus `show`
+  for a hint's word. The device does each `command_id` once. The list is cleared when a session starts or stops.
+- `POST /api/devices/home_pi_01/status {volume, temperature, voices, speaker}`: the device reports itself; it
+  goes into the model's prompt. `POST /api/devices/home_pi_01/voices {name, language, learned}`: a voice was
+  learned (or not); Mochi says so through Agora's speak endpoint.
+- `POST /api/sessions/demo/start` takes an optional `{"woken_by": "<wake phrase>"}`: Mochi greets in that
+  language (`llm.greeting_message`) and the next sentence is for it. Without a body nothing changes.
+- `IntelligencePort` gains `called()` and `device_status(...)`.
+
+**Verified in live sessions with synthetic speech (`VERIFIED.md`):** silence when nobody calls Mochi, the
+greeting, in-character replies with a real model, and `mood` / `volume` / `temp` commands reaching the device.
+A sentence with Mochi's name but no greeting ("Oi Mochi" is often heard as "Wait, Mochi.") is also given to the
+model, which may answer `[quiet]`. **Not verified:** a person at the microphone; whether the device hears its own
+voice as a new turn; the first sound comes 3.3 to 4.2 s after the person stops (the reply is not streamed).
+**Not done:**
+who is speaking is only told to the model, not used for "whose word is it" (AGENTS 7.3, a `Turn` has no speaker).
+The prompt exists twice (here and in `hardware/pi-bridge/config/mochi.toml` for the Pi's stand-in mode).
+
+## D-24: what the first spoken conversation changed in Mochi's character (2026-11-20)
+
+One person talked with Mochi for five minutes. Three things were wrong and came from the prompt, not the code:
+it sent the person to "Ana" and "Ben" who were not there, it answered English questions in Portuguese (copying a
+Portuguese example), and it put Portuguese words inside English sentences, which the voice reads with an
+English accent.
+- The prompt no longer names anyone or assumes a second person, and its examples give the turn back to the
+  speaker. Names come only from what was said or from a recognised voice.
+- The backend tells the model the language of each sentence (`language_guess.spoken_language`; unclear ones
+  follow the last sentence answered) and asks for the reply in that language, with a taught word as a sentence
+  of its own. An example word in that note gets repeated by the model, so the note has none.
+- `IntelligencePort.called()` became `session_started(woken)`: in a session the device was woken for, a sentence
+  without Mochi's name is most likely still for it; in one the operator started, Mochi leans to `[quiet]`.
+  Fillers and unfinished starts get `[quiet]` in both.
+- Speed: the hint model and Mochi's reply are asked at the same time when both are needed, and
+  `HttpxClient` keeps its connection open between sentences.
+The same prompt changes went into the Pi's stand-in (`hardware/pi-bridge/config/mochi.toml`).
+**Still imperfect** (seen in replays with the real model): an occasional word of the other language inside a
+sentence, and the hint model inventing hints in a talk with Mochi ("hamburger", reason `asks_partner`).
+
+## D-25: ears and reply model chosen from measurements (2026-11-20)
+
+The hardware owner compared recognisers on 16 synthetic sentences with one word of the other language
+(`~/.cache/mochi-wake-eval/cs` on the Pi) and chose:
+- **Ears, first choice: OpenAI `gpt-4o-transcribe`** through Agora (`asr.vendor: openai`), main language `en`, with
+  a prompt saying the speakers mix both languages plus the lexicon's words. **Fallback: ARES** with the same words
+  as `keywords`. ARES is used when there is no `MODEL_API_KEY`, and `SessionService` retries with it when Agora
+  refuses the first request (`AgoraRejectedError`, a 4xx). A timeout is not retried (the first agent may be
+  running). Not covered: OpenAI failing during a session; Mochi is then deaf until `MOCHI_ASR_VENDOR=ares`.
+- **Replies: `gpt-5.4-mini`** with `reasoning_effort: none` (median 0.7 s against 1.0 s for `gpt-4.1-mini` on the
+  same sentences). The request now sends `max_completion_tokens`; a failed model call is logged
+  (`character_model_failed`). `gpt-5-mini` needs a verified OpenAI organisation.
+- **Voice: MiniMax stays.** `gpt-4o-mini-tts` did not pronounce embedded words better (table in `VERIFIED.md`).
+
+Numbers (`VERIFIED.md` has the tables): mixed-in word kept in 13/16 with `gpt-4o-transcribe` through Agora, 10/16
+with ARES + keywords, 7/16 with ARES and only "Mochi". The price is delay: a sentence reaches the backend 1.5 s
+after speech ends with `gpt-4o-transcribe`, 1.1 s with ARES (both include the 0.6 s end-of-speech wait).
+`gpt-transcribe` and `gpt-live-transcribe` scored lower: they tidy the mixed-in word into the sentence's language.
+`gpt-4o-transcribe` is deprecated by OpenAI (shutdown 2027-02-26).
+The model key is sent to Agora in the start request. Not a contract change.
+
+## D-26: goodbye ends the session; a woken Mochi keeps listening; echoed prompts are removed (2026-11-20)
+
+From a second spoken conversation:
+- The person said "I need to go, tchau tchau!", Mochi said goodbye, and the session stayed open (only the
+  device's offline phrase "tchau mochi" ended one). New silent command `[bye]`: Mochi writes it when someone
+  says goodbye to it or tells it to sleep, and the device ends the session once the goodbye has been heard
+  (8 s at most). Added to `commands` in the device state (D-23); no other contract change.
+- A minute later "Are you still there?" got silence: the follow-up window had passed. In a session the device
+  was woken for, every sentence is now given to Mochi (which may still answer `[quiet]`). In a session the
+  operator started, the window stays as it was.
+- OpenAI transcription pasted its prompt's word list into a transcript; see `VERIFIED.md` and
+  `gateway/prompt_echo.py`.
+
+## D-27: the main promise end to end: just listen, silent hints for any word (2026-11-20)
+
+Asked for by the hardware owner; it changes intelligence code (Kauê's), so it is recorded here.
+- **Detection.** With perfect hearing the rules found the right hint in 6 of 16 mixed sentences: a word outside
+  the 20-word lexicon has no mark they can see. While two people talk and Mochi only watches, the hint model now
+  judges every sentence of three words or more (`IntelligenceSettings.judge_every_sentence`), with instructions
+  that the hint is the word the person needed; a reply that returns the word they said is swapped or dropped
+  (`_needed_word`). Result: 16 of 16, no hint on 12 ordinary sentences (names, grammar slips, serious talk).
+  `scripts/eval-intelligence.sh`: 68/75 before, 82/85 now with ten new `beyond_lexicon` fixtures; the three
+  failures are the false friends that failed before. Adding false-friend examples to the instructions fixed two
+  and caused two wrong hints, so it was taken out again: silence matters more.
+  Cost: one model call per sentence in that mode. Hints stay limited to words, never grammar (AGENTS 7.2).
+- **Getting there from the wake phrase.** Someone who woke Mochi has its attention. `[listen]` (written by Mochi
+  when it is asked to just listen, or told that people will talk to each other) makes it only watch; its name
+  still gets an answer; `[chat]` brings it back. Both are read in `MochiTalk`, not sent to the device.
+- **Live** (real Agora, real models, spoken clips): woken, told to just listen, then "Can you pass me the garfo,
+  please?" gave silence and `show fork` on the device; two ordinary sentences gave nothing; "Eu esqueci minha
+  wallet em casa." gave `show carteira`; "Hey Mochi, how do you say fila in English?" was answered aloud.
+- **Not built:** escalation when a hint is not enough (to be agreed with the team); using the device's speaker
+  recognition to choose whose hint it is.
+
+## D-28: fixes from the first spoken test of the quiet hints (2026-11-20)
+
+One person tried the mode from D-27 by voice; the log was read back and the sentences replayed.
+- **Asked word.** "...adiar our meeting. How do I say garfo in English?" gave "postpone": the rules took any
+  lexicon word in the turn. `clear_cases.asked_term` finds what the question names; the rules search only that,
+  the hint model gets it as `asked_about`, and a language the question names (`wanted_language`) is the hint's
+  language and decides whose hint it is.
+- **Stale memory.** `SessionService._begin` clears `turns` and `hints`: a hint from an earlier session had put
+  the new session's first sentence under the cooldown.
+- **Cooldown.** Unchanged for unasked hints (AGENTS 7.2). A turn that asks how to say something is exempt.
+  **Open, for the team:** two turns is about 20 seconds of real talk, and it still silenced a second, different
+  word ("...eu esqueci minha wallet em casa." two turns after another hint). Proposal: hold a new hint back only
+  while the previous one is still on screen.
+- **"I mean"** at the start of a turn is not a self-correction (`quiet_rules._SELF_CORRECTION`).
+- **Split questions.** "Como se fala..." and "Carteira em inglês." arrive as two turns because of the pause; a
+  turn that follows an unfinished question within 20 s is read together with it (`_with_its_question`). The hint
+  model is told not to guess a word nobody mentioned.
+- **Hint card.** The device's `commands` carry a hint as `hint` with a JSON card (`word`, `language`, `meaning`,
+  `example`) instead of `show` with the bare word; Mochi's face shows the language and meaning under the word.
+- The decision log line now names the hint and its meaning.
+`scripts/eval-intelligence.sh` is unchanged at 82/85.
+
+## D-29: the hint judge, second pass: measured on what was really heard (2026-11-20)
+
+Yardstick: 72 sentences as the recognisers actually wrote them (gpt-4o-transcribe and ARES, including
+the mangled ones), sentences from a real conversation on the Pi, and 26 sentences written afterwards
+and never used for tuning. Each has the hint it should or should not produce.
+
+| | before (D-28) | now |
+|---|---|---|
+| the first 46 sentences | 38 right, 7 wrong hints, 1 missed | 43 right, 1 to 2 wrong hints, 1 to 2 missed (all mangled words) |
+| the 26 new sentences | not measured | 26 right |
+| answer time, median | 0.84 s (gpt-4.1-mini) | 0.68 s (gpt-5.4-mini, `reasoning_effort: none`) |
+| `scripts/eval-intelligence.sh` | 82/85 | 92/95 (ten rows added; the three false friends still fail) |
+
+Live, real Agora and gpt-4o-transcribe, spoken test clips: the hint reached the device 1.2 s and 2.1 s
+after the sentence ended; Mochi stayed silent.
+
+What changed, all in `intelligence/`:
+- **Instructions** (`openai_hint_model.SYSTEM_PROMPT`): who the two people are, each reason spelled out, a
+  list of what is never a hint (greetings and exclamations in the other language, names, a word being
+  tried out, grammar), how a transcript mangles foreign words, and "when in doubt, IGNORE". The example is
+  the person's own sentence said right (a recast), not a dictionary sentence. IGNORE is answered as
+  `{"decision": "IGNORE"}`, which is most answers and a third of the tokens.
+- **Checks on the answer** (`decision_flow._accepted`): the model reports `confidence`, and the language of
+  both words. No hint when it is unsure (`hint_min_confidence`), when the hint is not in the language being
+  practised, when a "code switch" is a word of the same language (a synonym), when the word they "said" is
+  not in the sentence, when the hint only extends the word they said, or when the whole turn is just the
+  word itself (someone trying it out). A false friend the rules did not spot first (`look_alike` from the
+  model alone) is dropped: it was the label the model put on its wildest guesses.
+- **Language of a sentence** (`language_guess`): more common words on both sides, "um" is no longer
+  Portuguese (English speech is full of it), and a capital at the start of a sentence is not a name.
+- **Questions**: "Limpar em inglês?" counts as asking (`_short_ask`), but only when the word is not already
+  in the language named: "Can we talk in English?" asks for nothing. The model is sent only the sentence
+  that asks (`question_itself`). `asks_partner` needs a name; otherwise the reason is `says_unknown`.
+- **Model**: `MOCHI_MODEL_REASONING_EFFORT` (`OpenAiHintModel.thinking`). Compared on the yardstick:
+  gpt-4.1-mini 1.05 s, gpt-4.1 0.86 s, gpt-5.4 1.15 s, gpt-5.4-mini 0.68 s at the same accuracy; gpt-5.4-nano
+  misses a third of the mixed sentences. The code default is unchanged; this Pi runs gpt-5.4-mini.
+- **Slow answers** (`hedged.first_answer`): when the first request has not answered after 1 s a second one
+  is sent and the first answer wins; the 2 s limit of AGENTS 7.2 stays. Two answers in a row hit the limit
+  in one run, which cost two hints.
+- **Cooldown, optional** (`MOCHI_HINT_COOLDOWN=while_shown`): an unasked hint waits only until the earlier
+  one has left the screen, and the same word is never shown twice in a row. The default is still the
+  team's two turns; this Pi runs `while_shown`. **For the team to decide.**
+- **"You used it"**: when a card goes to `ASSISTED` the device gets a `used` command (`{"word", "language"}`)
+  and Mochi's face shows the word with a star for five seconds, without a sound.
+- The device reads its state every 0.15 s (was 0.3 s).
+
+**After an independent review of the first version** (same day), with a test for each:
+- "Limpar em inglês?" counts as a question only for a bare word or a short name of a thing. "Was the meeting
+  in Portuguese?" and "A reunião foi em inglês?" had shown a hint, and skipped the cooldown doing so.
+- A question that names no language ("Como se diz saudade?") is asked in one language for a word of the
+  other: there the model's own label decides the hint's language (`CaseMatch.language`) instead of being
+  held against it. Labels are read loosely ("EN", "en-US", "English").
+- "I forgot the word for chave." names its word, so the next turn is no longer read as its second half.
+  "How do you say that?" names nothing, so the whole turn goes to the model.
+- A round, a serious talk, thinking aloud and names keep Mochi quiet also when the cooldown does not
+  (`lasting_quiet_reason`); the cooldown is one separate decision (`_held_back`). `while_shown` now really
+  waits for the screen, and "the same word twice" looks only at the last two turns.
+- "um" is Portuguese again, except before a pause ("Um, good question"); only small sentence-building
+  words count for the language of a sentence, not nouns, which are what people borrow.
+- The word a code switch names may be in another form ("garfos", "adiei"). The instructions no longer ask
+  the model to reconstruct mangled words: such a guess was dropped by this check anyway.
+- An error in the model adapter is raised again (it reaches the log as `decide_failed`); a wrong field in
+  the model's JSON (a list as reason, 95 as confidence) no longer costs the answer.
+- The cheer is for a word shown in this session, and not next to a new hint.
+Not changed: a card saved in an earlier session can still go to `ASSISTED` on a later session's first
+turns (`learning_rules`, as before); it is only no longer cheered.
+
+Still wrong: a word the recogniser turned into a non-word ("postone", "guardy shoe") is sometimes guessed
+at. A word list for both languages would settle it (is the "said" word a word at all?), which means adding
+data files; not done. False friends (case 8) are unchanged at 0 of 3 beyond the lexicon.
+
+## D-30: asked how a word sounds, Mochi says it (2026-11-20)
+
+Seen in a conversation on the Pi: the hint "cortar o cabelo" was shown, then "você pode pronunciar para
+mim?" got silence, three times. A word on a screen does not tell how it sounds.
+- **Rule** (`intelligence/aloud.py`, `DecisionFlow._said_aloud`): a turn that asks about the sound of a word
+  ("pronounce", "pronúncia", "say it for me", "fala pra mim", "em voz alta") makes Mochi say the hint shown
+  last (at most two minutes after it left the screen) and show it again. A word in quotes is said as it
+  is, unless it is what that hint stands for. A turn that both needs a word and asks for its sound gets
+  the hint and the sound.
+- **What it says:** only the word, twice ("cortar o cabelo. cortar o cabelo."), with no model call: nothing
+  else for the voice to mispronounce, and no wait.
+- **This is the one time Mochi speaks without its name**, which goes beyond AGENTS 7.1 case 4. Kept narrow:
+  not "say that again" (people say that to each other), not when the partner is asked by name, not during
+  a round, and not while Mochi is part of the talk (it answers in its own words then). **For the team.**
+From the same conversation:
+- "How do you say feijoada in English?" was asked four times and got nothing: the dish rule
+  (`deliberate_switch`) silenced it. A question is not a dish dropped in on purpose; the model is told to
+  answer with a short description when there is no word ("black bean stew"). "How to say ..." counts as
+  asking, and "how do you say feijoada in" (cut off before the language) names "feijoada".
+- "The reunião will atrasar." got nothing: its two borrowed words made it count as Portuguese. The small
+  words of a sentence decide its language now; lexicon words only break a tie (`language_guess._evidence`).
+- The answer checks moved to `intelligence/answer_checks.py` (file size rule).
+Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
+nothing, because that hint was still on the screen (`while_shown`).
+

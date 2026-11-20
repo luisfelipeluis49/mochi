@@ -4,11 +4,14 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 """
 
 import asyncio
+import json
 from dataclasses import dataclass
 
+from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
+from mochi_backend.gateway.prompt_echo import without_prompt_echo
 from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -20,7 +23,9 @@ from mochi_contracts import (
     DecisionKind,
     EventType,
     GameState,
+    Hint,
     LearningEvent,
+    LearningState,
     SessionContext,
     Speak,
     Turn,
@@ -33,6 +38,29 @@ class TurnOutcome:
 
     reply: str
     decision: Decision
+
+
+def hint_card(hint: Hint) -> str:
+    """What the device shows for a hint, as JSON: a word alone tells too little.
+
+    Example: `{"word": "fork", "language": "en", "meaning": "garfo", "example": null}`.
+    """
+    card = {
+        "word": hint.expression,
+        "language": hint.target_language.value,
+        "meaning": hint.meaning,
+        "example": hint.example,
+    }
+    return json.dumps(card, ensure_ascii=False)
+
+
+def used_card(event: LearningEvent) -> str:
+    """What the device shows when someone goes on to say a word they were given, as JSON.
+
+    Example: `{"word": "fork", "language": "en"}`.
+    """
+    card = {"word": event.expression, "language": event.target_language.value}
+    return json.dumps(card, ensure_ascii=False)
 
 
 def silent_decision() -> Decision:
@@ -54,6 +82,10 @@ class PipelineDeps:
     logger: EventLogger
     decide_timeout_seconds: float
     commit_lock: asyncio.Lock
+    ears_prompt: str = (
+        ""  # what speech-to-text was told, if anything: it can echo into a transcript
+    )
+    ears_words: tuple[str, ...] = ()
 
 
 class TurnPipeline:
@@ -71,6 +103,7 @@ class TurnPipeline:
         self._timeout = deps.decide_timeout_seconds
         self._lock = asyncio.Lock()
         self._commit = deps.commit_lock
+        self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -81,6 +114,20 @@ class TurnPipeline:
         """Run one turn through the whole chain and return the reply for Agora."""
         async with self._lock:
             return await self._handle(text.strip())
+
+    async def handle_heard(self, heard: str, position: int) -> TurnOutcome:
+        """A turn as Agora sends it: everything said since Mochi last finished speaking.
+
+        `position` is the index of that user message in the request. Only the part not handled
+        before is run through the chain. Example: "A." got silence, then Agora sends "A.  B." at
+        the same position: only "B." is a new turn.
+        """
+        async with self._lock:
+            said = self._store.new_speech(heard.strip(), position)
+            text = without_prompt_echo(said, self._ears_prompt, self._ears_words)
+            if text != " ".join(said.split()):
+                self._logger.log("ears_prompt_echo", {"heard": said, "kept": text})
+            return await self._handle(text)
 
     async def _handle(self, text: str) -> TurnOutcome:
         if not text or not self._store.capturing:
@@ -100,7 +147,7 @@ class TurnPipeline:
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
         await self._publish_results(decision)
-        reply = await self._reply(decision.speak)
+        reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
         return TurnOutcome(reply, decision)
 
@@ -128,13 +175,15 @@ class TurnPipeline:
         return decision
 
     def _log_decision(self, turn: Turn, decision: Decision, millis: float) -> None:
-        reason = decision.hint.reason.value if decision.hint else None
+        hint = decision.hint
         self._logger.log(
             "decision",
             {
                 "segment_id": turn.segment_id,
                 "decision": decision.decision.value,
-                "reason": reason,
+                "reason": hint.reason.value if hint else None,
+                "hint": hint.expression if hint else None,
+                "meaning": hint.meaning if hint else None,
                 "latency_ms": round(millis, 1),
             },
         )
@@ -151,9 +200,43 @@ class TurnPipeline:
             kind = EventType.LEARNING_EVENT_CREATED if first else EventType.LEARNING_EVENT_UPDATED
             await self._hub.publish(kind, stored)
 
-    async def _reply(self, speak: Speak | None) -> str:
-        if speak is None:
+    async def _reply(self, decision: Decision) -> str:
+        """Say the words, and hand the device what was written in brackets (never spoken)."""
+        text, written = split_commands(decision.speak.text) if decision.speak else ("", [])
+        self._tell_device(decision, written)
+        if decision.speak is None or not text:
             return ""
+        does = " ".join(f"[{kind} {value}]".replace(" ]", "]") for kind, value in written)
+        self._logger.log("reply", {"text": text, "commands": does})
+        speak: Speak = decision.speak.model_copy(update={"text": text})
         await self._hub.publish(EventType.AGENT_SPEAK_REQUESTED, speak)
-        self._silence.begin_speaking(speak.text)
-        return speak.text
+        self._silence.begin_speaking(text)
+        return text
+
+    def _used_now(self, decision: Decision) -> list[LearningEvent]:
+        """Words someone just said after being given them ("Used with help"): the face cheers.
+
+        Not next to a new hint, whose card would cover the cheer at once, and only for a word
+        shown in this session: a card saved an hour ago is no reason to cheer now.
+        """
+        if decision.hint is not None:
+            return []
+        shown = {hint.expression for hint in self._store.hints}
+        used = (LearningState.ASSISTED,)
+        return [
+            event
+            for event in decision.learning_events
+            if event.learning_state in used and event.expression in shown
+        ]
+
+    def _tell_device(self, decision: Decision, written: list[Written]) -> None:
+        wanted = list(written)
+        wanted += [("used", used_card(event)) for event in self._used_now(decision)]
+        if decision.hint is not None:
+            # A hint goes on Mochi's face as a card: the word, its language and what it means.
+            # It replaces a bare [show ...] Mochi wrote for the same turn.
+            wanted = [(kind, value) for kind, value in wanted if kind != "show"]
+            wanted.append(("hint", hint_card(decision.hint)))
+        self._store.queue(
+            [DeviceCommand(command_id=self._ids.new("cmd"), kind=k, value=v) for k, v in wanted]
+        )
