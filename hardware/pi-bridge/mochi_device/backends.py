@@ -5,9 +5,11 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
 - TestAgentBackend: starts a stand-in Agora agent directly (managed STT/LLM/TTS), bilingual, able
   to change the speaker volume and tell its temperature. For testing and demos before Luis's
   backend exists. Needs AGORA_APP_ID + AGORA_APP_CERTIFICATE.
-- MochiBackend: the real path. Calls Luis's existing endpoints from AGENTS.md 6.4
-  (POST /api/sessions/demo/start|stop) and reads the join info from
-  GET /api/devices/{device_id}/state. No agent logic here: that stays in services/backend.
+- MochiBackend: the real path. Calls Luis's endpoints from AGENTS.md 6.4
+  (POST /api/sessions/demo/start|stop), reads the join info from
+  GET /api/devices/{device_id}/state, and keeps reading that state while the session runs: the
+  backend can end the session or silence the speaker. No agent logic here: that stays in
+  services/backend.
 """
 from __future__ import annotations
 
@@ -299,32 +301,93 @@ class TestAgentBackend:
 
 
 class MochiBackend:
-    """Real path via Luis's backend (AGENTS.md 6.4). Untested until that backend exists."""
+    """Real path via Luis's backend (AGENTS.md 6.4). The backend owns the session: the Pi asks it to
+    start one, then reads the device state a few times a second and does what it says.
 
-    def __init__(self, base_url: str, device_id: str, session_id: str = "demo"):
+    - capturing false (someone stopped the session elsewhere): on_event("stopped", why), and the
+      supervisor leaves the channel.
+    - speaker_muted: the speaker is silenced until it is false again (the backend's fallback for
+      keeping the agent quiet).
+    """
+
+    def __init__(self, base_url: str, device_id: str, device: Device | None = None, on_event=None,
+                 poll_interval_s: float = 0.3, session_id: str = "demo"):
         self.base = base_url.rstrip("/")
         self.device_id = device_id
+        self.device = device
+        self.on_event = on_event or (lambda kind, value: None)
+        self.poll_interval_s = poll_interval_s
         self.session_id = session_id
+        self._poller: asyncio.Task | None = None
+        self._muted = False
+        self._stopped_by_backend = False
 
-    def _req(self, method: str, path: str) -> dict:
+    def _req(self, method: str, path: str, timeout: float = 10) -> dict:
         req = urllib.request.Request(self.base + path, method=method,
                                      headers={"Content-Type": "application/json"}, data=b"{}" if method == "POST" else None)
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             body = r.read()
             return json.loads(body) if body else {}
 
+    def _state(self, timeout: float = 10) -> dict:
+        return self._req("GET", f"/api/devices/{self.device_id}/state", timeout)
+
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
+        self._stopped_by_backend = False
         await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/start")
         for _ in range(50):  # wait up to ~10 s for the backend to publish join info
-            state = await asyncio.to_thread(self._req, "GET", f"/api/devices/{self.device_id}/state")
+            state = await asyncio.to_thread(self._state)
             if state.get("capturing") and state.get("agora"):
                 a = state["agora"]
+                self._poller = asyncio.create_task(self._poll())
                 return JoinInfo(a["app_id"], a["channel"], int(a["uid"]), a.get("token"))
             await asyncio.sleep(0.2)
         raise RuntimeError("backend did not report capturing=true with agora join info")
 
+    async def _mute(self, muted: bool) -> None:
+        if muted != self._muted:
+            self._muted = muted
+            if self.device:
+                await asyncio.to_thread(self.device.set_muted, muted)
+
+    async def _poll(self) -> None:
+        """While the session runs: follow the device state."""
+        failing = False
+        while True:
+            await asyncio.sleep(self.poll_interval_s)
+            try:
+                state = await asyncio.to_thread(self._state, 3)
+            except Exception as e:  # a failed poll must not end the session; say so once
+                if not failing:
+                    print(f"[mochi] backend state: {e!r}"[:300], flush=True)
+                    failing = True
+                continue
+            if failing:
+                print("[mochi] backend state: reachable again", flush=True)
+                failing = False
+            if not (state.get("capturing") and state.get("agora")):
+                self._stopped_by_backend = True
+                self.on_event("stopped", "backend stopped capturing")
+                return
+            await self._mute(bool(state.get("speaker_muted")))
+
     async def stop(self) -> None:
-        await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/stop")
+        if self._poller:
+            self._poller.cancel()
+            try:
+                await self._poller
+            except BaseException:
+                pass
+            self._poller = None
+        await self._mute(False)  # never leave the speaker silent after a session
+        if self._stopped_by_backend:
+            # It is already stopped there. Asking again could end a session someone has just started.
+            self._stopped_by_backend = False
+            return
+        try:
+            await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/stop")
+        except Exception as e:  # unreachable: the supervisor must still get back to listening
+            print(f"[mochi] backend stop: {e!r}"[:300], flush=True)
 
 
 def make_backend(cfg: dict, on_event=None):
@@ -332,5 +395,6 @@ def make_backend(cfg: dict, on_event=None):
     if b["kind"] == "test_agent":
         return TestAgentBackend(cfg["test_agent"], Device(cfg["audio"]), on_event)
     if b["kind"] == "mochi_backend":
-        return MochiBackend(b["mochi_backend_url"], b["device_id"])
+        return MochiBackend(b["mochi_backend_url"], b["device_id"], Device(cfg["audio"]), on_event,
+                            float(b.get("poll_interval_s", 0.3)))
     raise SystemExit(f"unknown backend.kind {b['kind']!r}")

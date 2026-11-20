@@ -41,11 +41,14 @@ min_volume = 20
 
 [backend]
 # "test_agent": start a stand-in Agora agent directly (scripts/test_agent.py's agent).
-# "mochi_backend": ask Luis's backend (POST /api/sessions/demo/start, GET device state). Untested
-#                   until that backend exists.
+# "mochi_backend": ask Luis's backend (POST /api/sessions/demo/start, GET device state). While the
+#                   session runs the Pi keeps reading the device state: the backend can end the
+#                   session or silence the speaker.
 kind = "test_agent"
 mochi_backend_url = "http://localhost:8000"
 device_id = "home_pi_01"
+# Seconds between two reads of the device state during a session.
+poll_interval_s = 0.3
 
 [test_agent]
 channel = "mochi-test"

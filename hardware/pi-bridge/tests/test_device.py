@@ -6,14 +6,21 @@ from mochi_device.device import Device
 
 
 class FakeMixer(Device):
-    def __init__(self):
+    def __init__(self, switch: bool = True):
         super().__init__({"device": "plughw:CARD=M1A,DEV=0", "min_volume": 20})
         self.level = 100
+        self.switch = switch  # does this mixer have a mute switch?
+        self.muted = False
 
     def _amixer(self, *args):
         if args[0] == "sset":
-            self.level = int(args[2].rstrip("%"))
-        return f"  Mono: Playback {self.level} [{self.level}%] [0.39dB] [on]"
+            for arg in args[2:]:
+                if arg in ("mute", "unmute"):
+                    self.muted = self.switch and arg == "mute"
+                else:
+                    self.level = int(arg.rstrip("%"))
+        state = f" [{'off' if self.muted else 'on'}]" if self.switch else ""
+        return f"  Mono: Playback {self.level} [{self.level}%] [0.39dB]{state}"
 
 
 class DeviceTest(unittest.TestCase):
@@ -25,6 +32,23 @@ class DeviceTest(unittest.TestCase):
         self.assertEqual(d.set_volume(60), 60)
         self.assertEqual(d.set_volume(0), 20)      # never silent
         self.assertEqual(d.set_volume(250), 100)
+
+    def test_mute_keeps_the_level(self):
+        d = FakeMixer()
+        d.set_volume(60)
+        d.set_muted(True)
+        self.assertTrue(d.muted)
+        d.set_muted(False)
+        self.assertEqual((d.muted, d.volume()), (False, 60))
+
+    def test_mute_on_a_mixer_without_a_switch(self):
+        d = FakeMixer(switch=False)
+        d.set_volume(60)
+        d.set_muted(True)
+        d.set_muted(True)  # twice must not forget the level
+        self.assertEqual(d.volume(), 0)
+        d.set_muted(False)
+        self.assertEqual(d.volume(), 60)
 
     def test_silent_commands_in_agent_reply(self):
         def tags(text):

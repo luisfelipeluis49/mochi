@@ -74,8 +74,15 @@ journalctl --user-unit mochi -f       # live log: every wake, session start and 
 systemctl --user restart mochi      # after editing config/mochi.toml or .env
 ```
 
-Until Luís's backend exists the session is a stand-in agent (`[test_agent]` in the config,
-`mochi_device/backends.py`). Its character and the way it helps (clue first, the word in a sentence,
+Who runs the session is `[backend].kind` in the config (`mochi_device/backends.py`):
+
+- `mochi_backend`: Luís's backend. The Pi asks it to start (`POST /api/sessions/demo/start`), joins
+  with what `GET /api/devices/home_pi_01/state` returns, and keeps reading that state every
+  `poll_interval_s`. When `capturing` turns false the Pi leaves the channel; while `speaker_muted`
+  is true the speaker is silent. Set `mochi_backend_url` to where the backend runs.
+- `test_agent` (the default): a stand-in agent, for working without the backend.
+
+The stand-in's character and the way it helps (clue first, the word in a sentence,
 "your turn", saying a slip back the right way, nudging the two people toward each other) are the
 `instructions` in `config/mochi.toml`. It understands and speaks English and Brazilian Portuguese
 and greets in the language of the wake phrase.

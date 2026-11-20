@@ -2,7 +2,8 @@
 
     IDLE ──"Oi Mochi" (offline)──► STARTING ──agent+bridge up──► ACTIVE
       ▲                                                            │
-      └──── STOPPING ◄── goodbye phrase (offline) / inactivity / max time / bridge died
+      └──── STOPPING ◄── goodbye phrase (offline) / inactivity / max time / bridge died /
+                         the backend stopped the session
 
 While IDLE, the microphone only feeds the local keyword spotter: no Agora session exists and no
 audio leaves the Pi. Run: scripts/mochi.sh   (Ctrl-C to quit; any live session is ended first)
@@ -44,6 +45,7 @@ class Supervisor:
         self.session_started = self.last_speech = 0.0
         self.agent_voice_at = self.heard_at = self.bye_until = 0.0
         self.enrol_lang = "en"
+        self.backend_end: str | None = None  # set when the backend ended the session itself
 
     # --- the face on Mochi's screen ---------------------------------------------------------
     def on_agent_voice(self, level: int) -> None:
@@ -67,6 +69,8 @@ class Supervisor:
         elif kind == "forget":
             log(f"forgetting {value}'s voice")
             self.kws.forget(value)
+        elif kind == "stopped":  # the session was ended elsewhere: on_frame leaves the channel
+            self.backend_end = str(value)
 
     def on_voice_event(self, event: tuple) -> None:
         """What the voice tracker noticed (speakers.py)."""
@@ -152,6 +156,8 @@ class Supervisor:
             reason = None
             if hit and hit[0] == "goodbye":
                 reason = f"goodbye phrase {hit[1]!r}"
+            elif self.backend_end:
+                reason = self.backend_end
             elif now - self.last_speech > self.cfg["session"]["inactivity_timeout_s"]:
                 reason = f"{self.cfg['session']['inactivity_timeout_s']} s without speech"
             elif now - self.session_started > self.cfg["session"]["max_session_s"]:
@@ -163,6 +169,7 @@ class Supervisor:
 
     async def start_session(self, wake_phrase: str) -> None:
         t0 = time.monotonic()
+        self.backend_end = None
         try:
             if hasattr(self.backend, "set_voices"):
                 self.backend.set_voices(self.kws.known_voices, None)
