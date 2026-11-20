@@ -74,7 +74,9 @@ journalctl --user-unit mochi -f       # live log: every wake, session start and 
 systemctl --user restart mochi      # after editing config/mochi.toml or .env
 ```
 
-Who runs the session is `[backend].kind` in the config (`mochi_device/backends.py`):
+Who runs the session is `[backend].kind` in the config (`mochi_device/backends.py`). To choose
+for one device without touching the shared file, put only the keys that differ in
+`config/mochi.local.toml` (not in git), for example `[backend]` / `kind = "mochi_backend"`.
 
 - `mochi_backend`: Luís's backend runs the session and decides what Mochi says (quiet unless it
   is spoken to; with a model key there, in Mochi's character). The Pi asks it to start

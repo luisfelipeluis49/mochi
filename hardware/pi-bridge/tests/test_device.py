@@ -68,5 +68,23 @@ class DeviceTest(unittest.TestCase):
         self.assertFalse(_moved((100, None), (100, None)))
 
 
+class ConfigTest(unittest.TestCase):
+    def test_this_devices_own_choices_go_on_top(self):
+        import tempfile
+        from pathlib import Path
+
+        from mochi_device import config
+
+        with tempfile.TemporaryDirectory() as d:
+            shared, local = Path(d) / "mochi.toml", Path(d) / "mochi.local.toml"
+            shared.write_text('[backend]\nkind = "test_agent"\ndevice_id = "home_pi_01"\n')
+            self.assertEqual(config.load_with_local(shared, local)["backend"]["kind"], "test_agent")
+            local.write_text('[backend]\nkind = "mochi_backend"\n[face]\nenabled = false\n')
+            cfg = config.load_with_local(shared, local)
+            self.assertEqual(cfg["backend"], {"kind": "mochi_backend", "device_id": "home_pi_01"})
+            self.assertEqual(cfg["face"], {"enabled": False})
+            self.assertEqual(config.load(shared)["backend"]["kind"], "test_agent")  # the file itself
+
+
 if __name__ == "__main__":
     unittest.main()

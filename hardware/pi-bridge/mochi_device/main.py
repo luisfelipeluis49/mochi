@@ -209,7 +209,7 @@ async def amain() -> None:
     ap.add_argument("--config", default=str(config_mod.DEFAULT_CONFIG))
     args = ap.parse_args()
     load_dotenv(config_mod.BRIDGE_DIR / ".env")
-    sup = Supervisor(config_mod.load(config_mod.Path(args.config)))
+    sup = Supervisor(config_mod.load_with_local(config_mod.Path(args.config)))
     loop = asyncio.get_running_loop()
     for s in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(s, sup.quit.set)
