@@ -41,6 +41,7 @@ class AgentStartRequest:
     llm_url: str
     llm_key: str
     tuning: SpeechTuning
+    idle_timeout_seconds: int = 60
 
 
 class AgoraAgentClient(Protocol):

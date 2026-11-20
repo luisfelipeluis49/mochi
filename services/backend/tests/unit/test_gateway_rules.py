@@ -314,6 +314,7 @@ def test_join_body_uses_the_verified_field_names() -> None:
     )
     assert "greeting_message" not in llm and "failure_message" not in llm
     assert props["parameters"] == {"silence_config": {"timeout_ms": 0}}
+    assert props["idle_timeout"] == 60  # verified field: seconds after the Pi leaves
 
 
 def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -> None:

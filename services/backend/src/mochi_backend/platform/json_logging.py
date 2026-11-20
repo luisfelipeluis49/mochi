@@ -3,10 +3,12 @@
 import json
 import logging
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Protocol
 
+from mochi_backend.platform.clock import iso_z
+
 JsonScalar = str | int | float | bool | None
-_RESERVED = {"msg", "args", "levelname", "name", "created", "exc_info", "message"}
 
 
 class EventLogger(Protocol):
@@ -23,7 +25,8 @@ class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Return the record as a single JSON line."""
         fields: Mapping[str, JsonScalar] = getattr(record, "fields", {})
-        body = {"level": record.levelname, "event": record.getMessage(), **fields}
+        stamp = iso_z(datetime.fromtimestamp(record.created, UTC))  # same format as event envelopes
+        body = {"ts": stamp, "level": record.levelname, "event": record.getMessage(), **fields}
         return json.dumps(body, default=str, sort_keys=True)
 
 

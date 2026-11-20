@@ -63,7 +63,9 @@ def test_json_logger_writes_one_json_object_with_fields() -> None:
     logger.handlers, logger.propagate = [sink], False
     logger.setLevel(logging.INFO)
     StdlibEventLogger(logger).log("turn", {"text_len": 12})
-    assert json.loads(records[0]) == {"level": "INFO", "event": "turn", "text_len": 12}
+    line = json.loads(records[0])
+    assert parse_iso_z(line.pop("ts")).tzinfo is not None  # UTC stamp, same format as envelopes
+    assert line == {"level": "INFO", "event": "turn", "text_len": 12}
 
 
 async def test_asyncio_scheduler_logs_a_failing_callback() -> None:

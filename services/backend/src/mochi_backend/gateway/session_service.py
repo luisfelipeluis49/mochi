@@ -29,6 +29,7 @@ class SessionConfig:
     llm_url: str
     llm_key: str
     tuning: SpeechTuning
+    idle_timeout_seconds: int = 60
 
 
 class SessionService:
@@ -105,6 +106,7 @@ class SessionService:
             llm_url=self._config.llm_url,
             llm_key=self._config.llm_key,
             tuning=self._config.tuning,
+            idle_timeout_seconds=self._config.idle_timeout_seconds,
         )
         try:
             return await self._agora.start_agent(request)

@@ -50,6 +50,15 @@ Observed, not just read in docs:
   Keep agent sessions short while testing.
 - `asr.params` is omitted when empty and `credential_mode` is sent only when set (nested JSON params are allowed).
 
+## Idle timeout and lifetime (docs, 2026-11-20)
+
+`properties.idle_timeout` (integer seconds, 0 to 259200, documented default 30): after all users in
+`remote_rtc_uids` have left, the agent exits once this much idle time passes; 0 means never. A session also
+ends after 72 hours whatever the value (https://docs.agora.io/en/api-reference/api-ref/conversational-ai/join).
+We send it from `MOCHI_AGENT_IDLE_TIMEOUT_SECONDS` (default 60). Not documented: what happens when none of the
+listed users ever joins. A Start with no Pi can therefore keep an agent (and its billed minutes) alive until we
+call Stop; see the auto-stop proposal in DECISIONS D-19.
+
 ## RTC tokens
 
 The Agora tutorial (https://docs.agora.io/en/ai/build/build-server-client) uses the PyPI package

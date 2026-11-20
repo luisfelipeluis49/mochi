@@ -87,6 +87,7 @@ def _session_config(settings: Settings) -> SessionConfig:
         token_ttl_seconds=settings.mochi_token_ttl_seconds,
         llm_url=settings.mochi_public_url.rstrip("/") + LLM_PATH,
         llm_key=settings.mochi_turn_key,
+        idle_timeout_seconds=settings.mochi_agent_idle_timeout_seconds,
         tuning=SpeechTuning(
             asr_vendor=settings.mochi_asr_vendor,
             asr_language=settings.mochi_asr_language,

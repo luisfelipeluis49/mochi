@@ -73,6 +73,7 @@ when run from source.
 | `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | ares, `en-US`, empty, `{}` | speech-to-text (`.env.example` uses Agora-managed deepgram) |
 | `MOCHI_TTS_VENDOR`, `MOCHI_TTS_CREDENTIAL_MODE`, `MOCHI_TTS_PARAMS` | minimax, empty, `{}` | text-to-speech (`.env.example` uses Agora-managed minimax) |
 | `MOCHI_END_OF_SPEECH_SILENCE_MS` | 900 | pause that ends a turn (VAD) |
+| `MOCHI_AGENT_IDLE_TIMEOUT_SECONDS` | 60 | Agora `idle_timeout`: the agent exits this long after the Pi leaves (0 = never; hard cap 72 h) |
 | `MOCHI_HINT_TTL_SECONDS`, `MOCHI_DECIDE_TIMEOUT_SECONDS` | 8, 2 | hint lifetime; `decide()` time limit |
 | `MOCHI_SPEAK_BASE_SECONDS`, `MOCHI_SPEAK_SECONDS_PER_WORD` | 0.6, 0.45 | speaking window for `mute_speaker` |
 | `MOCHI_CORS_ORIGINS`, `MOCHI_LOG_LEVEL`, `PORT` | `*`, `INFO`, 8000 | server |

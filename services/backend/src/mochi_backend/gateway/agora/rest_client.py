@@ -131,6 +131,7 @@ def join_body(request: AgentStartRequest, name: str) -> JsonValue:
         "agent_rtc_uid": str(request.agent_uid),
         "remote_rtc_uids": [str(request.remote_uid)],
         "llm": _llm_block(request),
+        "idle_timeout": request.idle_timeout_seconds,  # agent leaves this long after the Pi does
         "parameters": {"silence_config": {"timeout_ms": 0}},
         **_speech_blocks(request.tuning),
     }

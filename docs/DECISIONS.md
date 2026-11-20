@@ -94,3 +94,39 @@ ASR and TTS; empty `params` are omitted. Defaults moved from microsoft (needs an
 ares/minimax; the working pair on this project is deepgram + minimax, set in `.env.example` and `render.yaml`.
 Not a contract change (AGENTS 6 does not cover vendor settings).
 
+
+## D-19: review fixes (Codex and Antigravity reviews, 2026-11-20)
+
+Two outside reviews found real races and rule problems. Each fix has a regression test.
+
+- **Session transitions are serialized.** `SessionStore.generation` is bumped synchronously by Stop and
+  Reset. Start holds a lock (two taps create one agent) and, after Agora's `join` returns, drops the new
+  agent if the generation moved. A turn compares the generation after `decide()` and drops its result, so a
+  hint, card or spoken line can no longer appear after Stop or Reset.
+- **Stop turns capture off before calling Agora's `/leave`**, so the Pi's next poll already sees
+  `capturing=false`. Stop also returns the game to IDLE (published) and forgets the round secret.
+- **A second `activity/start` during ACTIVE_ROUND returns 409** ("send result 'skipped' or reset"). This is a
+  new error path on an AGENTS 6.4 endpoint, not a new field or event.
+- **Hub:** publishing is serialized (sequences reach clients in order); each send has a 1 s timeout and a
+  stalled client is dropped. The secret guard scans only free-text payload fields at word starts, so a
+  secret such as "state" cannot block events and "umbrellas" still counts as a leak of "umbrella".
+- **Case 8 (`look_alike`) needs the model's confirmation.** AGENTS 7.1 has a model judge cases 5-9 and 7.2
+  says quiet by default; "I'm actually working from home" and "The children pretend to travel" are correct
+  English. With no model (the $0 setup) case 8 never fires.
+- **ASSISTED window reopens** each time a saved word's hint is shown again (no new card is created then).
+- **Phrase search ignores accents** (speech-to-text drops them).
+- **Docker and `.env`:** `deploy.sh` strips the shell quotes into a temp file before `docker --env-file`.
+
+Deferred or not changed, with the reason:
+- Model-only paths (`cancelar` and "talks around" sentences reaching the model, model-learned words in
+  rounds, a reusable HTTP client) change nothing without a paid model key.
+- Replaying saved cards and the private prompt when a client reconnects: AGENTS 8 puts reconnect/replay out
+  of scope and 6.4's snapshot does not include them. Proposal for Tasnim and Matheus.
+- No sign-in on the public control endpoints: AGENTS 8.
+- `focus` stays `en` (the demo is Ana practising English).
+- `packages/contracts/examples/learning_event.updated.json` shows `DISCOVERED` with one history entry; it
+  belongs to Matheus, so it is flagged, not edited.
+- **Cost guard:** `idle_timeout` is now sent on `join` (`MOCHI_AGENT_IDLE_TIMEOUT_SECONDS`, default 60). The docs do
+  not say what happens when the Pi never joins, and Start is public (AGENTS 8: no sign-in), so a stray Start can hold
+  an agent open. Proposal, not built: auto-Stop after a maximum session length (for example 30 minutes).
+
