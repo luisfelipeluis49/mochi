@@ -184,8 +184,10 @@ Not changed, with the reason:
 Defaults, `.env.example` and `render.yaml` now use `ares` with `en-US,pt-PT` and the keyword `Mochi`. D-18's
 "managed `ares` is not available on our SKU" was the `credential_mode`, not the project: on a second Agora
 project the same request failed with that exact message when `credential_mode` was `managed` and returned 200
-without it (`VERIFIED.md`). Several languages are sent as `turn_detection.language` and `asr.language` is then
-omitted, which is the request Agora's own SDK builds. `MOCHI_ASR_KEYWORDS` is new. On mixed English and
+without it (`VERIFIED.md`). Several languages are one comma-separated string (`en-US,pt-PT`) in both
+`asr.language` and `turn_detection.language`, which is what Agora's own SDK sends; a list is accepted but then
+only English is recognised (seen in a live session).
+`MOCHI_ASR_KEYWORDS` is new. On mixed English and
 Portuguese ARES made far fewer mistakes than Deepgram `nova-3` `multi` in the hardware owner's tests.
 **Not verified:** that ARES is accepted on the Render project (expected, same request); the Deepgram settings
 are kept as a comment in `.env.example`. Not a contract change (AGENTS 6 does not cover vendor settings).
