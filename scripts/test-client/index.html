@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mochi test client</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fafaf7; --fg:#1d1d1b; --muted:#6a6a64; --line:#d9d9d2; --accent:#1f6f5c; --warn:#a4510a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ecece6; --muted:#9b9b93; --line:#33332f; --accent:#4fb89c; --warn:#e0a060; } }
+  body { margin:0; padding:20px 16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; max-width:720px; margin-inline:auto; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  p.sub, .hint { color:var(--muted); margin:4px 0 14px; }
+  .warn { color:var(--warn); font-weight:600; }
+  label { display:block; margin:10px 0 4px; font-weight:600; }
+  input[type=text], input[type=file] { width:100%; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  button { padding:9px 14px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #log { height:240px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:8px; font:13px/1.45 ui-monospace, monospace; white-space:pre-wrap; }
+  .checks label { display:inline-block; font-weight:400; margin:0 14px 0 0; }
+</style>
+</head>
+<body>
+<h1>Mochi test client</h1>
+<p class="sub">Stands in for the Pi bridge: joins the Agora channel as the Pi (uid from the device state) and sends your voice or a recorded clip. Development tool only.</p>
+<p class="warn">Wear headphones. Speakers would play Mochi's voice back into the mic as a new turn.</p>
+
+<label for="base">Backend URL (the Render service, never a local one)</label>
+<input id="base" type="text" value="https://mochi-backend-6e2a.onrender.com" autocomplete="off">
+<p class="hint">Start the session first: <code>curl -X POST &lt;backend&gt;/api/sessions/demo/start</code>. Stop it after each run (it uses free Agora minutes).</p>
+
+<div class="checks">
+  <label><input id="aec" type="checkbox" checked> echo cancellation</label>
+  <label><input id="agc" type="checkbox" checked> auto gain</label>
+  <label><input id="ans" type="checkbox" checked> noise suppression</label>
+</div>
+
+<div class="row">
+  <button id="join" class="primary">Join and send microphone</button>
+  <button id="mute" disabled>Mute mic</button>
+  <button id="leave" disabled>Leave</button>
+</div>
+
+<label for="clip">Or play a recorded clip (same audio for every ASR setting)</label>
+<input id="clip" type="file" accept="audio/*">
+<div class="row">
+  <button id="play" disabled>Play clip once</button>
+  <button id="loop" disabled>Loop clip</button>
+  <button id="stopclip" disabled>Stop clip</button>
+</div>
+
+<div id="log" role="log" aria-live="polite"></div>
+
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.10.js"></script>
+<script>
+"use strict";
+// SDK calls follow the Agora Web quickstart and audio-mixing pages (see docs/REAL_TURN_RUNBOOK.md).
+const $ = (id) => document.getElementById(id);
+const log = (text) => { const l = $("log"); l.textContent += `${new Date().toLocaleTimeString()}  ${text}\n`; l.scrollTop = l.scrollHeight; };
+let client = null, micTrack = null, clipTrack = null;
+
+function setJoined(joined) {
+  $("join").disabled = joined;
+  for (const id of ["mute", "leave"]) $(id).disabled = !joined;
+  for (const id of ["play", "loop", "stopclip"]) $(id).disabled = !joined || !$("clip").files[0];
+}
+
+async function deviceState(base) {
+  const reply = await fetch(`${base.replace(/\/$/, "")}/api/devices/home_pi_01/state`);
+  if (!reply.ok) throw new Error(`device state returned ${reply.status}`);
+  return reply.json();
+}
+
+async function join() {
+  try {
+    const state = await deviceState($("base").value.trim());
+    if (!state.capturing || !state.agora) { log("capturing is false: POST /api/sessions/demo/start first."); return; }
+    const { app_id, channel, uid, token } = state.agora;
+    client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    client.on("user-published", async (user, mediaType) => {
+      await client.subscribe(user, mediaType);
+      if (mediaType === "audio") { user.audioTrack.play(); log(`Mochi's agent (uid ${user.uid}) is speaking`); }
+    });
+    micTrack = await AgoraRTC.createMicrophoneAudioTrack({ AEC: $("aec").checked, AGC: $("agc").checked, ANS: $("ans").checked });
+    await client.join(app_id, channel, token, uid);
+    await client.publish([micTrack]);
+    log(`joined channel ${channel} as uid ${uid}; the microphone is live`);
+    setJoined(true);
+  } catch (error) { log(`join failed: ${error.message || error}`); }
+}
+
+async function playClip(loop) {
+  try {
+    if (clipTrack) { clipTrack.stopProcessAudioBuffer(); await client.unpublish([clipTrack]); clipTrack.close(); }
+    clipTrack = await AgoraRTC.createBufferSourceAudioTrack({ source: $("clip").files[0] });
+    await micTrack.setEnabled(false);  // the clip is the voice; keep the room out of it
+    await client.publish([clipTrack]);
+    clipTrack.startProcessAudioBuffer(loop ? { loop: true } : undefined);
+    log(`playing clip${loop ? " (loop)" : ""}: ${$("clip").files[0].name}`);
+  } catch (error) { log(`clip failed: ${error.message || error}`); }
+}
+
+async function stopClip() {
+  if (!clipTrack) return;
+  clipTrack.stopProcessAudioBuffer();
+  await client.unpublish([clipTrack]);
+  clipTrack.close(); clipTrack = null;
+  await micTrack.setEnabled(true);
+  log("clip stopped; microphone back on");
+}
+
+async function leave() {
+  try {
+    if (clipTrack) { clipTrack.close(); clipTrack = null; }
+    if (micTrack) { micTrack.close(); micTrack = null; }
+    if (client) await client.leave();
+    client = null; log("left the channel. Now POST /api/sessions/demo/stop");
+  } catch (error) { log(`leave failed: ${error.message || error}`); }
+  setJoined(false);
+}
+
+$("join").addEventListener("click", join);
+$("leave").addEventListener("click", leave);
+$("mute").addEventListener("click", async () => {
+  const mute = micTrack.enabled; await micTrack.setEnabled(!mute);
+  $("mute").textContent = mute ? "Unmute mic" : "Mute mic"; log(mute ? "microphone muted" : "microphone live");
+});
+$("play").addEventListener("click", () => playClip(false));
+$("loop").addEventListener("click", () => playClip(true));
+$("stopclip").addEventListener("click", stopClip);
+$("clip").addEventListener("change", () => setJoined(client !== null));
+window.addEventListener("beforeunload", () => { if (client) client.leave(); });
+log("ready. Mic access works on http://localhost (a secure context).");
+</script>
+</body>
+</html>

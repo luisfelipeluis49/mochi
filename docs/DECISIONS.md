@@ -164,3 +164,18 @@ Not changed, with the reason:
 - Contract-side items (`IsoTimestamp` regex, `export_schema` arguments, `learning_event.updated.json`) belong to
   Matheus: proposals only.
 
+## D-21: Portuguese groundwork and the real-turn test client
+
+- **The practised language is decided per turn** (`intelligence/spoken_focus.py`), not once per session: a sentence
+  practises the language it is mostly in; a question practises the opposite of the asked word's language ("Ben, como
+  se diz recibo?" is Ana asking for an English word). `Session.focus` in the contract is unchanged, and hints and
+  Speak lines already carry their own language, so there is no contract change. Touches Kauê's `intelligence/`.
+- **Open, depends on a real session:** whether Deepgram `nova-3` with `language: multi` transcribes English and
+  Portuguese together (the Agora and Deepgram docs disagree), and whether MiniMax can speak Portuguese
+  (`language_boost` is a MiniMax parameter, not documented by Agora for managed mode). ASR language cannot be
+  changed while an agent runs (the documented update endpoint covers only token, LLM messages and LLM params).
+- **Not built yet:** rounds that alternate language (round 2: Ana describes, Ben guesses in Portuguese). The round
+  engine takes its language from the session focus; waiting for the team to confirm the demo script
+  (`docs/REAL_TURN_RUNBOOK.md`, section 4).
+- **New dependency:** `scripts/test-client/index.html` loads the Agora Web SDK from a CDN. Development only.
+

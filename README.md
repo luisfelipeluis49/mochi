@@ -104,6 +104,8 @@ break a live demo. `numInstances: 1`. WebSockets work behind Render's proxy with
 4. Pi bridge up (`GET /api/devices/home_pi_01/state` polled); Home view on Mochi, Mobile views on both phones,
    Audience view on the projector.
 5. `scripts/reset-demo.sh`, then Start on the phone.
+
+Real turn and Portuguese: `docs/REAL_TURN_RUNBOOK.md` (browser test client: `scripts/test-client.sh`).
 6. Leave two ordinary turns between the two demo sentences: a hint silences the next two turns (AGENTS 7.2).
 
 ## Known unknowns (AGENTS section 12)

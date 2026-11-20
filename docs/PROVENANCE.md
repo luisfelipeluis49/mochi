@@ -17,3 +17,4 @@ section 5.5) and mark it `pre-existing` or `during hackathon`.
 | `AGENTS.md`, `.claude/agents/*` | team / Luís | 2026-11-19 | pre-existing | team context; three read-only subagent definitions |
 | Third-party: FastAPI, uvicorn, httpx, pydantic, pydantic-settings, agora-token-builder | upstream | - | third-party | versions in `services/backend/uv.lock` |
 | `apps/web`, `hardware/` | Tasnim, Matheus | - | not started here | only README pointers exist |
+| `scripts/test-client/`, `scripts/test-client.sh`, `docs/REAL_TURN_RUNBOOK.md` | Luis, built here | 2026-11-20 | pre-existing | real-turn test client and runbook |
