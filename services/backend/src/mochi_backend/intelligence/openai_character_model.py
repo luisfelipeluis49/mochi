@@ -16,8 +16,8 @@ WORD_NOTE = (
     "Teach exactly this one, and show it."
 )
 UNNAMED_NOTE = (
-    "This sentence did not say your name. If it is meant for the other person and not for you, "
-    "reply with exactly [quiet]."
+    "Nobody clearly called you with this sentence. If it is meant for the other person, or they "
+    "are only talking about you, reply with exactly [quiet]."
 )
 
 

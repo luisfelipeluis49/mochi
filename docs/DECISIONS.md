@@ -219,8 +219,12 @@ backend runs, and only speaks when Mochi is spoken to.
   language (`llm.greeting_message`) and the next sentence is for it. Without a body nothing changes.
 - `IntelligencePort` gains `called()` and `device_status(...)`.
 
-**Not verified (needs a real session):** that Agora speaks `greeting_message` in custom-LLM mode; how the
-character sounds with a real model; latency of the extra model call (the reply is not streamed). **Not done:**
+**Verified in live sessions with synthetic speech (`VERIFIED.md`):** silence when nobody calls Mochi, the
+greeting, in-character replies with a real model, and `mood` / `volume` / `temp` commands reaching the device.
+A sentence with Mochi's name but no greeting ("Oi Mochi" is often heard as "Wait, Mochi.") is also given to the
+model, which may answer `[quiet]`. **Not verified:** a person at the microphone; whether the device hears its own
+voice as a new turn; the first sound comes 3.3 to 4.2 s after the person stops (the reply is not streamed).
+**Not done:**
 who is speaking is only told to the model, not used for "whose word is it" (AGENTS 7.3, a `Turn` has no speaker).
 The prompt exists twice (here and in `hardware/pi-bridge/config/mochi.toml` for the Pi's stand-in mode).
 

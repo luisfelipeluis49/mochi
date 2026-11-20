@@ -121,15 +121,34 @@ async def test_after_a_while_only_its_name_makes_mochi_listen_again() -> None:
     assert decision.decision is DecisionKind.IGNORE and len(mochi.requests) == 1
 
 
-async def test_only_its_name_or_the_wake_phrase_on_the_device_opens_the_conversation() -> None:
-    mochi = FakeCharacterModel("[mood happy] I love rain.")
+async def test_just_its_name_gets_a_short_answer_and_opens_the_conversation() -> None:
+    mochi = FakeCharacterModel("[mood happy] Oi?", "[mood happy] I love rain.")
     brain = _brain(mochi)
-    assert (await brain.decide(make_turn("Oi Mochi."), make_context())).speak is None
+    called = await brain.decide(make_turn("Oi Mochi."), make_context())
+    assert called.speak is not None and called.speak.text == "[mood happy] Oi?"
     answered = await brain.decide(make_turn("What do you like?"), make_context())
     assert answered.decision is DecisionKind.SPEAK
+    silent = _brain(FakeCharacterModel(None))  # without a model: silence, as before
+    assert (await silent.decide(make_turn("Oi Mochi."), make_context())).speak is None
+
+
+async def test_the_wake_phrase_on_the_device_opens_the_conversation() -> None:
     woken = _brain(FakeCharacterModel("[mood happy] Oi!"))
     woken.called()
     assert (await woken.decide(make_turn("Tudo bem?"), make_context())).speak is not None
+
+
+async def test_its_name_without_a_greeting_lets_mochi_judge_whether_it_was_called() -> None:
+    """Speech-to-text loses the greeting: "Oi Mochi" arrived as "Wait, Mochi." in a live session."""
+    mochi = FakeCharacterModel("[mood sleepy][temp] Fifty-two degrees.", "[quiet]")
+    brain = _brain(mochi)
+    heard = await brain.decide(make_turn("Wait, Mochi. How hot are you right now?"), make_context())
+    assert heard.decision is DecisionKind.SPEAK and mochi.requests[0].named is False
+    about = await brain.decide(make_turn("I think Mochi is cute."), make_context())
+    assert about.decision is DecisionKind.IGNORE
+    no_model = _brain(FakeCharacterModel(None))
+    quiet = await no_model.decide(make_turn("Wait, Mochi. How hot are you?"), make_context())
+    assert quiet.decision is DecisionKind.IGNORE
 
 
 async def test_during_a_round_mochi_only_answers_to_its_name() -> None:

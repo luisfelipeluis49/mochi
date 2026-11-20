@@ -118,3 +118,19 @@ the microphone, the agent's voice watched by its loudness:
 - Heard: `Yesterday I went to the fair with my mother.` arrived as `Yesterday went to the fair with my mother.`;
   `Oi Mochi` said on its own arrived as `Wait, Mochi.` (the wake phrase regex does not match that).
 
+## Mochi's character through the turn endpoint (2026-11-20, same setup, DECISIONS D-23)
+
+- **`llm.greeting_message` is spoken in custom-LLM mode**, about 2 s after the device joins, and appears as the
+  first `assistant` message of later requests (`"Oi!Pode falar."`).
+- **After a spoken reply the next user message starts fresh** (`messages` alternates assistant / user), so
+  `handle_heard` only has to strip after silence.
+- MiniMax `params.language_boost: "auto"` is accepted with `credential_mode: managed`.
+- Two sessions, synthetic speech. Woken on the device: greeting, then "Can you speak a bit louder, please?",
+  "How hot are you right now?" and a Portuguese question were each answered aloud, and the device received
+  `mood`, `volume` and `temp` commands. Started by the operator: no greeting; an ordinary sentence and a
+  Portuguese sentence got silence; `Oi Mochi` + a question (heard as `Foi "Mochi". How hot are you right now?`)
+  was answered through the name-only path.
+- **Latency:** the model call took 1.0 to 1.6 s (`decision` log line); the first sound came 3.3 to 4.2 s after the
+  person stopped talking. That includes `MOCHI_END_OF_SPEECH_SILENCE_MS` (900) and the reply is not streamed.
+- Not judged by a person: how the voice sounds, and whether the device hears its own voice as a new turn.
+

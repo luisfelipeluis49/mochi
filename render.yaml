@@ -56,7 +56,7 @@ services:
       - key: MOCHI_TTS_CREDENTIAL_MODE
         value: managed
       - key: MOCHI_TTS_PARAMS
-        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100}}'
+        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100},"language_boost":"auto"}'
       - key: MOCHI_AGENT_IDLE_TIMEOUT_SECONDS
         value: "60" # agent leaves 60 s after the Pi does (billing guard)
       - key: MOCHI_CORS_ORIGINS

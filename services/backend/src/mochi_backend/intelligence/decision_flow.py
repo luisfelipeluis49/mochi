@@ -20,7 +20,11 @@ from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
 from mochi_backend.intelligence.tokens import normalized
-from mochi_backend.intelligence.wake_phrase import has_wake_phrase, without_wake_phrase
+from mochi_backend.intelligence.wake_phrase import (
+    has_wake_phrase,
+    says_mochi,
+    without_wake_phrase,
+)
 from mochi_backend.platform.clock import Clock
 from mochi_contracts import (
     Decision,
@@ -156,12 +160,14 @@ class DecisionFlow:
     async def _follow_up(
         self, turn: Turn, context: SessionContext, match: CaseMatch | None
     ) -> str | None:
-        """Right after Mochi spoke, the next sentence may answer it without saying "Mochi".
+        """A sentence without the wake phrase that may still be for Mochi: right after it spoke
+        (an answer to its question), or with its name in it (the greeting is often misheard).
 
-        Returns Mochi's line, or None: it is not in a conversation, or the sentence was not for it.
+        Returns Mochi's line, or None: neither applies, or Mochi judged it was not meant for it.
         A word the rules found is shown either way, and Mochi is told to teach that one.
         """
-        if context.activity is not None or not self._talk.listening():
+        maybe_for_mochi = self._talk.listening() or says_mochi(turn.text)
+        if context.activity is not None or not maybe_for_mochi:
             return None  # during a round only the wake phrase makes Mochi speak
         word, meaning = (match.expression, match.meaning) if match else (None, None)
         return await self._talk.reply(turn.text, named=False, word=word, meaning=meaning)
@@ -177,7 +183,6 @@ class DecisionFlow:
         rest = without_wake_phrase(turn.text)
         if not normalized(rest):
             self._talk.called()  # just "Oi Mochi": nothing was asked yet, the next sentence is
-            return ignore()
         match = await self._word_asked(rest, context)
         if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
             line = await self._talk.reply(turn.text, named=True)

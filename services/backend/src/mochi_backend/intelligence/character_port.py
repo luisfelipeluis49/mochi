@@ -29,7 +29,7 @@ class CharacterRequest(BaseModel):
     status: DeviceStatus
     word: str | None = None  # the expression the rules found: the reply must teach exactly this
     meaning: str | None = None
-    named: bool = True  # False: nobody said "Mochi"; it may answer [quiet]
+    named: bool = True  # False: nobody clearly called Mochi; it may answer [quiet]
 
 
 class CharacterModel(Protocol):
