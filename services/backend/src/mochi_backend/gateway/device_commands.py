@@ -3,7 +3,8 @@
 `[mood happy]` and `[show queue]` go to its face, `[volume 80]` to its speaker, `[temp]` shows its
 temperature, `[enroll Ana pt]` / `[forget Ana]` learn and forget a voice, `[bye]` ends the session
 once Mochi's goodbye has been heard. The device reads them from its state (`commands`) and does each
-one once.
+one once. A hint adds a command of its own that Mochi does not write: `hint`, whose value is a JSON
+card (`word`, `language`, `meaning`, `example`).
 """
 
 import re

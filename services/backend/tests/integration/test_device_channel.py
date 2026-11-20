@@ -1,5 +1,7 @@
 """Mochi's body: commands for the device ride on its state, and the device reports back."""
 
+import json
+
 from fastapi.testclient import TestClient
 
 from mochi_backend.app import create_app
@@ -58,18 +60,49 @@ async def test_a_reply_of_only_commands_says_nothing() -> None:
     assert len(harness.container.core.store.commands) == 2
 
 
-async def test_a_quiet_hint_shows_its_word_and_mochis_own_show_is_not_doubled() -> None:
+async def test_a_hint_reaches_the_device_as_a_card_with_its_language_and_meaning() -> None:
+    """A bare word on the screen tells too little: whose language is it, and what does it mean?"""
     quiet = make_harness()
     await quiet.container.sessions.start()
     await quiet.say(ADIAR)
-    assert [(c.kind, c.value) for c in quiet.container.core.store.commands] == [
-        ("show", "postpone")
-    ]
+    [command] = quiet.container.core.store.commands
+    assert command.kind == "hint"
+    assert json.loads(command.value) == {
+        "word": "postpone",
+        "language": "en",
+        "meaning": "adiar",
+        "example": "I need to postpone my meeting.",
+    }
+
+
+async def test_the_card_replaces_a_bare_word_mochi_wrote_for_the_same_turn() -> None:
     talking = make_harness(character=FakeCharacterModel("[mood excited][show queue] Queue!"))
     await talking.container.sessions.start()
     await talking.say(ASK_WORD)
-    kinds = [(c.kind, c.value) for c in talking.container.core.store.commands]
-    assert kinds == [("mood", "excited"), ("show", "queue")]
+    commands = talking.container.core.store.commands
+    assert [c.kind for c in commands] == ["mood", "hint"]
+    assert json.loads(commands[1].value)["word"] == "queue"
+    assert json.loads(commands[1].value)["meaning"] == "fila"
+
+
+async def test_the_hint_is_written_to_the_log() -> None:
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.say(ADIAR)
+    [decision] = [fields for name, fields in harness.logger.lines if name == "decision"]
+    assert (decision["hint"], decision["meaning"]) == ("postpone", "adiar")
+
+
+async def test_a_new_session_starts_without_the_last_ones_sentences_and_hints() -> None:
+    """Seen live: the first stuck word of a session got nothing, "cooled down" by an old hint."""
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.say(ADIAR)
+    await harness.container.sessions.stop()
+    await harness.container.sessions.start()
+    assert harness.container.core.store.turns == [] and harness.container.core.store.hints == []
+    again = await harness.say("I forgot my guarda-chuva at the office.")
+    assert again.decision.hint is not None and again.decision.hint.expression == "umbrella"
 
 
 async def test_commands_belong_to_one_session() -> None:

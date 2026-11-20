@@ -4,6 +4,7 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 """
 
 import asyncio
+import json
 from dataclasses import dataclass
 
 from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
@@ -22,6 +23,7 @@ from mochi_contracts import (
     DecisionKind,
     EventType,
     GameState,
+    Hint,
     LearningEvent,
     SessionContext,
     Speak,
@@ -35,6 +37,20 @@ class TurnOutcome:
 
     reply: str
     decision: Decision
+
+
+def hint_card(hint: Hint) -> str:
+    """What the device shows for a hint, as JSON: a word alone tells too little.
+
+    Example: `{"word": "fork", "language": "en", "meaning": "garfo", "example": null}`.
+    """
+    card = {
+        "word": hint.expression,
+        "language": hint.target_language.value,
+        "meaning": hint.meaning,
+        "example": hint.example,
+    }
+    return json.dumps(card, ensure_ascii=False)
 
 
 def silent_decision() -> Decision:
@@ -149,13 +165,15 @@ class TurnPipeline:
         return decision
 
     def _log_decision(self, turn: Turn, decision: Decision, millis: float) -> None:
-        reason = decision.hint.reason.value if decision.hint else None
+        hint = decision.hint
         self._logger.log(
             "decision",
             {
                 "segment_id": turn.segment_id,
                 "decision": decision.decision.value,
-                "reason": reason,
+                "reason": hint.reason.value if hint else None,
+                "hint": hint.expression if hint else None,
+                "meaning": hint.meaning if hint else None,
                 "latency_ms": round(millis, 1),
             },
         )
@@ -187,9 +205,11 @@ class TurnPipeline:
 
     def _tell_device(self, decision: Decision, written: list[Written]) -> None:
         wanted = list(written)
-        shows_a_word = any(kind == "show" for kind, _ in wanted)
-        if decision.hint is not None and not shows_a_word:
-            wanted.append(("show", decision.hint.expression))  # a hint is also on Mochi's face
+        if decision.hint is not None:
+            # A hint goes on Mochi's face as a card: the word, its language and what it means.
+            # It replaces a bare [show ...] Mochi wrote for the same turn.
+            wanted = [(kind, value) for kind, value in wanted if kind != "show"]
+            wanted.append(("hint", hint_card(decision.hint)))
         self._store.queue(
             [DeviceCommand(command_id=self._ids.new("cmd"), kind=k, value=v) for k, v in wanted]
         )

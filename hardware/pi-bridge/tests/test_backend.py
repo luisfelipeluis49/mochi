@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
 from mochi_device.backends import TAG, Body, JoinInfo, MochiBackend, WithFallback
-from mochi_device.main import Supervisor
+from mochi_device.main import Supervisor, hint_note
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
 
@@ -254,6 +254,32 @@ class WithFallbackTest(unittest.IsolatedAsyncioTestCase):
         WithFallback(backend, own).set_voices(["Ana"], "Ana")
         self.assertEqual(backend.calls, own.calls)
         self.assertEqual(own.calls, [("voices", ["Ana"], "Ana")])
+
+
+class HintCardTest(unittest.IsolatedAsyncioTestCase):
+    """A hint from the backend shows the word, its language and what it means."""
+
+    async def test_the_card_reaches_the_face_with_its_language_and_meaning(self):
+        events = []
+        body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
+        await body.act("hint", '{"word": "fork", "language": "en", "meaning": "garfo", "example": null}')
+        await body.act("hint", "not a card")          # ignored, not an error
+        await body.act("hint", '{"language": "en"}')  # no word: nothing to show
+        self.assertEqual(events, [("hint", {"word": "fork", "language": "en", "meaning": "garfo", "example": None})])
+
+    def test_the_small_line_names_the_language_and_the_meaning(self):
+        self.assertEqual(hint_note({"word": "fork", "language": "en", "meaning": "garfo"}), "English · garfo")
+        self.assertEqual(hint_note({"word": "carteira", "language": "pt-BR", "meaning": "wallet"}), "Português · wallet")
+        self.assertEqual(hint_note({"word": "fork", "language": "en", "meaning": None}), "English")
+        self.assertEqual(hint_note({"word": "fork"}), "")
+
+    def test_the_supervisor_shows_it(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.face = MagicMock()
+        sup.on_agent_event("hint", {"word": "fork", "language": "en", "meaning": "garfo"})
+        sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo")
+        sup.on_agent_event("show", "queue")           # a bare word clears an older note
+        sup.face.show_for.assert_called_with(10, word="queue", note="")
 
 
 class GoodbyeTest(unittest.IsolatedAsyncioTestCase):

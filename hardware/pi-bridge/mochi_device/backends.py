@@ -132,7 +132,8 @@ class Body:
 
     def __init__(self, device: Device, on_event=None):
         """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
-        "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session)."""
+        "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session) |
+        "hint" (value: {"word", "language", "meaning", "example"}: a word someone needed)."""
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
 
@@ -147,6 +148,13 @@ class Body:
             self.on_event("temp", await asyncio.to_thread(self.device.temperature))
         elif kind == "bye":
             self.on_event("bye", None)
+        elif kind == "hint":  # from the backend: a word someone needed, as a JSON card
+            try:
+                card = json.loads(value)
+            except ValueError:
+                return
+            if isinstance(card, dict) and card.get("word"):
+                self.on_event("hint", card)
         elif kind == "enroll":
             words = value.split()
             lang = words.pop().lower() if len(words) > 1 and words[-1].lower() in ("pt", "en") else "en"

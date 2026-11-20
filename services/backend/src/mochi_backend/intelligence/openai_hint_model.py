@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
+from mochi_contracts import Reason
 
 SYSTEM_PROMPT = (
     "Two people practise a language by talking to each other. One is at home in Brazilian "
@@ -24,6 +25,12 @@ SYSTEM_PROMPT = (
     "they were looking for, never the word they said. `meaning` is the word they said or meant, "
     "in the other language. Both are one word or a short expression. `example` is one short "
     "sentence in the focus language that uses the expression.\n"
+    "When `asked_about` is given, the speaker asked how to say exactly that: the hint is for it "
+    "and for nothing else in the sentence, and the reason is says_unknown. People pause while "
+    "they think, so a question can be "
+    'split over two turns ("Como se fala..." and then "Carteira em inglês."): read '
+    "`recent` to complete it. If you cannot tell which word they need, say IGNORE; never guess "
+    "a word nobody mentioned or described.\n"
     'Reply with strict JSON only: {"decision": "IGNORE"|"SHOW_HINT", "reason": <reason or null>, '
     '"expression": <string or null>, "meaning": <string or null>, "example": <string or null>}.\n'
     'Example, focus en: "Can you pass me the garfo, please?" -> {"decision": "SHOW_HINT", '
@@ -32,6 +39,18 @@ SYSTEM_PROMPT = (
     '{"decision": "SHOW_HINT", "reason": "says_unknown", "expression": "engarrafamento", '
     '"meaning": "traffic jam", "example": "Fiquei preso num engarrafamento."}.'
 )
+
+
+def _suggestion(content: str, asked: bool) -> ModelSuggestion:
+    """Parse the model's JSON. A reason it made up must not cost the whole answer.
+
+    Seen with a real model: `"reason": "asked_about"` for an explicit question, which is not one of
+    ours. For a question that named its word the reason is says_unknown; otherwise there is none.
+    """
+    fields = json.loads(content)
+    if isinstance(fields, dict) and fields.get("reason") not in {r.value for r in Reason}:
+        fields["reason"] = Reason.SAYS_UNKNOWN.value if asked else None
+    return ModelSuggestion.model_validate(fields)
 
 
 class _Message(BaseModel):
@@ -59,11 +78,13 @@ class OpenAiHintModel:
         self._timeout = timeout_seconds
 
     def _payload(self, request: ModelRequest) -> JsonValue:
-        context = {
+        context: dict[str, JsonValue] = {
             "focus": request.focus.value,
-            "recent": request.recent_texts,
+            "recent": list(request.recent_texts),
             "sentence": request.text,
         }
+        if request.asked_about:
+            context["asked_about"] = request.asked_about
         return {
             "model": self._model_name,
             "temperature": 0,
@@ -84,6 +105,6 @@ class OpenAiHintModel:
             if reply.status != HTTP_OK:
                 return None
             content = _ChatReply.model_validate_json(reply.body).choices[0].message.content
-            return ModelSuggestion.model_validate_json(content)
-        except (HttpTransportError, ValidationError, IndexError):
+            return _suggestion(content, asked=bool(request.asked_about))
+        except (HttpTransportError, ValidationError, IndexError, ValueError):
             return None

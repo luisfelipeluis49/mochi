@@ -26,6 +26,19 @@ from .face import MOODS, Face
 from .wakeword import KeywordSpotter
 
 
+LANGUAGE_NAMES = {"en": "English", "pt-BR": "Português", "pt": "Português"}
+
+
+def hint_note(card: dict) -> str:
+    """The small line under a hint: the word's language, and the word it stands for.
+
+    Example: {"word": "fork", "language": "en", "meaning": "garfo"} -> "English · garfo".
+    """
+    language = LANGUAGE_NAMES.get(str(card.get("language")), "")
+    meaning = str(card.get("meaning") or "")
+    return " · ".join(part for part in (language, meaning) if part)[:40]
+
+
 def log(msg: str) -> None:
     print(f"[mochi] {time.strftime('%H:%M:%S')} {msg}", flush=True)
 
@@ -59,7 +72,9 @@ class Supervisor:
         if kind == "mood" and value in MOODS:
             self.face.show_for(12, mood=value)
         elif kind == "show":
-            self.face.show_for(10, word=str(value)[:28])
+            self.face.show_for(10, word=str(value)[:28], note="")
+        elif kind == "hint":  # a word someone needed: say which language it is in and what it means
+            self.face.show_for(10, word=str(value.get("word", ""))[:28], note=hint_note(value))
         elif kind in ("volume", "temp"):
             self.face.pop(kind, value)
         elif kind == "enroll":  # "learn my voice": the next ~10 s of speech become their voiceprint
@@ -211,7 +226,7 @@ class Supervisor:
         self.state = "IDLE"
         self.kws.track_voices(False)
         self.bye_until = time.monotonic() + 3
-        self.face.set(level=0, word="", mood="neutral", who="")
+        self.face.set(level=0, word="", note="", mood="neutral", who="")
         self._chime(rising=False)
         log("back to offline listening (no audio leaves the Pi)")
 

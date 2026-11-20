@@ -14,6 +14,7 @@ class ModelRequest(BaseModel):
     recent_texts: list[str]
     focus: Language
     candidate_reasons: list[Reason]
+    asked_about: str | None = None  # what a "how do you say ...?" in the sentence names
 
 
 class ModelSuggestion(BaseModel):

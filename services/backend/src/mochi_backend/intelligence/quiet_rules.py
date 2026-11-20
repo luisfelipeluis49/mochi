@@ -16,8 +16,10 @@ _SERIOUS = re.compile(
 _ONLY_THINKING = re.compile(
     r"^(?:(?:hmm+|um+|uh+|well|let me think|let's see|one moment|so)[\s,.…]*)+$"
 )
+# A correction follows something: "I need to, I mean, I want to...". At the start of a turn the same
+# words only pick up the previous turn ("I mean garfo. Eu esqueci minha wallet." was silenced).
 _SELF_CORRECTION = re.compile(
-    r"\b(?:i mean|no, wait|no wait|sorry, i meant|quer dizer|ou melhor)\b"
+    r"\w[\w'’]*[\s,.…]+(?:i mean|no, wait|no wait|sorry, i meant|quer dizer|ou melhor)\b"
 )
 
 

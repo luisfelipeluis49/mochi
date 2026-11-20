@@ -2,8 +2,15 @@
 
 import asyncio
 from dataclasses import dataclass
+from datetime import timedelta
 
-from mochi_backend.intelligence.clear_cases import asks_for_word, detect_clear, mochi_entry
+from mochi_backend.intelligence.clear_cases import (
+    asked_term,
+    asks_for_word,
+    detect_clear,
+    mochi_entry,
+    unfinished_question,
+)
 from mochi_backend.intelligence.hint_builder import (
     CaseMatch,
     HintFactory,
@@ -29,7 +36,7 @@ from mochi_backend.intelligence.wake_phrase import (
     says_mochi,
     without_wake_phrase,
 )
-from mochi_backend.platform.clock import Clock
+from mochi_backend.platform.clock import Clock, parse_iso_z
 from mochi_contracts import (
     Decision,
     DecisionKind,
@@ -41,6 +48,7 @@ from mochi_contracts import (
     Turn,
 )
 
+_SAME_THOUGHT = timedelta(seconds=20)  # a question and its second half are no further apart
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
 
 
@@ -57,6 +65,22 @@ def _needed_word(text: str, expression: str, meaning: str | None) -> tuple[str |
     if meaning and not has_phrase(said, meaning):
         return meaning, expression
     return None, None
+
+
+def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
+    """People pause while they search for a word, and the pause ends the turn.
+
+    Seen live: "Como se fala..." and then "Carteira em inglês." arrived as two turns, and neither
+    means anything alone. A turn that follows an unfinished question within a few seconds is read
+    together with it.
+    """
+    if not context.recent_turns or not unfinished_question(context.recent_turns[-1].text):
+        return turn
+    before = context.recent_turns[-1]
+    gap = parse_iso_z(turn.received_at) - parse_iso_z(before.received_at)
+    if gap > _SAME_THOUGHT:
+        return turn
+    return turn.model_copy(update={"text": f"{before.text} {turn.text}"})
 
 
 def ignore() -> Decision:
@@ -102,13 +126,16 @@ class DecisionFlow:
             update={"learning_events": [*decision.learning_events, *assisted]}
         )
 
-    async def _decide(self, turn: Turn, session_context: SessionContext) -> Decision:
+    async def _decide(self, heard: Turn, session_context: SessionContext) -> Decision:
+        turn = _with_its_question(heard, session_context)
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
         context = session_context.model_copy(update={"focus": spoken})
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
         quiet = quiet_reason(turn.text, context, self._lexicon, self._ttl)
+        if quiet == "cooldown" and asks_for_word(turn.text):
+            quiet = None  # the cooldown is against unasked hints; someone asking outright gets one
         match, line = await self._match_and_line(turn, context, bool(quiet))
         shown = self._show(match, context) if match else ignore()
         return self._saying(shown, line, turn) if line else shown
@@ -180,6 +207,7 @@ class DecisionFlow:
             recent_texts=history[-3:],
             focus=context.focus,
             candidate_reasons=list(Reason),
+            asked_about=asked_term(text),
         )
         try:
             suggestion = await asyncio.wait_for(self._model.suggest(request), self._model_timeout)

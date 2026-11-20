@@ -7,6 +7,7 @@ reconnects by itself, and with no page open this costs nothing.
     mood   neutral | happy | excited | love | laughing | surprised | curious | proud | oops | cool | sleepy
     level  0-100, loudness of Mochi's own voice right now
     word   a word shown big under the face
+    note   a smaller line under the word: its language and what it means ("English · garfo")
     pop    {"what": "volume" | "temp", "value": n, "n": counter}: a badge shown for a few seconds
     who    the name of the person Mochi recognises talking ("" = nobody)
 """
@@ -23,7 +24,8 @@ class Face:
         cfg = cfg or {}
         self.enabled = cfg.get("enabled", True)
         self.host, self.port = cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8765))
-        self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "pop": None, "who": ""}
+        self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "pop": None,
+                            "who": ""}
         self._changed: set[asyncio.Event] = set()  # one per connected page
         self._server: asyncio.AbstractServer | None = None
         self._timers: dict[str, asyncio.TimerHandle] = {}
@@ -51,7 +53,7 @@ class Face:
 
     def show_for(self, seconds: float, **changes) -> None:
         """Like set(), and puts each key back to its resting value after a while."""
-        rest = {"mood": "neutral", "word": "", "pop": None, "who": ""}
+        rest = {"mood": "neutral", "word": "", "note": "", "pop": None, "who": ""}
         self.set(**changes)
         for key in changes:
             if key in self._timers:

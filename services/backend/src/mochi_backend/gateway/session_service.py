@@ -122,6 +122,9 @@ class SessionService:
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
         self._store.mode, self._store.commands = SessionMode.TOGETHER, []
+        # The last session's sentences and hints are not this one's: a hint shown five minutes ago
+        # must not count as "a hint in the last two turns" now.
+        self._store.turns, self._store.hints = [], []
         self._store.last_heard = (-1, "")
 
     def _end_locally(self) -> None:
