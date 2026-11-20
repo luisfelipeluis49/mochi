@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=480, height=320, user-scalable=no">
+<title>Mochi placeholder</title>
+<style>
+  /* Placeholder for Mochi's 480x320 screen until the real Home view exists.
+     Doubles as the touch test (AGENTS.md §12.4): tap = short press, long press >= 600 ms. */
+  html, body { margin: 0; height: 100%; background: #111; color: #f5f0e8; overflow: hidden;
+    font-family: system-ui, sans-serif; cursor: none; user-select: none; -webkit-user-select: none;
+    touch-action: none; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .face { font-size: 120px; line-height: 1; letter-spacing: 20px; }
+  .msg { font-size: 34px; font-weight: 700; margin-top: 12px; min-height: 42px; }
+  .stats { position: fixed; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 16px; color: #8a857c; }
+  body.flash { background: #2a4d3a; }
+</style>
+</head>
+<body>
+  <div class="face">• •</div>
+  <div class="msg" id="msg">listening</div>
+  <div class="stats" id="stats">taps 0 · long 0 · touch test</div>
+<script>
+  const LONG_MS = 600;
+  let taps = 0, longs = 0, downAt = 0, timer = null;
+  const msg = document.getElementById('msg'), stats = document.getElementById('stats');
+
+  function show(text) {
+    msg.textContent = text;
+    document.body.classList.add('flash');
+    setTimeout(() => document.body.classList.remove('flash'), 150);
+    stats.textContent = `taps ${taps} · long ${longs}`;
+  }
+  // Pointer events cover touch and mouse; one handler path, like the real Home view will need.
+  document.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    downAt = performance.now();
+    clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; longs++; show('long press'); }, LONG_MS);
+  });
+  document.addEventListener('pointerup', (e) => {
+    e.preventDefault();
+    if (timer) { clearTimeout(timer); timer = null; taps++; show(`tap ${Math.round(e.clientX)},${Math.round(e.clientY)}`); }
+  });
+  document.addEventListener('pointercancel', () => { clearTimeout(timer); timer = null; });
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+</script>
+</body>
+</html>

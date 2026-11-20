@@ -1,0 +1,6 @@
+third_party/
+build/
+.env
+.venv/
+.env.session
+data/

@@ -1,0 +1,5 @@
+# Python side of the Pi device (the audio bridge itself is C).
+agora-agents>=2.9.0      # stand-in test agent (backend.kind = "test_agent")
+python-dotenv>=1.0.0
+sherpa-onnx>=2.0         # offline wake / goodbye phrases: runs the VAD and the phone recogniser
+numpy>=1.26

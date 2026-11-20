@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=480, height=320, user-scalable=no">
+<title>Mochi</title>
+<!--
+  Mochi's face for its own 480x320 screen (kiosk.sh opens this file).
+
+  The supervisor (hardware/pi-bridge, mochi_device/face.py) pushes what Mochi is doing over
+  server-sent events; this page only draws. Without the supervisor Mochi simply sleeps, and the page
+  reconnects by itself when it comes back.
+
+    mode   sleeping | waking | awake | hearing | thinking | speaking | bye
+    mood   neutral | happy | excited | love | laughing | surprised | curious | proud | oops | cool | sleepy
+    level  0-100, how loud Mochi's voice is right now (opens the mouth)
+    word   a word to show big under the face ("" = none)
+    pop    {what: "volume" | "temp", value, n}   a short badge; n changes for every new one
+    who    name of the person Mochi recognises talking ("" = nobody)
+
+  Try it without the supervisor:  face.html?demo=1   or   face.html#mode=speaking&mood=love&word=umbrella
+  Another supervisor address:     face.html?events=http://host:8765/events
+-->
+<style>
+  :root { --bg: #fff3e0; --ink: #3a2a2a; --blush: #ff9eb0; --mouth: #7a2f3a; --tongue: #ff7f93; --accent: #ff6f91; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; cursor: none;
+    user-select: none; -webkit-user-select: none; touch-action: none; transition: background 1.2s; }
+  body.mode-sleeping, body.mode-bye { --bg: #1d1b36; --ink: #cfc8ff; --blush: #6d5aa8; --mouth: #cfc8ff; }
+  /* Chromium never makes a window narrower than 500 px, so on the 480 px panel the page is wider than
+     the glass: everything is laid out inside #screen, which the script sizes to what is visible. */
+  #screen { position: fixed; left: 0; top: 0; width: var(--w, 100vw); height: 100vh; overflow: hidden; }
+  svg { width: 100%; height: 100%; display: block; }
+  .ink { fill: var(--ink); transition: fill 1.2s; }
+  .line { fill: none; stroke: var(--ink); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; transition: stroke 1.2s; }
+  .blush { fill: var(--blush); opacity: .55; transition: fill 1.2s; }
+
+  /* the whole face breathes; slower and deeper asleep */
+  #face { transform-origin: 240px 170px; animation: breathe 4s ease-in-out infinite; }
+  .mode-sleeping #face { animation-duration: 6.5s; }
+  @keyframes breathe { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.025) translateY(-3px); } }
+  .boop #face { animation: boop .45s ease-out; }
+  @keyframes boop { 30% { transform: scale(1.12, .86) translateY(12px); } 60% { transform: scale(.95, 1.07) translateY(-6px); } }
+  .mood-laughing #face, .mood-excited #face { animation: bounce .42s ease-in-out infinite; }
+  @keyframes bounce { 50% { transform: translateY(-9px); } }
+  .mood-curious #face { transform: rotate(-5deg); animation: none; transition: transform .4s; }
+
+  /* which eyes and mouth are drawn: one of each, chosen by the classes on <body> */
+  .eyes, .mouth { display: none; }
+  body:not([data-eyes]) #eyes-open, [data-eyes="open"] #eyes-open, [data-eyes="happy"] #eyes-happy,
+  [data-eyes="closed"] #eyes-closed, [data-eyes="love"] #eyes-love, [data-eyes="laugh"] #eyes-laugh,
+  [data-eyes="star"] #eyes-star, [data-eyes="cool"] #eyes-cool, [data-eyes="sleepy"] #eyes-sleepy { display: inline; }
+  [data-mouth="smile"] #mouth-smile, [data-mouth="rest"] #mouth-rest, [data-mouth="talk"] #mouth-talk,
+  [data-mouth="o"] #mouth-o, [data-mouth="hmm"] #mouth-hmm, [data-mouth="laugh"] #mouth-laugh,
+  [data-mouth="grin"] #mouth-grin, [data-mouth="oops"] #mouth-oops { display: inline; }
+
+  .eye { transform-box: fill-box; transform-origin: center; transition: transform .25s; }
+  .blink .eye { transform: scaleY(.08); transition: transform .07s; }
+  [data-look="left"] .eye { transform: translateX(-9px); }
+  [data-look="right"] .eye { transform: translateX(9px); }
+  [data-look="up"] .eye { transform: translate(7px, -9px); }
+  .mode-hearing .eye { transform: scale(1.12); }
+  .mode-waking .eye { animation: widen .5s ease-out; }
+  @keyframes widen { 0% { transform: scaleY(.1); } 60% { transform: scale(1.25); } }
+  .mood-surprised .eye { transform: scale(.8); }
+  .mood-curious #eye-r { transform: scale(1.18); }
+  #eyes-love { fill: var(--accent); animation: throb .7s ease-in-out infinite; transform-origin: 240px 146px; }
+  #eyes-star { fill: #ffb400; animation: throb .5s ease-in-out infinite; transform-origin: 240px 140px; }
+  @keyframes throb { 50% { transform: scale(1.1); } }
+
+  /* thinking dots */
+  #dots { display: none; }
+  .mode-thinking #dots { display: inline; }
+  #dots circle { fill: var(--ink); animation: dot 1s ease-in-out infinite; }
+  #dots circle:nth-child(2) { animation-delay: .15s; } #dots circle:nth-child(3) { animation-delay: .3s; }
+  @keyframes dot { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-9px); opacity: 1; } }
+
+  /* little symbols that float up and fade */
+  .float { animation: float var(--dur, 2.4s) ease-out forwards; transform-box: fill-box; transform-origin: center; }
+  @keyframes float { 0% { opacity: 0; transform: translate(0, 0) scale(.4) rotate(0); }
+    15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx, 0px), -120px) scale(1.15) rotate(var(--rot, 0deg)); } }
+
+  /* the word under the face, and the volume / temperature badge above it */
+  #word { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 800 44px/1.05 system-ui, sans-serif;
+    color: var(--ink); letter-spacing: .5px; opacity: 0; transform: translateY(18px) scale(.9); transition: opacity .35s, transform .35s; }
+  #word span { background: #fff; border: 4px solid var(--accent); border-radius: 26px; padding: 4px 22px 8px; display: inline-block;
+    max-width: 430px; box-shadow: 0 5px 0 rgba(0, 0, 0, .12); }
+  .has-word #word { opacity: 1; transform: none; }
+  .has-word #face { transform: translateY(-46px) scale(.8); animation: none; transition: transform .35s; }
+  #badge { position: absolute; top: 10px; right: 12px; display: flex; align-items: center; gap: 8px; font: 800 30px system-ui, sans-serif;
+    color: #fff; background: var(--accent); border-radius: 22px; padding: 4px 16px 6px 12px; opacity: 0; transform: translateY(-50px);
+    transition: opacity .3s, transform .3s; }
+  #badge.on { opacity: 1; transform: none; }
+  #who { position: absolute; top: 10px; left: 12px; font: 800 26px system-ui, sans-serif; color: var(--ink); background: #fff;
+    border: 3px solid var(--accent); border-radius: 20px; padding: 2px 14px 4px; opacity: 0; transform: translateY(-50px);
+    transition: opacity .3s, transform .3s; }
+  #who.on { opacity: 1; transform: none; }
+  #badge svg { width: 34px; height: 34px; }
+  #badge .bar { fill: rgba(255, 255, 255, .35); } #badge .bar.lit { fill: #fff; }
+</style>
+</head>
+<body class="mode-sleeping mood-neutral" data-eyes="closed" data-mouth="rest">
+<div id="screen">
+<svg viewBox="0 0 480 320" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <path id="heart" d="M0 9 C-22 -8 -9 -24 0 -11 C9 -24 22 -8 0 9 Z"/>
+    <path id="star" d="M0 -17 L5 -5 L18 -5 L8 3 L12 16 L0 8 L-12 16 L-8 3 L-18 -5 L-5 -5 Z"/>
+    <path id="note" d="M-6 12 a7 6 0 1 1 5 -6 V-16 l14 -4 v8 l-10 3 V7"/>
+    <path id="drop" d="M0 -14 C9 0 9 10 0 12 C-9 10 -9 0 0 -14 Z"/>
+  </defs>
+  <g id="face">
+    <ellipse class="blush" cx="104" cy="196" rx="32" ry="19"/>
+    <ellipse class="blush" cx="376" cy="196" rx="32" ry="19"/>
+
+    <g id="eyes-open" class="eyes">
+      <g class="eye" id="eye-l"><ellipse class="ink" cx="160" cy="140" rx="25" ry="33"/><circle cx="169" cy="127" r="9" fill="#fff"/><circle cx="151" cy="152" r="4" fill="#fff" opacity=".8"/></g>
+      <g class="eye" id="eye-r"><ellipse class="ink" cx="320" cy="140" rx="25" ry="33"/><circle cx="329" cy="127" r="9" fill="#fff"/><circle cx="311" cy="152" r="4" fill="#fff" opacity=".8"/></g>
+    </g>
+    <g id="eyes-happy" class="eyes"><path class="line" d="M134 152 Q160 114 186 152"/><path class="line" d="M294 152 Q320 114 346 152"/></g>
+    <g id="eyes-closed" class="eyes"><path class="line" d="M134 140 Q160 164 186 140"/><path class="line" d="M294 140 Q320 164 346 140"/></g>
+    <g id="eyes-sleepy" class="eyes">
+      <ellipse class="ink" cx="160" cy="148" rx="25" ry="20"/><ellipse class="ink" cx="320" cy="148" rx="25" ry="20"/>
+      <rect x="128" y="120" width="64" height="27" fill="var(--bg)"/><rect x="288" y="120" width="64" height="27" fill="var(--bg)"/>
+      <path class="line" d="M134 147 H186"/><path class="line" d="M294 147 H346"/>
+    </g>
+    <g id="eyes-laugh" class="eyes"><path class="line" d="M138 118 L182 140 L138 162"/><path class="line" d="M342 118 L298 140 L342 162"/></g>
+    <g id="eyes-love" class="eyes"><use href="#heart" transform="translate(160 146) scale(2.1)"/><use href="#heart" transform="translate(320 146) scale(2.1)"/></g>
+    <g id="eyes-star" class="eyes"><use href="#star" transform="translate(160 140) scale(2)"/><use href="#star" transform="translate(320 140) scale(2)"/></g>
+    <g id="eyes-cool" class="eyes">
+      <path class="ink" d="M112 118 H228 Q230 172 190 172 H150 Q112 172 112 118 Z M252 118 H368 Q368 172 330 172 H290 Q250 172 252 118 Z"/>
+      <path class="line" d="M226 124 H254" style="stroke-width:7"/><path d="M128 128 l22 0 l-14 26 Z M268 128 l22 0 l-14 26 Z" fill="#fff" opacity=".28"/>
+    </g>
+
+    <path id="mouth-smile" class="mouth line" d="M214 200 Q240 224 266 200"/>
+    <path id="mouth-rest" class="mouth line" d="M228 206 Q240 214 252 206" style="stroke-width:7"/>
+    <path id="mouth-grin" class="mouth line" d="M206 196 Q240 236 274 196"/>
+    <path id="mouth-hmm" class="mouth line" d="M224 210 L256 203"/>
+    <path id="mouth-oops" class="mouth line" d="M216 212 Q228 200 240 210 Q252 220 264 208"/>
+    <ellipse id="mouth-o" class="mouth" cx="240" cy="208" rx="10" ry="12" fill="var(--mouth)"/>
+    <g id="mouth-laugh" class="mouth"><path d="M204 194 Q240 250 276 194 Z" fill="var(--mouth)"/><path d="M222 222 Q240 240 258 222 Q240 214 222 222 Z" fill="var(--tongue)"/></g>
+    <g id="mouth-talk" class="mouth"><ellipse id="talk" cx="240" cy="208" rx="20" ry="4" fill="var(--mouth)"/><ellipse id="talk-tongue" cx="240" cy="214" rx="10" ry="0" fill="var(--tongue)"/></g>
+
+    <g id="dots"><circle cx="372" cy="92" r="6"/><circle cx="392" cy="80" r="7"/><circle cx="415" cy="66" r="8"/></g>
+  </g>
+  <g id="floats"></g>
+</svg>
+<div id="word"><span></span></div>
+<div id="badge"></div>
+<div id="who"></div>
+</div>
+
+<script>
+const body = document.body, floats = document.getElementById('floats');
+const talk = document.getElementById('talk'), tongue = document.getElementById('talk-tongue');
+const wordBox = document.getElementById('word'), badge = document.getElementById('badge');
+const state = { mode: 'sleeping', mood: 'neutral', level: 0, word: '', pop: null, who: '' };
+const whoBox = document.getElementById('who');
+let popSeen = 0, mouthNow = 0, lastMode = '';
+
+// Which eyes and mouth each mood wears. A mood only shows while Mochi is awake.
+const MOODS = {
+  neutral: {}, happy: { eyes: 'happy', mouth: 'grin', sym: 'star' }, excited: { eyes: 'star', mouth: 'laugh', sym: 'star' },
+  love: { eyes: 'love', mouth: 'smile', sym: 'heart' }, laughing: { eyes: 'laugh', mouth: 'laugh', sym: 'note' },
+  surprised: { eyes: 'open', mouth: 'o', sym: '!' }, curious: { eyes: 'open', mouth: 'hmm', sym: '?' },
+  proud: { eyes: 'happy', mouth: 'smile', sym: 'star' }, oops: { eyes: 'open', mouth: 'oops', sym: 'drop' },
+  cool: { eyes: 'cool', mouth: 'smile', sym: 'star' }, sleepy: { eyes: 'sleepy', mouth: 'rest', sym: 'z' },
+};
+const MODES = {
+  sleeping: { eyes: 'closed', mouth: 'rest' }, bye: { eyes: 'happy', mouth: 'smile' }, waking: { eyes: 'open', mouth: 'o' },
+  awake: { eyes: 'open', mouth: 'smile' }, hearing: { eyes: 'open', mouth: 'rest' }, thinking: { eyes: 'open', mouth: 'hmm' },
+  speaking: { eyes: 'open', mouth: 'talk' },
+};
+
+function draw() {
+  const mode = MODES[state.mode] ? state.mode : 'awake';
+  const awake = mode !== 'sleeping' && mode !== 'bye' && mode !== 'waking';
+  const mood = awake && MOODS[state.mood] ? state.mood : 'neutral';
+  const look = { ...MODES[mode], ...(mode === 'thinking' ? {} : MOODS[mood]) };
+  if (mode === 'speaking') look.mouth = 'talk';              // the mouth always follows the voice
+  body.className = body.className.replace(/\b(mode|mood)-\S+/g, '').trim() + ` mode-${mode} mood-${mood}`;
+  body.dataset.eyes = look.eyes; body.dataset.mouth = look.mouth;
+  if (mode === 'thinking') body.dataset.look = 'up'; else if (body.dataset.look === 'up') delete body.dataset.look;
+  if (mode !== lastMode) {
+    if (mode === 'waking') burst('!', 3);
+    if (mode === 'bye') burst('heart', 4);
+    lastMode = mode;
+  }
+  body.classList.toggle('has-word', !!state.word);
+  if (state.word) wordBox.firstChild.textContent = state.word;
+  whoBox.classList.toggle('on', !!state.who); if (state.who) whoBox.textContent = state.who;
+  if (state.pop && state.pop.n !== popSeen) { popSeen = state.pop.n; showBadge(state.pop); }
+}
+
+// --- mouth: follows the loudness of Mochi's voice, eased so it does not flicker
+function mouth() {
+  const target = state.mode === 'speaking' ? Math.min(1, state.level / 55) : 0;
+  mouthNow += (target - mouthNow) * (target > mouthNow ? .55 : .3);
+  talk.setAttribute('ry', (4 + 22 * mouthNow).toFixed(1));
+  talk.setAttribute('rx', (20 - 5 * mouthNow).toFixed(1));
+  tongue.setAttribute('ry', (7 * mouthNow).toFixed(1));
+  requestAnimationFrame(mouth);
+}
+
+// --- small life: blinking and glancing while awake, z z z asleep, symbols for the mood
+function blink() {
+  if (state.mode !== 'sleeping') { body.classList.add('blink'); setTimeout(() => body.classList.remove('blink'), 130); }
+  setTimeout(blink, 1800 + Math.random() * 4200);
+}
+function glance() {
+  if (state.mode === 'awake' && state.mood === 'neutral' && Math.random() < .6) {
+    body.dataset.look = Math.random() < .5 ? 'left' : 'right';
+    setTimeout(() => { if (body.dataset.look !== 'up') delete body.dataset.look; }, 900 + Math.random() * 900);
+  }
+  setTimeout(glance, 3500 + Math.random() * 5000);
+}
+function ambient() {
+  if (state.mode === 'sleeping') spawn('z', 352 + Math.random() * 30, 118);
+  else if (state.mode !== 'bye' && state.mode !== 'waking') {
+    const sym = (MOODS[state.mood] || {}).sym;
+    if (sym) spawn(sym);
+  }
+  setTimeout(ambient, state.mode === 'sleeping' ? 2600 : 850);
+}
+const NS = 'http://www.w3.org/2000/svg';
+const COLORS = { heart: '#ff5c8a', star: '#ffb400', note: '#7c5cff', drop: '#49b6ff' };
+function spawn(sym, x, y) {
+  x = x ?? (Math.random() < .5 ? 40 + Math.random() * 70 : 370 + Math.random() * 70); y = y ?? 150 + Math.random() * 90;
+  let el;
+  if (sym.length <= 2) {   // a letter: z ? !
+    el = document.createElementNS(NS, 'text'); el.textContent = sym;
+    el.setAttribute('font-size', sym === 'z' ? 40 + Math.random() * 16 : 54); el.setAttribute('font-weight', 800);
+    el.setAttribute('font-family', 'system-ui, sans-serif'); el.setAttribute('text-anchor', 'middle');
+    el.setAttribute('fill', sym === 'z' ? '#e4dfff' : '#ff6f91');
+  } else {
+    el = document.createElementNS(NS, 'use'); el.setAttribute('href', '#' + sym);
+    el.setAttribute('fill', COLORS[sym]); if (sym === 'note') { el.setAttribute('stroke', COLORS.note); el.setAttribute('stroke-width', 3); }
+  }
+  const g = document.createElementNS(NS, 'g'); g.setAttribute('transform', `translate(${x} ${y}) scale(${1 + Math.random() * .7})`);
+  el.classList.add('float'); el.style.setProperty('--dx', (Math.random() * 60 - 30) + 'px');
+  el.style.setProperty('--rot', (Math.random() * 60 - 30) + 'deg'); el.style.setProperty('--dur', (1.8 + Math.random() * 1.4) + 's');
+  g.appendChild(el); floats.appendChild(g); setTimeout(() => g.remove(), 3400);
+}
+function burst(sym, n) { for (let i = 0; i < n; i++) setTimeout(() => spawn(sym), i * 120); }
+
+// --- badge: volume bars or a thermometer, for a few seconds
+let badgeTimer;
+function showBadge(pop) {
+  if (pop.what === 'volume') {
+    const lit = Math.round(pop.value / 20);
+    badge.innerHTML = '<svg viewBox="0 0 34 34"><path d="M3 13h6l8-7v22l-8-7H3z" fill="#fff"/></svg><svg viewBox="0 0 50 34" style="width:50px">' +
+      [0, 1, 2, 3, 4].map(i => `<rect class="bar${i < lit ? ' lit' : ''}" x="${i * 10}" y="${26 - i * 5}" width="7" height="${6 + i * 5}" rx="2"/>`).join('') + '</svg>';
+  } else if (pop.what === 'temp') {
+    badge.innerHTML = '<svg viewBox="0 0 34 34"><path d="M14 4a4 4 0 0 1 8 0v14a8 8 0 1 1-8 0z" fill="none" stroke="#fff" stroke-width="3"/><circle cx="18" cy="25" r="4.5" fill="#fff"/><path d="M18 24V10" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>' +
+      `<span>${Math.round(pop.value)}°C</span>`;
+  } else return;
+  badge.classList.add('on'); clearTimeout(badgeTimer); badgeTimer = setTimeout(() => badge.classList.remove('on'), 4500);
+}
+
+// --- a tap on the screen: Mochi notices
+document.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  body.classList.remove('boop'); void body.offsetWidth; body.classList.add('boop');
+  if (state.mode !== 'sleeping') burst('heart', 2);
+  setTimeout(() => body.classList.remove('boop'), 460);
+});
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// --- fit the visible part of the window (see #screen in the styles)
+const fit = () => document.documentElement.style.setProperty('--w', Math.min(innerWidth, screen.width) + 'px');
+fit(); addEventListener('resize', fit);
+
+// --- where the state comes from
+const q = new URLSearchParams(location.search);
+function fromHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  for (const [k, v] of h) state[k] = k === 'level' ? +v : k === 'pop' ? { what: v.split(':')[0], value: +v.split(':')[1], n: Date.now() } : v;
+  draw();
+}
+if (q.has('demo')) {   // walk through everything, for a look without the supervisor
+  const steps = [{ mode: 'sleeping' }, { mode: 'waking' }, { mode: 'awake' }, { mode: 'hearing' }, { mode: 'thinking' },
+    { mode: 'speaking', mood: 'happy' }, { mode: 'speaking', mood: 'curious', word: 'umbrella' }, { mode: 'awake', mood: 'love', word: '' },
+    { mode: 'speaking', mood: 'laughing' }, { mode: 'awake', mood: 'excited' }, { mode: 'awake', mood: 'surprised' },
+    { mode: 'awake', mood: 'oops' }, { mode: 'awake', mood: 'cool', pop: { what: 'volume', value: 60, n: 1 } },
+    { mode: 'speaking', mood: 'proud', pop: { what: 'temp', value: 52, n: 2 } }, { mode: 'awake', mood: 'sleepy' }, { mode: 'bye', mood: 'neutral' }];
+  let i = 0;
+  const next = () => { Object.assign(state, { mood: 'neutral' }, steps[i++ % steps.length]); draw(); };
+  next(); setInterval(next, 2600);
+  setInterval(() => { state.level = state.mode === 'speaking' ? 15 + Math.random() * 70 : 0; }, 110);
+} else if (location.hash.length > 1) {
+  fromHash(); addEventListener('hashchange', fromHash);
+  if (state.mode === 'speaking') setInterval(() => { state.level = 15 + Math.random() * 70; }, 110);
+} else {
+  const url = q.get('events') || 'http://127.0.0.1:8765/events';
+  const connect = () => {
+    const es = new EventSource(url);
+    es.onmessage = (m) => { Object.assign(state, JSON.parse(m.data)); draw(); };
+    es.onerror = () => {   // supervisor gone: sleep, and keep trying
+      es.close(); Object.assign(state, { mode: 'sleeping', mood: 'neutral', level: 0, word: '', who: '' }); draw(); setTimeout(connect, 2000);
+    };
+  };
+  connect();
+}
+draw(); mouth(); blink(); glance(); ambient();
+</script>
+</body>
+</html>
