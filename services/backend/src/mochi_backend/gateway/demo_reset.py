@@ -24,6 +24,7 @@ class DemoReset:
 
     async def run(self) -> None:
         """Back to the start: no words, no game, no hint; fresh session and IDLE activity."""
+        self._store.invalidate()  # a turn still deciding must not publish into the fresh state
         await self._live_hint.clear()
         self._intelligence.reset()
         self._store.clear_history()

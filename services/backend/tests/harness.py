@@ -16,6 +16,7 @@ from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_scheduler import FakeScheduler
 from tests.fakes.fake_sender import FakeEventLogger, FakeSender
+from tests.fakes.gated_intelligence import GatedIntelligence
 
 ANA = ConnectionTarget("mobile", user_id="ana")
 BEN = ConnectionTarget("mobile", user_id="ben")
@@ -33,6 +34,7 @@ class Harness:
     agora: FakeAgoraClient
     tokens: FakeTokenIssuer
     logger: FakeEventLogger
+    gate: GatedIntelligence | None = None
 
     async def connect(self, target: ConnectionTarget) -> FakeSender:
         """Open a fake client (it receives the snapshot first)."""
@@ -55,6 +57,7 @@ def make_harness(
     env: dict[str, str] | None = None,
     intelligence: IntelligencePort | None = None,
     model: FakeHintModel | None = None,
+    gated: bool = False,
 ) -> Harness:
     """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY)."""
     settings = load_settings({"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", **(env or {})})
@@ -65,6 +68,9 @@ def make_harness(
         model=model or FakeHintModel(),
         settings=IntelligenceSettings(settings.mochi_hint_ttl_seconds, 2.0),
     )
+    gate = GatedIntelligence(brain) if gated else None
+    brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()
     adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules")
-    return Harness(build_container(settings, adapters), clock, scheduler, agora, tokens, logger)
+    container = build_container(settings, adapters)
+    return Harness(container, clock, scheduler, agora, tokens, logger, gate)

@@ -1,5 +1,7 @@
 """Fake Agora client and token issuer: record calls, fail on demand. No network."""
 
+import asyncio
+
 from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
@@ -17,17 +19,28 @@ class FakeAgoraClient:
         self.start_error: AgoraError | None = None
         self.stop_error: AgoraError | AgentAlreadyStoppedError | None = None
         self.speak_error: AgoraError | None = None
+        self.start_gate: asyncio.Event | None = None  # when set, start_agent waits for it
+        self.stop_gate: asyncio.Event | None = None  # when set, stop_agent waits for it
+        self.start_entered = asyncio.Event()
+        self.stop_entered = asyncio.Event()
 
     async def start_agent(self, request: AgentStartRequest) -> str:
         """Record the start (or raise the scripted error); returns "agent-N"."""
         if self.start_error is not None:
             raise self.start_error
         self.started.append(request)
-        return f"agent-{len(self.started)}"
+        agent_id = f"agent-{len(self.started)}"
+        self.start_entered.set()
+        if self.start_gate is not None:
+            await self.start_gate.wait()
+        return agent_id
 
     async def stop_agent(self, agent_id: str) -> None:
         """Record the stop (or raise the scripted error)."""
         self.stopped.append(agent_id)
+        self.stop_entered.set()
+        if self.stop_gate is not None:
+            await self.stop_gate.wait()
         if self.stop_error is not None:
             raise self.stop_error
 

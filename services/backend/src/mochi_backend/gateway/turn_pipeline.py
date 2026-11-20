@@ -87,7 +87,11 @@ class TurnPipeline:
             segment_id=self._ids.new("seg"), text=text, received_at=iso_z(self._clock.now())
         )
         self._logger.log("turn", {"segment_id": turn.segment_id, "text": text})
+        generation = self._store.generation
         decision = await self._decide(turn)
+        if generation != self._store.generation or not self._store.capturing:
+            self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
+            return TurnOutcome("", silent_decision())  # Stop or Reset arrived while deciding
         await self._publish_results(decision)
         reply = await self._reply(decision.speak)
         self._store.remember(turn, decision.hint)

@@ -71,8 +71,17 @@ class RoundEngine:
     def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
         """Return the new round state. Raises ValueError for an impossible command."""
         if command.type == "start":
+            self._refuse_second_round(context)
             return self._start(context)
         return self._finish(command, context)
+
+    def _refuse_second_round(self, context: SessionContext) -> None:
+        active = context.activity
+        if active is not None and active.state is GameState.ACTIVE_ROUND:
+            raise ValueError(
+                f"round {active.round_id!r} is still active; "
+                f"send result 'skipped' or reset before starting another"
+            )
 
     def _stock_word(self, context: SessionContext) -> str:
         previous = context.activity.revealed_word if context.activity else None

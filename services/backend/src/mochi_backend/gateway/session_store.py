@@ -47,6 +47,20 @@ class SessionStore:
         self.activity: Activity = idle_activity()
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
+        self.generation = 0
+
+    def invalidate(self) -> None:
+        """Mark everything in flight (a pending start or turn) as out of date.
+
+        Stop and Reset call this synchronously; work that began earlier compares `generation`
+        before it changes anything and drops itself when it differs.
+        """
+        self.generation += 1
+
+    def end_game(self) -> None:
+        """Back to IDLE and `together` without touching history (used by Stop)."""
+        self.activity = idle_activity()
+        self.mode = SessionMode.TOGETHER
 
     def session_state(self) -> SessionState:
         """The `session.state.changed` payload."""
@@ -81,5 +95,4 @@ class SessionStore:
     def clear_history(self) -> None:
         """Forget turns, hints and the game (keeps capturing as it is)."""
         self.turns, self.hints = [], []
-        self.activity = idle_activity()
-        self.mode = SessionMode.TOGETHER
+        self.end_game()

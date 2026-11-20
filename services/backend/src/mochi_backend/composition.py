@@ -75,7 +75,7 @@ def default_adapters(settings: Settings) -> Adapters:
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
     name = "rules+model" if settings.model_configured else "rules"
-    return Adapters(clock, ids, AsyncioScheduler(), logger, agora, tokens, brain, name)
+    return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
 
 
 def _session_config(settings: Settings) -> SessionConfig:

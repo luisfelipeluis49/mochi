@@ -1,10 +1,12 @@
 """The hub: the only publisher. It sets every envelope field and routes per connection."""
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
 from mochi_backend.gateway.delivery_rules import ConnectionTarget, hint_user_of, is_recipient
 from mochi_backend.gateway.roster import SESSION_ID
+from mochi_backend.gateway.secret_guard import SecretGuard
 from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.json_logging import EventLogger
@@ -18,6 +20,9 @@ from mochi_contracts import (
     HintCleared,
     PrivatePrompt,
 )
+
+# A phone that stops reading must not hold up the others or the reply to Agora.
+DEFAULT_SEND_TIMEOUT_SECONDS = 1.0
 
 
 class Sender(Protocol):
@@ -39,14 +44,22 @@ class Connection:
 class EventHub:
     """Registry of connections plus the single global sequence counter."""
 
-    def __init__(self, clock: Clock, ids: IdGenerator, logger: EventLogger) -> None:
+    def __init__(
+        self,
+        clock: Clock,
+        ids: IdGenerator,
+        logger: EventLogger,
+        send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+    ) -> None:
         self._clock = clock
         self._ids = ids
         self._logger = logger
         self._connections: list[Connection] = []
         self._sequence = 0
         self._hint_users: dict[str, str | None] = {}
-        self._secrets: set[str] = set()
+        self._secrets = SecretGuard()
+        self._lock = asyncio.Lock()  # one publish at a time keeps sequences in delivery order
+        self._send_timeout = send_timeout_seconds
 
     def register(self, target: ConnectionTarget, sender: Sender) -> Connection:
         """Add a client. Example: `hub.register(ConnectionTarget("mobile", user_id="ana"), ws)`."""
@@ -60,7 +73,11 @@ class EventHub:
 
     def protect_secret(self, word: str) -> None:
         """Treat `word` as a secret until the round result is published."""
-        self._secrets.add(word.lower())
+        self._secrets.protect(word)
+
+    def forget_secrets(self) -> None:
+        """Stop protecting round secrets (the round ended without a result, e.g. on Stop)."""
+        self._secrets.clear()
 
     def reset(self) -> None:
         """Forget hint routing and secrets (demo reset). Sequence keeps counting up."""
@@ -69,18 +86,19 @@ class EventHub:
 
     async def publish(self, event_type: EventType, payload: EventPayload) -> Envelope:
         """Wrap `payload` in an envelope and send it to every connection entitled to it."""
-        envelope = self._envelope(event_type, self._prepared(event_type, payload))
-        for connection in list(self._connections):
-            await self._deliver(connection, envelope)
-        self._log(envelope)
-        return envelope
+        async with self._lock:
+            envelope = self._envelope(event_type, self._prepared(event_type, payload))
+            await asyncio.gather(*(self._deliver(c, envelope) for c in list(self._connections)))
+            self._log(envelope)
+            return envelope
 
     async def send_to(
         self, connection: Connection, event_type: EventType, payload: EventPayload
     ) -> None:
         """Send one event to one connection (used for the snapshot on connect)."""
-        envelope = self._envelope(event_type, self._prepared(event_type, payload))
-        await self._deliver(connection, envelope)
+        async with self._lock:
+            envelope = self._envelope(event_type, self._prepared(event_type, payload))
+            await self._deliver(connection, envelope)
 
     def _prepared(self, event_type: EventType, payload: EventPayload) -> EventPayload:
         if isinstance(payload, PrivatePrompt):
@@ -93,8 +111,7 @@ class EventHub:
         if activity.state is not GameState.ACTIVE_ROUND:
             self._secrets.clear()  # the round is over: the word may be shown
             return activity
-        text = activity.model_dump_json().lower()
-        if activity.revealed_word is None and not any(s in text for s in self._secrets):
+        if activity.revealed_word is None and not self._secrets.leaks(activity):
             return activity
         self._logger.log("secret_leak_blocked", {"round_id": activity.round_id, "error": "leak"})
         return activity.model_copy(
@@ -125,18 +142,14 @@ class EventHub:
         if not is_recipient(envelope.type, envelope.payload, connection.target, hint_user):
             return
         text = envelope.model_dump_json()
-        if connection.target.kind == "audience" and self._leaks(text):
+        if connection.target.kind == "audience" and self._secrets.leaks(envelope.payload):
             self._logger.log("secret_leak_blocked", {"type": envelope.type.value, "error": "leak"})
             return
         try:
-            await connection.sender.send_text(text)
-        except (ConnectionError, RuntimeError, OSError) as error:
+            await asyncio.wait_for(connection.sender.send_text(text), self._send_timeout)
+        except (ConnectionError, RuntimeError, OSError, TimeoutError) as error:
             self._logger.log("connection_dropped", {"reason": repr(error)})
             self.unregister(connection)
-
-    def _leaks(self, text: str) -> bool:
-        lowered = text.lower()
-        return any(secret in lowered for secret in self._secrets)
 
     def _log(self, envelope: Envelope) -> None:
         self._logger.log(

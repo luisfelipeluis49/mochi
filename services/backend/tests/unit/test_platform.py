@@ -1,5 +1,6 @@
 """Clock formatting, ids, scheduler fake, JSON logging."""
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -7,8 +8,10 @@ from datetime import UTC, datetime
 from mochi_backend.platform.clock import iso_z, parse_iso_z
 from mochi_backend.platform.ids import SequentialIdGenerator, UuidIdGenerator
 from mochi_backend.platform.json_logging import JsonFormatter, StdlibEventLogger
+from mochi_backend.platform.scheduler import AsyncioScheduler
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_scheduler import FakeScheduler
+from tests.fakes.fake_sender import FakeEventLogger
 
 
 def test_iso_z_matches_the_contract_format() -> None:
@@ -61,3 +64,16 @@ def test_json_logger_writes_one_json_object_with_fields() -> None:
     logger.setLevel(logging.INFO)
     StdlibEventLogger(logger).log("turn", {"text_len": 12})
     assert json.loads(records[0]) == {"level": "INFO", "event": "turn", "text_len": 12}
+
+
+async def test_asyncio_scheduler_logs_a_failing_callback() -> None:
+    logger = FakeEventLogger()
+    scheduler = AsyncioScheduler(logger)
+
+    async def explode() -> None:
+        raise RuntimeError("expiry blew up")
+
+    scheduler.call_later(0, explode)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert "scheduled_call_failed" in logger.names()
