@@ -39,16 +39,21 @@ services:
         value: gpt-4o-mini
       - key: MOCHI_CHANNEL
         value: mochi-demo
+      # Agora-managed speech vendors: no vendor keys needed (tested against real Agora, see VERIFIED.md)
       - key: MOCHI_ASR_VENDOR
-        value: microsoft
+        value: deepgram
       - key: MOCHI_ASR_LANGUAGE
         value: en-US
+      - key: MOCHI_ASR_CREDENTIAL_MODE
+        value: managed
       - key: MOCHI_ASR_PARAMS
-        sync: false # JSON object of vendor params, e.g. the ASR vendor key
+        value: '{"url":"wss://api.deepgram.com/v1/listen","model":"nova-3","language":"multi"}'
       - key: MOCHI_TTS_VENDOR
-        value: microsoft
+        value: minimax
+      - key: MOCHI_TTS_CREDENTIAL_MODE
+        value: managed
       - key: MOCHI_TTS_PARAMS
-        sync: false # JSON object of vendor params, e.g. key and voice
+        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100}}'
       - key: MOCHI_CORS_ORIGINS
         value: "*"
       - key: MOCHI_LOG_LEVEL

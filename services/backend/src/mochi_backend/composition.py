@@ -91,8 +91,10 @@ def _session_config(settings: Settings) -> SessionConfig:
             asr_vendor=settings.mochi_asr_vendor,
             asr_language=settings.mochi_asr_language,
             asr_params=settings.mochi_asr_params,
+            asr_credential_mode=settings.mochi_asr_credential_mode,
             tts_vendor=settings.mochi_tts_vendor,
             tts_params=settings.mochi_tts_params,
+            tts_credential_mode=settings.mochi_tts_credential_mode,
             end_of_speech_silence_ms=settings.mochi_end_of_speech_silence_ms,
         ),
     )

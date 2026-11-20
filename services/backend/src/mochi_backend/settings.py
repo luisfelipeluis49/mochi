@@ -5,7 +5,9 @@ from typing import Literal, Self
 from pydantic import ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-VendorParams = dict[str, str | int | float | bool]
+from mochi_backend.platform.http_client import JsonValue
+
+VendorParams = dict[str, JsonValue]
 _SECRET_MARKERS = ("key", "secret", "certificate", "token")
 _REAL_MODE_REQUIRED = (
     "agora_app_id",
@@ -45,11 +47,13 @@ class Settings(BaseSettings):
     mochi_log_level: str = "INFO"
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
-    mochi_asr_vendor: str = "microsoft"
+    mochi_asr_vendor: str = "ares"
     mochi_asr_language: str = "en-US"
     mochi_asr_params: VendorParams = {}
-    mochi_tts_vendor: str = "microsoft"
+    mochi_asr_credential_mode: str = ""
+    mochi_tts_vendor: str = "minimax"
     mochi_tts_params: VendorParams = {}
+    mochi_tts_credential_mode: str = ""
     mochi_end_of_speech_silence_ms: int = 900
     mochi_speak_base_seconds: float = 0.6
     mochi_speak_seconds_per_word: float = 0.45

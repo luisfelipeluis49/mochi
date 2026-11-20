@@ -103,13 +103,21 @@ def _llm_block(request: AgentStartRequest) -> JsonValue:
     }
 
 
+def _vendor_block(
+    vendor: str, mode: str, params: dict[str, JsonValue], extra: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    block: dict[str, JsonValue] = {"vendor": vendor, **extra}
+    if mode:
+        block["credential_mode"] = mode
+    if params:
+        block["params"] = params
+    return block
+
+
 def _speech_blocks(tuning: SpeechTuning) -> dict[str, JsonValue]:
-    asr: dict[str, JsonValue] = {
-        "vendor": tuning.asr_vendor,
-        "language": tuning.asr_language,
-        "params": dict(tuning.asr_params),
-    }
-    tts: dict[str, JsonValue] = {"vendor": tuning.tts_vendor, "params": dict(tuning.tts_params)}
+    language: dict[str, JsonValue] = {"language": tuning.asr_language}
+    asr = _vendor_block(tuning.asr_vendor, tuning.asr_credential_mode, tuning.asr_params, language)
+    tts = _vendor_block(tuning.tts_vendor, tuning.tts_credential_mode, tuning.tts_params, {})
     vad: dict[str, JsonValue] = {"silence_duration_ms": tuning.end_of_speech_silence_ms}
     turns: dict[str, JsonValue] = {"config": {"end_of_speech": {"mode": "vad", "vad_config": vad}}}
     return {"asr": asr, "tts": tts, "turn_detection": turns}

@@ -36,6 +36,20 @@ header `X-Mochi-Key` through `llm.headers`. **Unverified:** that `llm.headers` v
 6. **Finished-speaking signal.** Webhooks carry no "speaking finished" event; the client toolkit has `AGENT_SPEAKING_CHANGED` (needs RTM, client side only). So the mute fallback ends its window by the word-count formula.
 7. **Barge-in:** `properties.interruption` (`enable`, default true) exists; not tuned.
 
+## Tested against real Agora (2026-11-20, from a local backend in real mode)
+
+Observed, not just read in docs:
+- `POST .../join` with Basic auth (REST key/secret) and a `006` RTC token **returned 200 with an agent id**;
+  `.../leave` worked; a second Start/Stop cycle worked. So the `006` token and the agent-uid token were accepted.
+- **Managed `ares` ASR is rejected** on our project: `vendor 'ares' is not available for the current SKU when
+  credential_mode is 'managed'` (HTTP 400, `InvalidFieldValue`). Docs list ARES as managed; this project cannot use it.
+- **Managed `deepgram` ASR (`nova-3`, `language: multi`) and managed `minimax` TTS (`speech-2.8-turbo`) were accepted.**
+  Accepted is not the same as working: that the agent transcribes pt-BR, or speaks pt-BR, is still unverified (needs a mic).
+- `POST .../speak` (activity host line) raised no error. Azure/Microsoft needs your own Azure key (BYOK) and was not tried.
+- Pricing page: first 300 agent minutes free, then $0.10/min, even with BYOK (https://docs.agora.io/en/ai/reference/pricing).
+  Keep agent sessions short while testing.
+- `asr.params` is omitted when empty and `credential_mode` is sent only when set (nested JSON params are allowed).
+
 ## RTC tokens
 
 The Agora tutorial (https://docs.agora.io/en/ai/build/build-server-client) uses the PyPI package

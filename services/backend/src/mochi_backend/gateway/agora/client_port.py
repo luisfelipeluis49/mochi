@@ -3,7 +3,9 @@
 from dataclasses import dataclass, field
 from typing import Protocol
 
-VendorParams = dict[str, str | int | float | bool]
+from mochi_backend.platform.http_client import JsonValue
+
+VendorParams = dict[str, JsonValue]
 
 
 class AgoraError(Exception):
@@ -18,11 +20,13 @@ class AgentAlreadyStoppedError(AgoraError):
 class SpeechTuning:
     """ASR/TTS/turn-detection settings passed through from the environment."""
 
-    asr_vendor: str = "microsoft"
+    asr_vendor: str = "ares"
     asr_language: str = "en-US"
     asr_params: VendorParams = field(default_factory=dict)
-    tts_vendor: str = "microsoft"
+    asr_credential_mode: str = ""
+    tts_vendor: str = "minimax"
     tts_params: VendorParams = field(default_factory=dict)
+    tts_credential_mode: str = ""
     end_of_speech_silence_ms: int = 900
 
 

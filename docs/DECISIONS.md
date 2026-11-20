@@ -85,3 +85,12 @@ Rules that were bent, and where:
   session; it is logged as `decide_failed` and the turn is treated as IGNORE.
 - **No `Any`:** none in `src`. `JsonValue` is a recursive alias; Agora and model replies are parsed with
   Pydantic models.
+
+## D-18: speech vendors are configurable end to end, default to Agora-managed
+
+First real Agora call (2026-11-20) failed on managed `ares` (SKU) and showed that vendor `params` can be nested
+(MiniMax `voice_setting`). Fixes: `VendorParams` became `dict[str, JsonValue]`; `credential_mode` is a setting for
+ASR and TTS; empty `params` are omitted. Defaults moved from microsoft (needs an Azure key, budget is $0) to
+ares/minimax; the working pair on this project is deepgram + minimax, set in `.env.example` and `render.yaml`.
+Not a contract change (AGENTS 6 does not cover vendor settings).
+

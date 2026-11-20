@@ -23,7 +23,7 @@ from mochi_backend.gateway.routes.agora_llm import (
     presented_key,
 )
 from mochi_backend.gateway.silence_policy import SilencePolicy, Strategy
-from mochi_backend.platform.http_client import HttpResponse, HttpTransportError
+from mochi_backend.platform.http_client import HttpResponse, HttpTransportError, JsonValue
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import SettingsError, load_settings
 from mochi_contracts import (
@@ -314,6 +314,40 @@ def test_join_body_uses_the_verified_field_names() -> None:
     )
     assert "greeting_message" not in llm and "failure_message" not in llm
     assert props["parameters"] == {"silence_config": {"timeout_ms": 0}}
+
+
+def test_join_body_for_managed_vendors_has_credential_mode_and_nested_params() -> None:
+    voice: dict[str, JsonValue] = {"voice_id": "English_captivating_female1", "speed": 1.0}
+    tuning = SpeechTuning(
+        asr_vendor="ares",
+        asr_language="en-US,pt-BR",
+        asr_credential_mode="managed",
+        tts_vendor="minimax",
+        tts_credential_mode="managed",
+        tts_params={"model": "speech-2.8-turbo", "voice_setting": voice},
+    )
+    request = AgentStartRequest("chan", 1002, 1001, "tok", "https://x/y", "k", tuning)
+    body = join_body(request, "mochi_001")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    props = body["properties"]
+    assert props["asr"] == {
+        "vendor": "ares",
+        "language": "en-US,pt-BR",
+        "credential_mode": "managed",
+    }
+    assert props["tts"] == {
+        "vendor": "minimax",
+        "credential_mode": "managed",
+        "params": {"model": "speech-2.8-turbo", "voice_setting": voice},
+    }
+
+
+def test_settings_read_nested_json_vendor_params_from_the_real_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MOCHI_AGORA_MODE", "fake")
+    monkeypatch.setenv("MOCHI_TTS_PARAMS", '{"voice_setting": {"speed": 1.0}}')
+    assert load_settings().mochi_tts_params == {"voice_setting": {"speed": 1.0}}
 
 
 async def test_start_agent_posts_to_join_with_basic_auth_and_returns_the_id() -> None:
