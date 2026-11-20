@@ -58,7 +58,7 @@ class DecisionFlow:
 
     async def run(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is."""
-        assisted = assisted_updates(turn, context, self._clock)
+        assisted = assisted_updates(turn, context, self._clock, self._ttl)
         decision = await self._decide(turn, context)
         return decision.model_copy(
             update={"learning_events": [*decision.learning_events, *assisted]}
@@ -77,9 +77,23 @@ class DecisionFlow:
         found = detect_clear(text, context, self._lexicon) or detect_subtle(
             text, history, context, self._lexicon
         )
+        if found is not None and found.reason is Reason.LOOK_ALIKE:
+            return await self._confirmed_by_model(found, text, history, context)
         if found or not self._worth_asking_model(text, context):
             return found
         return await self._ask_model(text, history, context)
+
+    async def _confirmed_by_model(
+        self, candidate: CaseMatch, text: str, history: list[str], context: SessionContext
+    ) -> CaseMatch | None:
+        """A false friend is only a candidate: "I'm actually working" is also correct English.
+
+        AGENTS 7.1 has a model judge case 8 in context, and 7.2 says quiet by default, so with no
+        model (or a model that disagrees or is slow) the answer is IGNORE.
+        """
+        answer = await self._ask_model(text, history, context)
+        agrees = answer is not None and answer.expression.lower() == candidate.expression.lower()
+        return candidate if agrees else None
 
     def _worth_asking_model(self, text: str, context: SessionContext) -> bool:
         if asks_for_word(text) or marker_for(text) is not None:

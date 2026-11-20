@@ -1,6 +1,7 @@
 """Small text helpers shared by the rules: normalising, tokenising, phrase search."""
 
 import re
+import unicodedata
 
 _LETTERS = re.compile(r"[^\W\d_]+")
 
@@ -18,9 +19,18 @@ def words_of(text: str) -> list[str]:
     return _LETTERS.findall(lowered(text))
 
 
+def _without_accents(word: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", word)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 def normalized(text: str) -> str:
-    """Words joined by single spaces for phrase search. `"Guarda-chuva"` -> `"guarda chuva"`."""
-    return " ".join(words_of(text))
+    """Words joined by single spaces for phrase search, accents removed.
+
+    Speech-to-text often drops diacritics, so "reunião" and "reuniao" must find each other.
+    Example: `"Guarda-chuva"` -> `"guarda chuva"`, `"pão de queijo"` -> `"pao de queijo"`.
+    """
+    return " ".join(_without_accents(word) for word in words_of(text))
 
 
 def has_phrase(normalized_text: str, phrase: str) -> bool:

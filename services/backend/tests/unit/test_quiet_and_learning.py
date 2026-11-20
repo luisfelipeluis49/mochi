@@ -27,6 +27,7 @@ from tests.factories import active_round, make_context, make_hint, make_turn
 from tests.fakes.fake_clock import START, FakeClock
 
 LEXICON = Lexicon.load()
+HINT_TTL = 8.0
 
 
 def _event(
@@ -96,7 +97,7 @@ def _assist(
     turns = [make_turn(f"t{i}", float(i + 1)) for i in range(turns_after)]
     context = make_context(turns=turns, mode=mode)
     context = context.model_copy(update={"learning_events": {"ana": [_event()], "ben": []}})
-    return assisted_updates(make_turn(text, 10), context, FakeClock())
+    return assisted_updates(make_turn(text, 10), context, FakeClock(), HINT_TTL)
 
 
 def test_expression_said_within_three_turns_becomes_assisted() -> None:
@@ -106,6 +107,23 @@ def test_expression_said_within_three_turns_becomes_assisted() -> None:
 
 def test_expression_said_after_three_turns_stays_discovered() -> None:
     assert _assist("I will postpone it.", turns_after=3) == []
+
+
+def test_showing_the_same_hint_again_reopens_the_three_turn_window() -> None:
+    """The first window ended; the word is hinted again and said right away (review finding)."""
+    old_turns = [make_turn(f"talk {i}", float(i + 1)) for i in range(5)]  # window long over
+    after_second_hint = [make_turn("and then", 7.0)]
+    context = make_context(
+        turns=[*old_turns, *after_second_hint], hints=[make_hint(6.0, ttl_seconds=HINT_TTL)]
+    )
+    context = context.model_copy(update={"learning_events": {"ana": [_event()], "ben": []}})
+    said = assisted_updates(make_turn("I will postpone it.", 10), context, FakeClock(), HINT_TTL)
+    assert [e.learning_state for e in said] == [LearningState.ASSISTED]
+    without_hint = context.model_copy(update={"recent_hints": []})
+    assert (
+        assisted_updates(make_turn("I will postpone it.", 10), without_hint, FakeClock(), HINT_TTL)
+        == []
+    )
 
 
 def test_other_words_and_activity_mode_do_not_assist() -> None:

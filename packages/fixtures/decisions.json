@@ -429,6 +429,13 @@
    "expression": "intend",
    "reason": "look_alike",
    "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "intend",
+   "meaning": "pretender",
+   "example": "I intend to travel in July."
   }
  },
  {
@@ -440,6 +447,13 @@
    "expression": "currently",
    "reason": "look_alike",
    "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "currently",
+   "meaning": "atualmente",
+   "example": "I am currently working on a new project."
   }
  },
  {
@@ -451,6 +465,13 @@
    "expression": "bookstore",
    "reason": "look_alike",
    "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "bookstore",
+   "meaning": "livraria",
+   "example": "I bought a book at the bookstore."
   }
  },
  {
@@ -473,6 +494,44 @@
   "id": "look_alike-50",
   "case": "look_alike",
   "text": "I borrowed a book from the library.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-51",
+  "case": "look_alike",
+  "text": "I'm actually working from home today.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-52",
+  "case": "look_alike",
+  "text": "The children pretend to travel to Mars.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-53",
+  "case": "look_alike",
+  "text": "I'm actually working from home today.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-54",
+  "case": "look_alike",
+  "text": "I pretend to travel in July.",
   "expect": {
    "decision": "IGNORE"
   }

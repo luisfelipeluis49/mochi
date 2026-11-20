@@ -28,6 +28,13 @@ def test_has_phrase_matches_whole_words_only() -> None:
     assert not has_phrase("the filar", "fila")
 
 
+def test_phrases_match_with_or_without_accents_because_speech_to_text_drops_them() -> None:
+    assert has_phrase(normalized("a reuniao começa"), "reunião")
+    assert has_phrase(normalized("Eu comi pao de queijo"), "pão de queijo")
+    assert Lexicon.load().is_deliberate(normalized("we had pao de queijo"))
+    assert not has_phrase(normalized("a reuniao começa"), "reuniões")
+
+
 def test_lexicon_covers_the_demo_words() -> None:
     expected = {
         "adiar": "postpone",
