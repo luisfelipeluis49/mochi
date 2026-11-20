@@ -35,6 +35,40 @@ def test_turn_endpoint_rejects_missing_or_wrong_key() -> None:
     )
 
 
+def test_the_request_agora_documents_gets_a_200_stream_not_a_422() -> None:
+    """Agora's documented custom-LLM body: extra top-level fields, message metadata, no `stream`."""
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    body = {
+        "model": "mochi",
+        "turn_id": 7,
+        "timestamp": 1_763_615_000,
+        "interruptable": True,
+        "messages": [
+            {"role": "system", "content": "You are an assistant."},
+            {
+                "role": "assistant",
+                "content": "earlier",
+                "turn_id": 6,
+                "metadata": {"source": "llm"},
+            },
+            {
+                "role": "user",
+                "content": "I need to adiar my meeting tomorrow.",
+                "turn_id": 7,
+                "timestamp": 1_763_615_000,
+                "metadata": {"source": "asr", "user": "user123", "nested": {"a": [1, 2]}},
+            },
+        ],
+    }
+    reply = client.post(URL, json=body, headers=KEY)
+    assert reply.status_code == 200 and reply.headers["content-type"].startswith(
+        "text/event-stream"
+    )
+    assert parse_stream(reply.text) == ("", True)  # a hint, so Mochi stays silent
+    assert harness.container.core.store.turns[-1].text == "I need to adiar my meeting tomorrow."
+
+
 def test_turn_endpoint_accepts_our_header_or_a_bearer_key() -> None:
     client, _ = _client()
     assert client.post(URL, json=_turn("hi"), headers=KEY).status_code == 200

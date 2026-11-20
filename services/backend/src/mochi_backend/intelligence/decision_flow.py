@@ -15,6 +15,7 @@ from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.model_port import HintModel, ModelRequest
 from mochi_backend.intelligence.quiet_rules import quiet_reason
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
 from mochi_backend.intelligence.tokens import normalized
 from mochi_backend.intelligence.wake_phrase import has_wake_phrase, without_wake_phrase
@@ -65,7 +66,10 @@ class DecisionFlow:
             update={"learning_events": [*decision.learning_events, *assisted]}
         )
 
-    async def _decide(self, turn: Turn, context: SessionContext) -> Decision:
+    async def _decide(self, turn: Turn, session_context: SessionContext) -> Decision:
+        # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
+        spoken = focus_for(turn.text, self._lexicon, session_context.focus)
+        context = session_context.model_copy(update={"focus": spoken})
         if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
             return await self._answer_mochi(turn, context)
         if quiet_reason(turn.text, context, self._lexicon, self._ttl):

@@ -6,9 +6,11 @@ from mochi_backend.intelligence.language_guess import (
     count_by_language,
     has_foreign_word,
     is_mostly,
+    spoken_language,
     strip_proper_nouns,
 )
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
+from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import marker_for
 from mochi_backend.intelligence.tokens import has_phrase, normalized, words_of
 from mochi_backend.intelligence.wake_phrase import has_wake_phrase, without_wake_phrase
@@ -118,3 +120,48 @@ def test_cues_still_match_real_descriptions() -> None:
 def test_the_two_agents_examples_for_hesitation_cases() -> None:
     assert marker_for("It's raining and I forgot my… um…") is Reason.TRAILS_OFF  # case 5
     assert marker_for("We should… we need to… make it later.") is Reason.RESTARTS  # case 7
+
+
+@pytest.mark.parametrize(
+    ("said", "expected"),
+    [
+        ("I need to adiar my meeting tomorrow", Language.EN),
+        ("Eu preciso postpone minha reunião amanhã", Language.PT_BR),
+        ("Eu esqueci meu umbrella no escritório", Language.PT_BR),
+        ("I forgot my guarda-chuva at the office", Language.EN),
+    ],
+)
+def test_the_spoken_language_is_the_majority_language_of_the_sentence(
+    said: str, expected: Language
+) -> None:
+    assert spoken_language(said, Lexicon.load(), fallback=Language.EN) is expected
+
+
+def test_a_tie_or_no_evidence_falls_back_to_the_session_focus() -> None:
+    lexicon = Lexicon.load()
+    assert spoken_language("Hmm.", lexicon, fallback=Language.PT_BR) is Language.PT_BR
+    assert spoken_language("Hmm.", lexicon, fallback=Language.EN) is Language.EN
+
+
+def test_english_pronoun_i_and_grave_a_are_not_misread() -> None:
+    assert "I" in strip_proper_nouns("Yesterday I forgot it and I'm sad")
+    assert "I'm" in strip_proper_nouns("Yesterday I forgot it and I'm sad")
+    assert (
+        spoken_language("Vou àquela loja", Lexicon.load(), fallback=Language.EN) is Language.PT_BR
+    )
+
+
+@pytest.mark.parametrize(
+    ("said", "practised"),
+    [
+        ("Ben, como se diz recibo?", Language.EN),  # Ana asks in Portuguese for an English word
+        ("Como se diz umbrella em português?", Language.PT_BR),  # Ben asks for a Portuguese word
+        ("Oi Mochi, what's the word for fila?", Language.EN),
+        ("How do you say receipt in Portuguese?", Language.PT_BR),
+        ("Eu preciso postpone minha reunião", Language.PT_BR),  # not a question: majority language
+    ],
+)
+def test_a_question_practises_the_opposite_language_of_the_asked_word(
+    said: str, practised: Language
+) -> None:
+    assert focus_for(said, Lexicon.load(), fallback=Language.EN) is practised

@@ -84,9 +84,14 @@ class RoundEngine:
             )
 
     def _stock_word(self, context: SessionContext) -> str:
-        previous = context.activity.revealed_word if context.activity else None
+        shown = context.activity.revealed_word if context.activity else None
+        previous = self._lexicon.entry_for_expression(shown) if shown else None
         english = [w for w in STOCK_WORDS_EN if self._lexicon.entry_for_expression(w)]
-        index = (english.index(previous) + 1) % len(english) if previous in english else 0
+        english = english or list(STOCK_WORDS_EN)
+        # Look the last word up in either language, so the list cycles whatever the focus is.
+        index = 0
+        if previous is not None and previous.en in english:
+            index = (english.index(previous.en) + 1) % len(english)
         entry = self._lexicon.entry_for_expression(english[index])
         return entry.word(context.focus) if entry else english[index]
 

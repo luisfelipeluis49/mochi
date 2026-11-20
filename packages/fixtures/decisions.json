@@ -742,5 +742,81 @@
   "expect": {
    "decision": "IGNORE"
   }
+ },
+ {
+  "id": "portuguese-57",
+  "case": "portuguese",
+  "text": "Eu preciso postpone minha reunião amanhã.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "adiar",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  }
+ },
+ {
+  "id": "portuguese-58",
+  "case": "portuguese",
+  "text": "Eu esqueci meu umbrella no escritório.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "guarda-chuva",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  }
+ },
+ {
+  "id": "portuguese-59",
+  "case": "portuguese",
+  "text": "Posso pegar o receipt, por favor?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "recibo",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  }
+ },
+ {
+  "id": "portuguese-60",
+  "case": "portuguese",
+  "text": "Como se diz umbrella em português?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "guarda-chuva",
+   "reason": "says_unknown",
+   "target_user_id": "ben"
+  }
+ },
+ {
+  "id": "portuguese-61",
+  "case": "portuguese",
+  "text": "Preciso adiar minha reunião amanhã.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "portuguese-62",
+  "case": "portuguese",
+  "text": "Eu comi pão de queijo ontem.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "portuguese-63",
+  "case": "portuguese",
+  "text": "Vamos para o Brasil em julho.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "portuguese-64",
+  "case": "portuguese",
+  "text": "Hoje eu estou muito cansado.",
+  "expect": {
+   "decision": "IGNORE"
+  }
  }
 ]

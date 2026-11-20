@@ -20,9 +20,10 @@ _PORTUGUESE = (
     "preciso quero vamos hoje ontem onde quando qual obrigado obrigada tudo bem estou"
 )
 PORTUGUESE_WORDS = frozenset(_PORTUGUESE.split())
-_ACCENTED = re.compile(r"[ãõçáéíóúâêô]")
+_ACCENTED = re.compile(r"[ãõçáàéíóúâêô]")
 # Capitalised word in the middle of a sentence: a name or place, not a stuck word.
-_PROPER_NOUN = re.compile(r"(?<=\s)[A-ZÀ-Ý][\wÀ-ÿ]*")
+# The pronoun "I" and its contractions ("I'm") are capitalised everywhere, so they are not names.
+_PROPER_NOUN = re.compile(r"(?<=\s)(?!I\b)[A-ZÀ-Ý][\wÀ-ÿ]*")
 
 
 def strip_proper_nouns(text: str) -> str:
@@ -48,6 +49,18 @@ def count_by_language(text: str, lexicon: Lexicon) -> dict[Language, int]:
     for language in counts:
         counts[language] += len(lexicon.entries_with_word(normalized(text), language))
     return counts
+
+
+def spoken_language(text: str, lexicon: Lexicon, fallback: Language) -> Language:
+    """The language most of the sentence is in; a tie or no evidence gives `fallback`.
+
+    Two people share one mic and each speaks their own language, so the language is decided
+    per turn, not once per session. Example: "Eu esqueci meu umbrella" -> pt-BR.
+    """
+    counts = count_by_language(strip_proper_nouns(text), lexicon)
+    if counts[Language.EN] == counts[Language.PT_BR]:
+        return fallback
+    return Language.EN if counts[Language.EN] > counts[Language.PT_BR] else Language.PT_BR
 
 
 def is_mostly(text: str, lexicon: Lexicon, language: Language) -> bool:
