@@ -16,3 +16,10 @@ post() {
   curl --silent --show-error --fail-with-body -X POST "$BASE_URL$1" \
     -H 'Content-Type: application/json' --data "${2:-{\}}"
 }
+
+docker_env_file() {
+  # docker_env_file SRC DEST -> DEST is SRC without the shell quoting around values.
+  # .env is read by the shell and pydantic (quotes allowed); `docker --env-file` keeps the quotes
+  # literally, so MOCHI_ASR_PARAMS='{"a":1}' would reach the app as '{"a":1}' and fail to parse.
+  sed -E "s/^([A-Za-z_][A-Za-z0-9_]*)='(.*)'\$/\\1=\\2/; s/^([A-Za-z_][A-Za-z0-9_]*)=\"(.*)\"\$/\\1=\\2/" "$1" > "$2"
+}

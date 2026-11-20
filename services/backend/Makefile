@@ -12,7 +12,7 @@ lint:
 	uv run ruff check $(SRC)
 
 typecheck:
-	uv run mypy src tests ../../packages/contracts/python
+	uv run mypy src tests ../../packages/contracts/python ../../scripts
 
 arch:
 	uv run pytest tests/architecture -q

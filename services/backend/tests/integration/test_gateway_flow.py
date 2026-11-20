@@ -228,16 +228,6 @@ async def test_activity_conflicts_are_409s() -> None:
         await harness.container.activity.finish(RoundResult.GUESSED)
 
 
-async def test_dev_and_agora_paths_publish_the_same_events() -> None:
-    first, second = await _started(), await _started()
-    seen = []
-    for harness in (first, second):
-        home = await harness.connect(HOME)
-        await harness.say(ADIAR)
-        seen.append([t for t in home.types()])
-    assert seen[0] == seen[1]
-
-
 async def test_the_full_walkthrough_from_agents_section_2() -> None:
     harness = make_harness()
     await harness.container.sessions.start()

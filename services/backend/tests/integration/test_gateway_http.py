@@ -68,6 +68,26 @@ def test_dev_turn_matches_the_agora_path_and_returns_the_decision() -> None:
     assert harness.container.core.store.turns[-1].text == "I need to adiar my meeting"
 
 
+def _events_ana_sees(route: str) -> list[str]:
+    """Send the demo sentence through one real route and list what Ana's socket receives."""
+    client, _ = _client()
+    client.post("/api/sessions/demo/start")
+    sentence = "I need to adiar my meeting"
+    with client.websocket_connect("/ws?user=ana") as ana:
+        snapshot = [ana.receive_json()["type"] for _ in range(2)]
+        if route == "dev":
+            client.post("/dev/sessions/demo/turn", json={"text": sentence})
+        else:
+            client.post(URL, json=_turn(sentence), headers=KEY)
+        return snapshot + [ana.receive_json()["type"] for _ in range(2)]
+
+
+def test_dev_route_and_agora_route_publish_the_same_events() -> None:
+    dev, agora = _events_ana_sees("dev"), _events_ana_sees("agora")
+    assert dev == agora
+    assert dev[-2:] == ["learning_event.created", "hint.created"]
+
+
 def test_dev_route_is_absent_unless_enabled() -> None:
     harness = make_harness()
     client = TestClient(create_app(harness.container))

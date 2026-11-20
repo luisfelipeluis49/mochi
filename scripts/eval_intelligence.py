@@ -30,14 +30,17 @@ async def passed(fixture: DecisionFixture, model: HintModel) -> bool:
 
 
 async def main() -> int:
-    """Print PASS/FAIL per fixture and the overall rate."""
+    """Print PASS/FAIL per fixture and the overall rate; exit 1 when any fixture fails."""
     model = real_model()
-    results = [(f, await passed(f, model)) for f in load_fixtures()]
+    # case "model" rows script the fake model's answer and share texts with opposite expectations,
+    # so a real model cannot satisfy them all; they are unit tests, not an eval.
+    scored = [f for f in load_fixtures() if f.case != "model"]
+    results = [(f, await passed(f, model)) for f in scored]
     for fixture, ok in results:
         print(("PASS  " if ok else "FAIL  ") + f"{fixture.id}: {fixture.text}")
     wins = sum(1 for _, ok in results if ok)
     print(f"\n{wins}/{len(results)} passed ({100 * wins / len(results):.0f}%)")
-    return 0
+    return 0 if wins == len(results) else 1
 
 
 if __name__ == "__main__":

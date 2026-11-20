@@ -10,14 +10,25 @@ need docker "install Docker"
 IMAGE="mochi-backend:local"
 SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo dev)"
 docker build -f "$ROOT/services/backend/Dockerfile" --build-arg GIT_SHA="$SHA" -t "$IMAGE" "$ROOT"
-ENV_ARGS=(); [ -f "$ROOT/.env" ] && ENV_ARGS=(--env-file "$ROOT/.env")
+ENV_ARGS=()
+if [ -f "$ROOT/.env" ]; then
+  DOCKER_ENV="$(mktemp)"  # holds secrets: private (0600) and removed on exit
+  trap 'rm -f "$DOCKER_ENV"' EXIT
+  docker_env_file "$ROOT/.env" "$DOCKER_ENV"
+  ENV_ARGS=(--env-file "$DOCKER_ENV")
+fi
 docker rm -f mochi-backend-local >/dev/null 2>&1 || true
 docker run -d --name mochi-backend-local -p 8000:8000 "${ENV_ARGS[@]}" "$IMAGE" >/dev/null
+READY=no
 for _ in $(seq 1 30); do
-  if curl -sf "$BASE_URL/readyz" >/dev/null; then curl -s "$BASE_URL/readyz"; echo; break; fi
+  if curl -sf "$BASE_URL/readyz" >/dev/null; then READY=yes; curl -s "$BASE_URL/readyz"; echo; break; fi
   sleep 1
 done
 docker logs --tail 5 mochi-backend-local
+if [ "$READY" != yes ]; then
+  echo "FAIL: $BASE_URL/readyz did not answer within 30 s; see the container logs above" >&2
+  exit 1
+fi
 cat <<MSG
 
 Render: push the repo, then in the Render dashboard choose New > Blueprint and select it
