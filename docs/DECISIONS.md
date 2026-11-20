@@ -189,3 +189,36 @@ omitted, which is the request Agora's own SDK builds. `MOCHI_ASR_KEYWORDS` is ne
 Portuguese ARES made far fewer mistakes than Deepgram `nova-3` `multi` in the hardware owner's tests.
 **Not verified:** that ARES is accepted on the Render project (expected, same request); the Deepgram settings
 are kept as a comment in `.env.example`. Not a contract change (AGENTS 6 does not cover vendor settings).
+
+## D-23: Mochi's character lives in the backend; a device channel for its body (2026-11-20)
+
+The hardware owner's stand-in agent (personality, face moods, volume by voice, temperature, learning voices)
+answered every sentence, which breaks "quiet by default". Its character is now part of the one agent the
+backend runs, and only speaks when Mochi is spoken to.
+
+**Behaviour (intelligence).** Unchanged without `MODEL_API_KEY`. With it:
+- A sentence with the wake phrase is answered by a model in character (`intelligence/character.md`, the
+  stand-in's prompt), also when no word is asked ("Mochi, speak louder"). When the rules found a word, the hint
+  is shown as before and the model is told to teach exactly that word; if the model fails or takes longer than
+  `MOCHI_CHARACTER_TIMEOUT_SECONDS`, the fixed line is spoken.
+- For `MOCHI_FOLLOW_UP_SECONDS` after Mochi spoke, the next sentence is also given to the model, so a person can
+  answer Mochi without saying its name. The model replies `[quiet]` when the sentence was not for it, and the
+  normal rules then run. Never during a game round.
+- The turn timeout grows by the character timeout (`Settings.turn_timeout_seconds`); the hint model keeps its own.
+
+**Contract proposals (AGENTS 6.4), all additive:**
+- `GET /api/devices/home_pi_01/state` gains `commands: [{command_id, kind, value}]`: what Mochi wrote in square
+  brackets (`mood`, `show`, `volume`, `temp`, `enroll`, `forget`), stripped from the spoken text, plus `show`
+  for a hint's word. The device does each `command_id` once. The list is cleared when a session starts or stops.
+- `POST /api/devices/home_pi_01/status {volume, temperature, voices, speaker}`: the device reports itself; it
+  goes into the model's prompt. `POST /api/devices/home_pi_01/voices {name, language, learned}`: a voice was
+  learned (or not); Mochi says so through Agora's speak endpoint.
+- `POST /api/sessions/demo/start` takes an optional `{"woken_by": "<wake phrase>"}`: Mochi greets in that
+  language (`llm.greeting_message`) and the next sentence is for it. Without a body nothing changes.
+- `IntelligencePort` gains `called()` and `device_status(...)`.
+
+**Not verified (needs a real session):** that Agora speaks `greeting_message` in custom-LLM mode; how the
+character sounds with a real model; latency of the extra model call (the reply is not streamed). **Not done:**
+who is speaking is only told to the model, not used for "whose word is it" (AGENTS 7.3, a `Turn` has no speaker).
+The prompt exists twice (here and in `hardware/pi-bridge/config/mochi.toml` for the Pi's stand-in mode).
+

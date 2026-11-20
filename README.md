@@ -70,6 +70,7 @@ when run from source.
 | `MODEL_API_KEY` | - | language-model key (optional) |
 | `MOCHI_MODEL_BASE_URL`, `MOCHI_MODEL_NAME` | OpenAI, `gpt-4o-mini` | OpenAI-compatible model |
 | `MOCHI_CHANNEL`, `MOCHI_PI_UID`, `MOCHI_AGENT_UID`, `MOCHI_TOKEN_TTL_SECONDS` | `mochi-demo`, 1001, 1002, 3600 | RTC channel, uids, token life |
+| `MOCHI_CHARACTER_ENABLED`, `MOCHI_CHARACTER_MODEL_NAME`, `MOCHI_CHARACTER_TIMEOUT_SECONDS`, `MOCHI_FOLLOW_UP_SECONDS`, `MOCHI_GREETING_EN`, `MOCHI_GREETING_PT` | true, gpt-4.1-mini, 6, 20, greetings | Mochi's own voice when it is spoken to; needs `MODEL_API_KEY` (DECISIONS D-23) |
 | `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_KEYWORDS`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | ares, `en-US,pt-PT`, `["Mochi"]`, empty, `{}` | speech-to-text. ARES takes no credential mode; Deepgram settings are a comment in `.env.example` (DECISIONS D-22) |
 | `MOCHI_TTS_VENDOR`, `MOCHI_TTS_CREDENTIAL_MODE`, `MOCHI_TTS_PARAMS` | minimax, empty, `{}` | text-to-speech (`.env.example` uses Agora-managed minimax) |
 | `MOCHI_END_OF_SPEECH_SILENCE_MS` | 900 | pause that ends a turn (VAD) |

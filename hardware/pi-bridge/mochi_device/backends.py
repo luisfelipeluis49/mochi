@@ -8,8 +8,9 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
 - MochiBackend: the real path. Calls Luis's endpoints from AGENTS.md 6.4
   (POST /api/sessions/demo/start|stop), reads the join info from
   GET /api/devices/{device_id}/state, and keeps reading that state while the session runs: the
-  backend can end the session or silence the speaker. No agent logic here: that stays in
-  services/backend.
+  backend can end the session, silence the speaker, and move Mochi's body (the `commands` in the
+  state: face, volume, temperature, voices). The Pi reports its volume, temperature and the voices
+  it knows (POST .../status, .../voices). No agent logic here: that stays in services/backend.
 """
 from __future__ import annotations
 
@@ -103,6 +104,40 @@ def _moved(now: tuple[int | None, int | None], told: tuple[int | None, int | Non
     return abs(temp - told_temp) >= 2
 
 
+def read_status(device) -> tuple[int | None, int | None]:
+    """(speaker volume 0-100, temperature in whole degrees); None for what cannot be read."""
+    temp = device.temperature()
+    return device.volume(), None if temp is None else round(temp)
+
+
+class Body:
+    """Carries out what Mochi asks of its body (the silent commands) and tells the supervisor,
+    which shows it on the face. Used whoever runs the agent."""
+
+    def __init__(self, device: Device, on_event=None):
+        """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
+        "enroll" (value: (name, "pt" | "en")) | "forget"."""
+        self.device = device
+        self.on_event = on_event or (lambda kind, value: None)
+
+    async def act(self, kind: str, value: str) -> None:
+        if kind == "volume":
+            if not value.isdigit():
+                return
+            now = await asyncio.to_thread(self.device.set_volume, int(value))
+            print(f"[mochi] volume -> {now} (agent asked for {value})", flush=True)
+            self.on_event("volume", now)
+        elif kind == "temp":
+            self.on_event("temp", await asyncio.to_thread(self.device.temperature))
+        elif kind == "enroll":
+            words = value.split()
+            lang = words.pop().lower() if len(words) > 1 and words[-1].lower() in ("pt", "en") else "en"
+            if words:
+                self.on_event("enroll", (" ".join(words).title(), lang))
+        elif value:
+            self.on_event(kind, value.lower() if kind == "mood" else value)
+
+
 class TestAgentBackend:
     """Stand-in for Luis's agent. TESTING AND DEMO ONLY."""
 
@@ -112,6 +147,7 @@ class TestAgentBackend:
         self.cfg = cfg  # the [test_agent] table
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
+        self.body = Body(device, self.on_event)
         self.app_id = os.environ.get("AGORA_APP_ID")
         self.cert = os.environ.get("AGORA_APP_CERTIFICATE")
         if not self.app_id or not self.cert:
@@ -123,8 +159,7 @@ class TestAgentBackend:
         self._told: tuple[int | None, int | None] = (None, None)
 
     def _status(self) -> tuple[int | None, int | None]:
-        temp = self.device.temperature()
-        return self.device.volume(), None if temp is None else round(temp)
+        return read_status(self.device)
 
     def _instructions(self, status: tuple[int | None, int | None]) -> str:
         volume, temp = status
@@ -238,21 +273,7 @@ class TestAgentBackend:
 
     async def _act(self, kind: str, value: str) -> None:
         """Carry out one silent command the agent wrote."""
-        if kind == "volume":
-            if not value.isdigit():
-                return
-            now = await asyncio.to_thread(self.device.set_volume, int(value))
-            print(f"[mochi] volume -> {now} (agent asked for {value})", flush=True)
-            self.on_event("volume", now)
-        elif kind == "temp":
-            self.on_event("temp", await asyncio.to_thread(self.device.temperature))
-        elif kind == "enroll":
-            words = value.split()
-            lang = words.pop().lower() if len(words) > 1 and words[-1].lower() in ("pt", "en") else "en"
-            if words:
-                self.on_event("enroll", (" ".join(words).title(), lang))
-        elif value:
-            self.on_event(kind, value.lower() if kind == "mood" else value)
+        await self.body.act(kind, value)
 
     async def _watch(self) -> None:
         """While the session runs: carry out the commands in the agent's latest reply, and keep the
@@ -301,14 +322,22 @@ class TestAgentBackend:
 
 
 class MochiBackend:
-    """Real path via Luis's backend (AGENTS.md 6.4). The backend owns the session: the Pi asks it to
-    start one, then reads the device state a few times a second and does what it says.
+    """Real path via Luis's backend (AGENTS.md 6.4). The backend owns the session and decides what
+    Mochi says: the Pi asks it to start one, then reads the device state a few times a second and
+    does what it says.
 
     - capturing false (someone stopped the session elsewhere): on_event("stopped", why), and the
       supervisor leaves the channel.
     - speaker_muted: the speaker is silenced until it is false again (the backend's fallback for
       keeping the agent quiet).
+    - commands: what Mochi wants its body to do (mood, show, volume, temp, enroll, forget), each
+      carried out once (see Body).
+
+    The other way, the Pi reports its volume, temperature, the voices it knows and who is talking
+    whenever one changes, and how learning a voice ended.
     """
+
+    STATUS_EVERY_S = 1.0  # how often the volume and temperature are read while a session runs
 
     def __init__(self, base_url: str, device_id: str, device: Device | None = None, on_event=None,
                  poll_interval_s: float = 0.3, session_id: str = "demo"):
@@ -316,25 +345,34 @@ class MochiBackend:
         self.device_id = device_id
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
+        self.body = Body(device, self.on_event)
         self.poll_interval_s = poll_interval_s
         self.session_id = session_id
         self._poller: asyncio.Task | None = None
         self._muted = False
         self._stopped_by_backend = False
+        self._done: set[str] = set()  # commands already carried out in this session
+        self._voices: tuple[list[str], str | None] = ([], None)
+        self._told = None  # the last status the backend was given
+        self._status_failing = False
 
-    def _req(self, method: str, path: str, timeout: float = 10) -> dict:
+    def _req(self, method: str, path: str, timeout: float = 10, body: dict | None = None) -> dict:
+        payload = json.dumps(body or {}).encode() if method == "POST" else None
         req = urllib.request.Request(self.base + path, method=method,
-                                     headers={"Content-Type": "application/json"}, data=b"{}" if method == "POST" else None)
+                                     headers={"Content-Type": "application/json"}, data=payload)
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            body = r.read()
-            return json.loads(body) if body else {}
+            reply = r.read()
+            return json.loads(reply) if reply else {}
 
     def _state(self, timeout: float = 10) -> dict:
         return self._req("GET", f"/api/devices/{self.device_id}/state", timeout)
 
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
         self._stopped_by_backend = False
-        await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/start")
+        self._done, self._told = set(), None
+        await self._report()  # so Mochi's first words already know how loud and warm it is
+        body = {"woken_by": wake_phrase} if wake_phrase else {}
+        await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/start", 10, body)
         for _ in range(50):  # wait up to ~10 s for the backend to publish join info
             state = await asyncio.to_thread(self._state)
             if state.get("capturing") and state.get("agora"):
@@ -344,6 +382,44 @@ class MochiBackend:
             await asyncio.sleep(0.2)
         raise RuntimeError("backend did not report capturing=true with agora join info")
 
+    # --- what the Pi tells the backend ------------------------------------------------------
+    def set_voices(self, known: list[str], speaker: str | None) -> None:
+        """Called whenever the Pi recognises a (different) speaker or learns / forgets a voice."""
+        self._voices = (list(known), speaker)
+
+    async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
+        """Learning a voice ended; the backend has Mochi say so."""
+        body = {"name": name, "language": "pt" if lang == "pt" else "en", "learned": learned}
+        try:
+            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/voices", 5, body)
+        except Exception as e:
+            print(f"[mochi] backend voices: {e!r}"[:300], flush=True)
+
+    async def _report(self) -> None:
+        """Tell the backend the volume, temperature and voices, if any of them changed."""
+        volume, temp = await asyncio.to_thread(read_status, self.device) if self.device else (None, None)
+        known, speaker = self._voices
+        status = {"volume": volume, "temperature": temp, "voices": known, "speaker": speaker}
+        told = self._told
+        if told and (known, speaker) == (told["voices"], told["speaker"]) \
+                and not _moved((volume, temp), (told["volume"], told["temperature"])):
+            return
+        try:
+            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, status)
+            self._status_failing = False
+        except Exception as e:  # not worth a session: Mochi just knows a little less about itself
+            if not self._status_failing:
+                print(f"[mochi] backend status: {e!r}"[:300], flush=True)
+            self._status_failing = True
+        self._told = status  # either way: try again only when something changes
+
+    async def _obey(self, commands: list[dict]) -> None:
+        for command in commands:
+            if command.get("command_id") in self._done:
+                continue
+            self._done.add(command.get("command_id"))
+            await self.body.act(str(command.get("kind", "")).lower(), str(command.get("value", "")))
+
     async def _mute(self, muted: bool) -> None:
         if muted != self._muted:
             self._muted = muted
@@ -351,10 +427,11 @@ class MochiBackend:
                 await asyncio.to_thread(self.device.set_muted, muted)
 
     async def _poll(self) -> None:
-        """While the session runs: follow the device state."""
-        failing = False
+        """While the session runs: follow the device state, and keep the backend up to date."""
+        failing, since_status = False, 0.0
         while True:
             await asyncio.sleep(self.poll_interval_s)
+            since_status += self.poll_interval_s
             try:
                 state = await asyncio.to_thread(self._state, 3)
             except Exception as e:  # a failed poll must not end the session; say so once
@@ -370,6 +447,10 @@ class MochiBackend:
                 self.on_event("stopped", "backend stopped capturing")
                 return
             await self._mute(bool(state.get("speaker_muted")))
+            await self._obey(state.get("commands") or [])
+            if since_status >= self.STATUS_EVERY_S:
+                since_status = 0.0
+                await self._report()
 
     async def stop(self) -> None:
         if self._poller:

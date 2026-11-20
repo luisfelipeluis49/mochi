@@ -21,7 +21,11 @@ class FakeBackend:
 
     def __init__(self):
         self.capturing = self.speaker_muted = self.broken = False
-        self.posts: list[str] = []
+        self.posts: list[str] = []      # session calls: "start" / "stop"
+        self.bodies: list[dict] = []    # what each of those carried
+        self.statuses: list[dict] = []  # what the device reported about itself
+        self.voices: list[dict] = []    # voices it said it learned
+        self.commands: list[dict] = []  # what Mochi wants its body to do
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -35,7 +39,12 @@ class FakeBackend:
 
             def do_POST(self):
                 action = self.path.rsplit("/", 1)[1]
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                if action in ("status", "voices"):
+                    (fake.statuses if action == "status" else fake.voices).append(body)
+                    return self.reply({})
                 fake.posts.append(action)
+                fake.bodies.append(body)
                 fake.capturing = action == "start"
                 self.reply({})
 
@@ -43,7 +52,7 @@ class FakeBackend:
                 if fake.broken:
                     return self.reply({"detail": "boom"}, 500)
                 self.reply({"capturing": fake.capturing, "agora": JOIN if fake.capturing else None,
-                            "speaker_muted": fake.speaker_muted})
+                            "speaker_muted": fake.speaker_muted, "commands": fake.commands})
 
             def log_message(self, *args):
                 pass
@@ -58,13 +67,27 @@ class FakeBackend:
 
 
 class FakeSpeaker:
+    """Mochi's body, as far as the backend path needs it."""
+
     def __init__(self):
         self.muted = False
         self.changes = 0
+        self.level = 100
+        self.degrees = 52.4
 
     def set_muted(self, muted: bool):
         self.muted = muted
         self.changes += 1
+
+    def volume(self):
+        return self.level
+
+    def set_volume(self, percent: int):
+        self.level = percent
+        return self.level
+
+    def temperature(self):
+        return self.degrees
 
 
 async def until(condition, seconds: float = 3) -> bool:
@@ -134,6 +157,47 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.1)
         self.assertEqual(self.events, [])
         await self.backend.stop()
+
+    async def test_the_wake_phrase_is_passed_on(self):
+        await self.backend.start("oi mochi")
+        await self.backend.stop()
+        await self.backend.start()
+        await self.backend.stop()
+        self.assertEqual(self.fake.bodies, [{"woken_by": "oi mochi"}, {}, {}, {}])
+
+    async def test_commands_are_carried_out_once_each(self):
+        await self.backend.start()
+        self.fake.commands = [{"command_id": "cmd_1", "kind": "mood", "value": "Cool"},
+                              {"command_id": "cmd_2", "kind": "volume", "value": "60"}]
+        self.assertTrue(await until(lambda: len(self.events) == 2))
+        self.fake.commands = self.fake.commands + [{"command_id": "cmd_3", "kind": "enroll", "value": "ana pt"},
+                                                   {"command_id": "cmd_4", "kind": "temp", "value": ""}]
+        self.assertTrue(await until(lambda: len(self.events) == 4))
+        await asyncio.sleep(0.1)  # more polls of the same state: nothing is done twice
+        self.assertEqual(self.events, [("mood", "cool"), ("volume", 60), ("enroll", ("Ana", "pt")), ("temp", 52.4)])
+        self.assertEqual(self.speaker.level, 60)
+        await self.backend.stop()
+
+    async def test_the_backend_is_told_about_mochis_body_when_it_changes(self):
+        self.backend.STATUS_EVERY_S = 0.05
+        self.backend.set_voices(["Ana"], None)
+        await self.backend.start()
+        first = {"volume": 100, "temperature": 52, "voices": ["Ana"], "speaker": None}
+        self.assertEqual(self.fake.statuses, [first])  # before the session starts
+        await asyncio.sleep(0.2)
+        self.assertEqual(len(self.fake.statuses), 1)   # nothing changed: nothing sent
+        self.backend.set_voices(["Ana"], "Ana")
+        self.assertTrue(await until(lambda: len(self.fake.statuses) == 2))
+        self.speaker.level = 60
+        self.assertTrue(await until(lambda: len(self.fake.statuses) == 3))
+        self.assertEqual(self.fake.statuses[-1], {"volume": 60, "temperature": 52, "voices": ["Ana"], "speaker": "Ana"})
+        await self.backend.stop()
+
+    async def test_a_learned_voice_is_reported(self):
+        await self.backend.voice_enrolled("Ana", "pt", True)
+        await self.backend.voice_enrolled("Ben", "en", False)
+        self.assertEqual(self.fake.voices, [{"name": "Ana", "language": "pt", "learned": True},
+                                            {"name": "Ben", "language": "en", "learned": False}])
 
     async def test_unreachable_backend_fails_start_but_never_stop(self):
         await asyncio.to_thread(self.fake.close)

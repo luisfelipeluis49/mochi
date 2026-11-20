@@ -76,10 +76,19 @@ systemctl --user restart mochi      # after editing config/mochi.toml or .env
 
 Who runs the session is `[backend].kind` in the config (`mochi_device/backends.py`):
 
-- `mochi_backend`: Luís's backend. The Pi asks it to start (`POST /api/sessions/demo/start`), joins
-  with what `GET /api/devices/home_pi_01/state` returns, and keeps reading that state every
-  `poll_interval_s`. When `capturing` turns false the Pi leaves the channel; while `speaker_muted`
-  is true the speaker is silent. Set `mochi_backend_url` to where the backend runs.
+- `mochi_backend`: Luís's backend runs the session and decides what Mochi says (quiet unless it
+  is spoken to; with a model key there, in Mochi's character). The Pi asks it to start
+  (`POST /api/sessions/demo/start`, with the wake phrase it heard), joins with what
+  `GET /api/devices/home_pi_01/state` returns, and keeps reading that state every
+  `poll_interval_s`:
+  - `capturing` false: the Pi leaves the channel.
+  - `speaker_muted` true: the speaker is silent.
+  - `commands`: what Mochi wants its body to do, each once: `mood` and `show` go to the face,
+    `volume` to the speaker, `temp` shows the temperature, `enroll` / `forget` learn and forget a
+    voice.
+  The Pi reports its volume, temperature, the voices it knows and who is talking
+  (`POST .../status`) whenever one changes, and how learning a voice ended (`POST .../voices`).
+  Set `mochi_backend_url` to where the backend runs.
 - `test_agent` (the default): a stand-in agent, for working without the backend.
 
 The stand-in's character and the way it helps (clue first, the word in a sentence,
