@@ -19,6 +19,8 @@ from mochi_backend.platform.clock import Clock
 from mochi_contracts import Language
 
 QUIET = "[quiet]"
+LISTEN = "[listen]"  # Mochi was asked to only watch: from now on it helps silently
+CHAT = "[chat]"  # Mochi was asked back into the talk
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
 SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
@@ -43,7 +45,7 @@ class MochiTalk:
         self._follow_up = timedelta(seconds=settings.follow_up_seconds)
         self._history: list[Exchange] = []
         self._until: datetime | None = None
-        self._woken = False
+        self._attentive = False  # someone is talking WITH Mochi, not next to it
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
@@ -54,7 +56,7 @@ class MochiTalk:
     def begin(self, woken: bool) -> None:
         """A session starts. `woken`: someone called Mochi on the device to talk to it, so the
         next sentence is for it; otherwise two people talk and Mochi waits for its name."""
-        self._history, self._until, self._woken = [], None, woken
+        self._history, self._until, self._attentive = [], None, woken
         if woken:
             self.called()
 
@@ -65,17 +67,17 @@ class MochiTalk:
     def listening(self) -> bool:
         """True while a sentence that does not say "Mochi" may still be meant for it.
 
-        Someone who woke Mochi to talk to it has its attention for the whole session (seen live:
-        a minute after its last answer, "Are you still there?" got silence). Between two people
-        talking, only for a short while after Mochi spoke.
+        Someone who woke Mochi to talk to it has its attention (seen live: a minute after its
+        last answer, "Are you still there?" got silence), until they tell it to just listen.
+        Between two people talking, only for a short while after Mochi spoke.
         """
-        if self._woken:
+        if self._attentive:
             return True
         return self._until is not None and self._clock.now() < self._until
 
     def reset(self) -> None:
         """Forget the conversation (demo reset)."""
-        self._history, self._until, self._woken = [], None, False
+        self._history, self._until, self._attentive = [], None, False
 
     async def reply(
         self,
@@ -98,7 +100,7 @@ class MochiTalk:
             meaning=meaning,
             named=named,
             language=language,
-            woken=self._woken,
+            woken=self._attentive,
         )
         try:
             answer = await asyncio.wait_for(self._model.reply(request), self._timeout)
@@ -108,7 +110,20 @@ class MochiTalk:
         if line is not None:
             self.language = language
             self._remember(text, line)
+            self._change_mode(line)
         return line
+
+    def _change_mode(self, line: str) -> None:
+        """What Mochi wrote can change how it listens from now on.
+
+        `[listen]`: it only watches; it shows hints and speaks when someone says its name.
+        `[chat]`: it is part of the talk again.
+        """
+        written = line.lower()
+        if LISTEN in written:
+            self._attentive, self._until = False, None  # no "the next sentence is for me" either
+        elif CHAT in written:
+            self._attentive = True
 
     def _recent(self) -> list[Exchange]:
         stale = self._until is None or self._clock.now() > self._until + FORGET_AFTER

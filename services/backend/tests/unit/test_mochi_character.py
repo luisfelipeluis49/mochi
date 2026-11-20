@@ -166,6 +166,53 @@ async def test_someone_who_woke_mochi_keeps_its_attention_for_the_whole_session(
     assert decision.decision is DecisionKind.SPEAK and mochi.requests[1].woken is True
 
 
+def _two_minds(mochi: FakeCharacterModel, clock: FakeClock) -> Intelligence:
+    """Mochi's scripted lines, and a hint model that knows one word outside the lexicon."""
+    fork = ModelSuggestion(
+        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="fork", meaning="garfo"
+    )
+    tuning = IntelligenceSettings(character_timeout_seconds=6.0, follow_up_seconds=15.0)
+    brain = Intelligence(
+        clock=clock, ids=SequentialIdGenerator(), model=FakeHintModel(fork), settings=tuning
+    )
+    brain.speak_as(mochi)
+    return brain
+
+
+async def test_told_to_just_listen_mochi_only_watches_and_helps_silently() -> None:
+    """The main promise: two people talk, Mochi is silent, a stuck word appears on the screen."""
+    clock = FakeClock()
+    mochi = FakeCharacterModel("[mood happy][listen] Okay, I'll just listen.")
+    brain = _two_minds(mochi, clock)
+    brain.session_started(woken=True)
+    agreed = await brain.decide(make_turn("We are going to talk now, just listen."), make_context())
+    assert agreed.decision is DecisionKind.SPEAK
+    clock.advance(3)
+    stuck = await brain.decide(make_turn("Can you pass me the garfo, please?"), make_context())
+    assert stuck.decision is DecisionKind.SHOW_HINT and stuck.speak is None
+    assert stuck.hint is not None and stuck.hint.expression == "fork"
+    assert len(mochi.requests) == 1  # Mochi itself was not asked about that sentence
+
+
+async def test_its_name_gets_an_answer_and_asking_it_back_in_makes_it_chat_again() -> None:
+    clock = FakeClock()
+    mochi = FakeCharacterModel(
+        "[listen] Okay!", "[mood happy] Queue!", "[mood happy][chat] I'm back!", "[mood happy] Yes?"
+    )
+    brain = _two_minds(mochi, clock)
+    brain.session_started(woken=True)
+    await brain.decide(make_turn("Mochi, just listen to us now."), make_context())
+    named = await brain.decide(make_turn("Oi Mochi, what's the word for fila?"), make_context())
+    assert named.decision is DecisionKind.SPEAK  # its name still works while it only watches
+    clock.advance(60)
+    silent = await brain.decide(make_turn("That was a good film, right?"), make_context())
+    assert silent.speak is None and len(mochi.requests) == 2
+    await brain.decide(make_turn("Hey Mochi, you can talk with us again."), make_context())
+    clock.advance(60)
+    chatting = await brain.decide(make_turn("So what do you think?"), make_context())
+    assert chatting.decision is DecisionKind.SPEAK and len(mochi.requests) == 4
+
+
 async def test_during_a_round_mochi_only_answers_to_its_name() -> None:
     mochi = FakeCharacterModel("[mood happy] Hello!")
     brain = _brain(mochi)
