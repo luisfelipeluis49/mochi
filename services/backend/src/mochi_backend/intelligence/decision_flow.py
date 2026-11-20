@@ -23,7 +23,7 @@ from mochi_backend.intelligence.quiet_rules import quiet_reason
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
-from mochi_backend.intelligence.tokens import normalized
+from mochi_backend.intelligence.tokens import has_phrase, normalized, words_of
 from mochi_backend.intelligence.wake_phrase import (
     has_wake_phrase,
     says_mochi,
@@ -42,6 +42,21 @@ from mochi_contracts import (
 )
 
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
+
+
+def _needed_word(text: str, expression: str, meaning: str | None) -> tuple[str | None, str | None]:
+    """A hint must be the word the person NEEDED. A model sometimes returns the word they said.
+
+    Then the two fields are the wrong way round ("garfo" / "fork" for "pass me the garfo"):
+    swap them. With nothing to swap in, there is no hint.
+    Example: `_needed_word("pass me the garfo", "garfo", "fork")` is `("fork", "garfo")`.
+    """
+    said = normalized(text)
+    if not has_phrase(said, expression):
+        return expression, meaning
+    if meaning and not has_phrase(said, meaning):
+        return meaning, expression
+    return None, None
 
 
 def ignore() -> Decision:
@@ -76,6 +91,8 @@ class DecisionFlow:
         self._talk = minds.talk
         self._ttl = settings.hint_ttl_seconds
         self._model_timeout = settings.model_timeout_seconds
+        self._judge_everything = settings.judge_every_sentence
+        self._min_words = settings.min_words_to_judge
 
     async def run(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is."""
@@ -147,6 +164,10 @@ class DecisionFlow:
     def _worth_asking_model(self, text: str, context: SessionContext) -> bool:
         if asks_for_word(text) or marker_for(text) is not None:
             return True
+        if self._judge_everything and not self._talk.listening():
+            # Two people talk and Mochi only watches: every real sentence gets a look. (While
+            # someone talks WITH Mochi it answers itself, and a second model call would slow it.)
+            return len(words_of(text)) >= self._min_words
         return has_foreign_word(text, self._lexicon, context.focus) and is_mostly(
             text, self._lexicon, context.focus
         )
@@ -168,9 +189,10 @@ class DecisionFlow:
             return None
         if not (suggestion.expression and suggestion.reason):
             return None
-        return CaseMatch(
-            suggestion.reason, suggestion.expression, suggestion.meaning, suggestion.example
-        )
+        expression, meaning = _needed_word(text, suggestion.expression, suggestion.meaning)
+        if expression is None:
+            return None
+        return CaseMatch(suggestion.reason, expression, meaning, suggestion.example)
 
     def _show(self, match: CaseMatch, context: SessionContext) -> Decision:
         hint = self._factory.hint_for(match, context)

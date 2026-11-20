@@ -818,5 +818,145 @@
   "expect": {
    "decision": "IGNORE"
   }
+ },
+ {
+  "id": "beyond_lexicon-01",
+  "case": "beyond_lexicon",
+  "text": "Can you pass me the garfo, please?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "fork",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "fork",
+   "meaning": "garfo"
+  }
+ },
+ {
+  "id": "beyond_lexicon-02",
+  "case": "beyond_lexicon",
+  "text": "The trânsito was terrible this morning.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "traffic",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "traffic",
+   "meaning": "trânsito"
+  }
+ },
+ {
+  "id": "beyond_lexicon-04",
+  "case": "beyond_lexicon",
+  "text": "Eu esqueci minha wallet em casa.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "carteira",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "carteira",
+   "meaning": "wallet"
+  }
+ },
+ {
+  "id": "beyond_lexicon-05",
+  "case": "beyond_lexicon",
+  "text": "Você pode me passar o salt, por favor?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "sal",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "sal",
+   "meaning": "salt"
+  }
+ },
+ {
+  "id": "beyond_lexicon-06",
+  "case": "beyond_lexicon",
+  "text": "Ontem eu fui ao supermarket com meu amigo.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "supermercado",
+   "reason": "code_switch",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "code_switch",
+   "expression": "supermercado",
+   "meaning": "supermarket"
+  }
+ },
+ {
+  "id": "beyond_lexicon-07",
+  "case": "beyond_lexicon",
+  "text": "Can you close the window, please?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-08",
+  "case": "beyond_lexicon",
+  "text": "She don't like coffee.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-09",
+  "case": "beyond_lexicon",
+  "text": "Let's go to Copacabana on Saturday.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-10",
+  "case": "beyond_lexicon",
+  "text": "A gente pode pedir uma pizza hoje à noite?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "beyond_lexicon-11",
+  "case": "beyond_lexicon",
+  "text": "I go to the beach yesterday.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
  }
 ]

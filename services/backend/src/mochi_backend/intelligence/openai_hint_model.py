@@ -8,14 +8,29 @@ from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
 
 SYSTEM_PROMPT = (
-    "You help two people practice a language by talking to each other. Judge ONE sentence in "
-    "context. Decide whether the speaker is stuck on a word or short expression. Reasons: "
-    "code_switch, says_unknown, asks_partner, asks_mochi, trails_off, talks_around, restarts, "
-    "look_alike, not_understood. Say IGNORE for: thinking aloud, self-corrections, deliberate "
-    "switches (names, dishes, places), small grammar slips, personal or serious talk. Reply with "
-    'strict JSON only: {"decision": "IGNORE"|"SHOW_HINT", "reason": <reason or null>, '
-    '"expression": <word in the focus language or null>, "meaning": <word in the other '
-    'language or null>, "example": <short example sentence or null>}.'
+    "Two people practise a language by talking to each other. One is at home in Brazilian "
+    "Portuguese and practising English; the other is at home in English and practising Brazilian "
+    "Portuguese. Judge ONE sentence in context: is the speaker stuck on a word or short "
+    "expression? `focus` is the language they are trying to speak in this sentence.\n"
+    "Reasons: code_switch (a word or phrase of their own language dropped into the sentence "
+    "because they did not know it in the focus language), says_unknown (says they do not know "
+    "the word, or asks how to say it), asks_partner, asks_mochi, trails_off, talks_around "
+    "(describes the thing instead of naming it), restarts, look_alike (a false friend: a word "
+    "that looks like one of their own language but means something else here), not_understood.\n"
+    "Say IGNORE for: ordinary sentences, thinking aloud, self-corrections, deliberate switches "
+    "(names, dishes, places, brands), grammar slips such as a wrong tense (this is about words, "
+    "never grammar), personal or serious talk, and anything about a third language.\n"
+    "For SHOW_HINT: `expression` is the word they NEEDED, in the focus language: the translation "
+    "they were looking for, never the word they said. `meaning` is the word they said or meant, "
+    "in the other language. Both are one word or a short expression. `example` is one short "
+    "sentence in the focus language that uses the expression.\n"
+    'Reply with strict JSON only: {"decision": "IGNORE"|"SHOW_HINT", "reason": <reason or null>, '
+    '"expression": <string or null>, "meaning": <string or null>, "example": <string or null>}.\n'
+    'Example, focus en: "Can you pass me the garfo, please?" -> {"decision": "SHOW_HINT", '
+    '"reason": "code_switch", "expression": "fork", "meaning": "garfo", "example": "Can you '
+    'pass me the fork?"}. Example, focus pt-BR: "Como se diz traffic jam em português?" -> '
+    '{"decision": "SHOW_HINT", "reason": "says_unknown", "expression": "engarrafamento", '
+    '"meaning": "traffic jam", "example": "Fiquei preso num engarrafamento."}.'
 )
 
 

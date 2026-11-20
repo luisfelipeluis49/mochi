@@ -2,8 +2,9 @@
 
 from mochi_backend.intelligence.model_port import ModelSuggestion
 from mochi_backend.intelligence.service import Intelligence
+from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.ids import SequentialIdGenerator
-from mochi_contracts import DecisionKind, LearningState
+from mochi_contracts import DecisionKind, LearningState, Reason
 from tests.factories import make_context, make_turn
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
@@ -61,10 +62,59 @@ async def test_unconfigured_or_ignoring_model_keeps_clear_cases_working() -> Non
     assert ignoring.requests == []  # clear cases never call the model
 
 
-async def test_model_is_not_called_for_ordinary_talk() -> None:
-    model = FakeHintModel(ModelSuggestion(decision="SHOW_HINT", reason=None, expression="x"))
+async def test_the_model_looks_at_every_real_sentence_while_mochi_only_watches() -> None:
+    """A word outside the lexicon carries no mark the rules could find: only the model can."""
+    fork = ModelSuggestion(
+        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="fork", meaning="garfo"
+    )
+    model = FakeHintModel(fork)
+    decision = await _brain(model).decide(
+        make_turn("Can you pass me the garfo, please?"), make_context()
+    )
+    assert decision.hint is not None and decision.hint.expression == "fork"
+    assert len(model.requests) == 1
+
+
+async def test_ordinary_talk_is_judged_too_and_stays_silent_when_the_model_says_so() -> None:
+    model = FakeHintModel(ModelSuggestion(decision="IGNORE"))
     decision = await _brain(model).decide(make_turn("The weather is lovely today."), make_context())
+    assert decision.decision is DecisionKind.IGNORE and len(model.requests) == 1
+
+
+async def test_very_short_turns_are_not_worth_a_model_call() -> None:
+    model = FakeHintModel(ModelSuggestion(decision="IGNORE"))
+    for said in ("Yes.", "Thank you.", "Okay, sure."):
+        await _brain(model).decide(make_turn(said), make_context())
+    assert model.requests == []
+
+
+async def test_with_the_wide_look_switched_off_ordinary_talk_never_reaches_the_model() -> None:
+    model = FakeHintModel(ModelSuggestion(decision="SHOW_HINT", reason=None, expression="x"))
+    brain = Intelligence(
+        clock=FakeClock(),
+        ids=SequentialIdGenerator(),
+        model=model,
+        settings=IntelligenceSettings(judge_every_sentence=False),
+    )
+    decision = await brain.decide(make_turn("The weather is lovely today."), make_context())
     assert decision.decision is DecisionKind.IGNORE and model.requests == []
+
+
+async def test_a_hint_is_the_word_they_needed_not_the_one_they_said() -> None:
+    """Seen with a real model: it returned the spoken word ("garfo") as the hint."""
+    swapped = ModelSuggestion(
+        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="garfo", meaning="fork"
+    )
+    decision = await _brain(FakeHintModel(swapped)).decide(
+        make_turn("Can you pass me the garfo, please?"), make_context()
+    )
+    assert decision.hint is not None
+    assert (decision.hint.expression, decision.hint.meaning) == ("fork", "garfo")
+    echo = ModelSuggestion(decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="garfo")
+    nothing = await _brain(FakeHintModel(echo)).decide(
+        make_turn("Can you pass me the garfo, please?"), make_context()
+    )
+    assert nothing.decision is DecisionKind.IGNORE
 
 
 async def test_saying_the_expression_soon_after_upgrades_the_card_to_assisted() -> None:
