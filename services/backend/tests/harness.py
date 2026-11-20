@@ -12,6 +12,7 @@ from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import load_settings
 from tests.fakes.fake_agora import FakeAgoraClient, FakeTokenIssuer
+from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_scheduler import FakeScheduler
@@ -52,22 +53,39 @@ class Harness:
         return await self.container.pipeline.handle_turn(text)
 
 
+def _brain(
+    clock: FakeClock,
+    ids: SequentialIdGenerator,
+    model: FakeHintModel | None,
+    character: FakeCharacterModel | None,
+    hint_ttl_seconds: float,
+) -> Intelligence:
+    brain = Intelligence(
+        clock=clock,
+        ids=ids,
+        model=model or FakeHintModel(),
+        settings=IntelligenceSettings(hint_ttl_seconds, 2.0),
+    )
+    if character is not None:
+        brain.speak_as(character)
+    return brain
+
+
 def make_harness(
     *,
     env: dict[str, str] | None = None,
     intelligence: IntelligencePort | None = None,
     model: FakeHintModel | None = None,
+    character: FakeCharacterModel | None = None,
     gated: bool = False,
 ) -> Harness:
-    """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY)."""
+    """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY).
+
+    `character`: Mochi's scripted own lines (without one it keeps its fixed lines).
+    """
     settings = load_settings({"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", **(env or {})})
     clock, ids, logger = FakeClock(), SequentialIdGenerator(), FakeEventLogger()
-    brain = intelligence or Intelligence(
-        clock=clock,
-        ids=ids,
-        model=model or FakeHintModel(),
-        settings=IntelligenceSettings(settings.mochi_hint_ttl_seconds, 2.0),
-    )
+    brain = intelligence or _brain(clock, ids, model, character, settings.mochi_hint_ttl_seconds)
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()

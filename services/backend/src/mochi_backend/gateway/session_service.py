@@ -30,6 +30,23 @@ class SessionConfig:
     llm_key: str
     tuning: SpeechTuning
     idle_timeout_seconds: int = 60
+    greeting_en: str = ""
+    greeting_pt: str = ""
+
+
+# First words of a wake phrase that are Portuguese ("oi Mochi", "olá Mochi", "e aí Mochi").
+PORTUGUESE_CUES = {"oi", "ola", "olá", "alo", "alô", "e", "ei", "bom", "boa"}
+
+
+def greeting_for(woken_by: str | None, config: SessionConfig) -> str:
+    """The greeting in the language Mochi was called in; "" when nobody called it.
+
+    Example: `greeting_for("oi mochi", config)` is `config.greeting_pt`.
+    """
+    words = (woken_by or "").lower().split()
+    if not words:
+        return ""
+    return config.greeting_pt if words[0] in PORTUGUESE_CUES else config.greeting_en
 
 
 class SessionService:
@@ -44,6 +61,7 @@ class SessionService:
     ) -> None:
         self._store = core.store
         self._hub = core.hub
+        self._intelligence = core.intelligence
         self._live_hint = core.live_hint
         self._silence = core.silence
         self._commit = core.commit
@@ -54,13 +72,19 @@ class SessionService:
         self._config = config
         self._start_lock = asyncio.Lock()
 
-    async def start(self) -> SessionState:
-        """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state."""
+    async def start(self, woken_by: str | None = None) -> SessionState:
+        """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state.
+
+        `woken_by`: the wake phrase the device heard. Mochi then greets in that language, and the
+        next sentence is meant for it.
+        """
         async with self._start_lock:
+            if woken_by:
+                self._intelligence.called()
             if self._store.capturing:
                 return self._store.session_state()
             generation = self._store.generation
-            agent_id = await self._start_agent()
+            agent_id = await self._start_agent(greeting_for(woken_by, self._config))
             if generation != self._store.generation:
                 self._logger.log("start_superseded", {"agent_id": agent_id})
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
@@ -91,10 +115,11 @@ class SessionService:
         self._store.pi_token = self._issue(self._config.pi_uid)
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
-        self._store.mode = SessionMode.TOGETHER
+        self._store.mode, self._store.commands = SessionMode.TOGETHER, []
 
     def _end_locally(self) -> None:
         self._store.agent_id, self._store.pi_token = None, None
+        self._store.commands = []
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
         self._store.end_game()  # an unfinished round must not keep the next session deaf
         self._hub.forget_secrets()
@@ -103,7 +128,7 @@ class SessionService:
     def _issue(self, uid: int) -> str:
         return self._tokens.issue(self._config.channel, uid, self._config.token_ttl_seconds)
 
-    async def _start_agent(self) -> str:
+    async def _start_agent(self, greeting: str) -> str:
         request = AgentStartRequest(
             channel=self._config.channel,
             agent_uid=self._config.agent_uid,
@@ -113,6 +138,7 @@ class SessionService:
             llm_key=self._config.llm_key,
             tuning=self._config.tuning,
             idle_timeout_seconds=self._config.idle_timeout_seconds,
+            greeting=greeting,
         )
         try:
             return await self._agora.start_agent(request)

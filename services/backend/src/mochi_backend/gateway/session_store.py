@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from mochi_backend.gateway.device_commands import QUEUE_LIMIT, DeviceCommand
 from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID, USER_IDS
 from mochi_contracts import (
     Activity,
@@ -47,6 +48,7 @@ class SessionStore:
         self.activity: Activity = idle_activity()
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
+        self.commands: list[DeviceCommand] = []  # for the device, newest last (this session's)
         self.generation = 0
 
     def invalidate(self) -> None:
@@ -56,6 +58,10 @@ class SessionStore:
         before it changes anything and drops itself when it differs.
         """
         self.generation += 1
+
+    def queue(self, commands: list[DeviceCommand]) -> None:
+        """Hand the device more to do; it reads them from its state. Only the last few are kept."""
+        self.commands = [*self.commands, *commands][-QUEUE_LIMIT:]
 
     def end_game(self) -> None:
         """Back to IDLE and `together` without touching history (used by Stop)."""

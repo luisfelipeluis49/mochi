@@ -96,13 +96,16 @@ def _describe(url: str, reply: HttpResponse, expected: str) -> str:
 
 
 def _llm_block(request: AgentStartRequest) -> JsonValue:
-    return {
+    block: dict[str, JsonValue] = {
         "url": request.llm_url,
         "api_key": request.llm_key,
         "headers": {KEY_HEADER: request.llm_key},
         "style": "openai",
         "max_history": 8,
     }
+    if request.greeting:
+        block["greeting_message"] = request.greeting
+    return block
 
 
 def _vendor_block(

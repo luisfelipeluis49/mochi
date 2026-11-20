@@ -42,3 +42,13 @@ class GatedIntelligence:
     def reset(self) -> None:
         """Delegate."""
         self._inner.reset()
+
+    def called(self) -> None:
+        """Delegate."""
+        self._inner.called()
+
+    def device_status(
+        self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
+    ) -> None:
+        """Delegate."""
+        self._inner.device_status(volume, temperature, voices, speaker)

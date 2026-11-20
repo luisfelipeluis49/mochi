@@ -144,6 +144,7 @@ def test_session_device_and_activity_endpoints() -> None:
         "capturing": False,
         "agora": None,
         "speaker_muted": False,
+        "commands": [],
     }
     started = client.post("/api/sessions/demo/start").json()
     assert started["capturing"] is True and started["status"] == "active"

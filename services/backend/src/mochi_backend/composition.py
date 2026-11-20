@@ -12,6 +12,7 @@ from mochi_backend.gateway.connections import ConnectionService
 from mochi_backend.gateway.container import AppContainer
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
+from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort
@@ -21,6 +22,7 @@ from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
 from mochi_backend.intelligence.model_port import HintModel, NullHintModel
+from mochi_backend.intelligence.openai_character_model import OpenAiCharacterModel
 from mochi_backend.intelligence.openai_hint_model import OpenAiHintModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
@@ -71,12 +73,31 @@ def default_adapters(settings: Settings) -> Adapters:
         creds = (settings.agora_rest_key, settings.agora_rest_secret)
         agora = AgoraRestClient(HttpxClient(), settings.agora_app_id, *creds, ids)
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
+    brain = _brain_for(settings, clock, ids)
+    name = "rules+model" if settings.model_configured else "rules"
+    name += "+character" if settings.character_configured else ""
+    return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
+
+
+def _brain_for(settings: Settings, clock: Clock, ids: IdGenerator) -> Intelligence:
     tuning = IntelligenceSettings(
-        settings.mochi_hint_ttl_seconds, settings.mochi_decide_timeout_seconds
+        hint_ttl_seconds=settings.mochi_hint_ttl_seconds,
+        model_timeout_seconds=settings.mochi_decide_timeout_seconds,
+        character_timeout_seconds=settings.mochi_character_timeout_seconds,
+        follow_up_seconds=settings.mochi_follow_up_seconds,
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
-    name = "rules+model" if settings.model_configured else "rules"
-    return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
+    if settings.character_configured:
+        brain.speak_as(
+            OpenAiCharacterModel(
+                HttpxClient(),
+                settings.mochi_model_base_url,
+                settings.mochi_character_model_name,
+                settings.model_api_key,
+                settings.mochi_character_timeout_seconds,
+            )
+        )
+    return brain
 
 
 def _speech_tuning(settings: Settings) -> SpeechTuning:
@@ -104,6 +125,8 @@ def _session_config(settings: Settings) -> SessionConfig:
         llm_key=settings.mochi_turn_key,
         idle_timeout_seconds=settings.mochi_agent_idle_timeout_seconds,
         tuning=_speech_tuning(settings),
+        greeting_en=settings.mochi_greeting_en,
+        greeting_pt=settings.mochi_greeting_pt,
     )
 
 
@@ -140,7 +163,7 @@ def _pipeline(settings: Settings, core: GatewayCore) -> TurnPipeline:
             clock=core.clock,
             ids=core.ids,
             logger=core.logger,
-            decide_timeout_seconds=settings.mochi_decide_timeout_seconds,
+            decide_timeout_seconds=settings.turn_timeout_seconds,
             commit_lock=core.commit,
         )
     )
@@ -171,6 +194,7 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
         sessions=SessionService(core, adapters.agora, adapters.tokens, config),
         activity=ActivityService(core, pipeline, adapters.agora),
         devices=_devices(core, adapters, config),
+        device_link=DeviceLink(core, adapters.agora),
         connections=ConnectionService(core.hub, core.store, core.live_hint),
         demo_reset=DemoReset(core),
         intelligence_name=adapters.intelligence_name,

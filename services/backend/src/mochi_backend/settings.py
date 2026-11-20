@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     mochi_log_level: str = "INFO"
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
+    # Mochi's own voice: with a model key it answers in character when spoken to (DECISIONS D-23)
+    mochi_character_enabled: bool = True
+    mochi_character_model_name: str = "gpt-4.1-mini"
+    mochi_character_timeout_seconds: float = 6.0
+    mochi_follow_up_seconds: float = 20.0
+    mochi_greeting_en: str = "Hi! I'm listening."
+    mochi_greeting_pt: str = "Oi! Pode falar."
     mochi_asr_vendor: str = "ares"
     mochi_asr_language: str = (
         "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT is its Portuguese
@@ -89,6 +96,17 @@ class Settings(BaseSettings):
     def model_configured(self) -> bool:
         """True when a model key is present (otherwise only the rule-based cases run)."""
         return bool(self.model_api_key)
+
+    @property
+    def character_configured(self) -> bool:
+        """True when Mochi writes its own lines (a model key, and not switched off)."""
+        return self.model_configured and self.mochi_character_enabled
+
+    @property
+    def turn_timeout_seconds(self) -> float:
+        """How long one turn may take to decide: the hint rules, plus Mochi's own reply if any."""
+        extra = self.mochi_character_timeout_seconds if self.character_configured else 0.0
+        return self.mochi_decide_timeout_seconds + extra
 
 
 def _masked(name: str, value: object) -> str:

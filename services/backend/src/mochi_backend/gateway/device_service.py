@@ -5,6 +5,7 @@ from datetime import timedelta
 from pydantic import BaseModel
 
 from mochi_backend.gateway.agora.client_port import RtcTokenIssuer
+from mochi_backend.gateway.device_commands import DeviceCommand
 from mochi_backend.gateway.errors import NotFoundError
 from mochi_backend.gateway.roster import HOME_DEVICE_ID
 from mochi_backend.gateway.session_service import SessionConfig
@@ -31,6 +32,7 @@ class DeviceState(BaseModel):
     capturing: bool
     agora: AgoraJoinInfo | None
     speaker_muted: bool
+    commands: list[DeviceCommand] = []  # what Mochi wants its body to do; each one once
 
 
 class DeviceService:
@@ -58,7 +60,10 @@ class DeviceService:
         if not self._store.capturing:
             return DeviceState(capturing=False, agora=None, speaker_muted=False)
         return DeviceState(
-            capturing=True, agora=self._join_info(), speaker_muted=self._silence.speaker_muted()
+            capturing=True,
+            agora=self._join_info(),
+            speaker_muted=self._silence.speaker_muted(),
+            commands=self._store.commands,
         )
 
     def _join_info(self) -> AgoraJoinInfo:

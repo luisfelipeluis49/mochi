@@ -43,6 +43,7 @@ class AgentStartRequest:
     llm_key: str
     tuning: SpeechTuning
     idle_timeout_seconds: int = 60
+    greeting: str = ""  # said once when the device joins; empty = Mochi starts silent
 
 
 class AgoraAgentClient(Protocol):

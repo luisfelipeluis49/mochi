@@ -6,6 +6,7 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 import asyncio
 from dataclasses import dataclass
 
+from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
@@ -100,7 +101,7 @@ class TurnPipeline:
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
         await self._publish_results(decision)
-        reply = await self._reply(decision.speak)
+        reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
         return TurnOutcome(reply, decision)
 
@@ -151,9 +152,22 @@ class TurnPipeline:
             kind = EventType.LEARNING_EVENT_CREATED if first else EventType.LEARNING_EVENT_UPDATED
             await self._hub.publish(kind, stored)
 
-    async def _reply(self, speak: Speak | None) -> str:
-        if speak is None:
+    async def _reply(self, decision: Decision) -> str:
+        """Say the words, and hand the device what was written in brackets (never spoken)."""
+        text, written = split_commands(decision.speak.text) if decision.speak else ("", [])
+        self._tell_device(decision, written)
+        if decision.speak is None or not text:
             return ""
+        speak: Speak = decision.speak.model_copy(update={"text": text})
         await self._hub.publish(EventType.AGENT_SPEAK_REQUESTED, speak)
-        self._silence.begin_speaking(speak.text)
-        return speak.text
+        self._silence.begin_speaking(text)
+        return text
+
+    def _tell_device(self, decision: Decision, written: list[Written]) -> None:
+        wanted = list(written)
+        shows_a_word = any(kind == "show" for kind, _ in wanted)
+        if decision.hint is not None and not shows_a_word:
+            wanted.append(("show", decision.hint.expression))  # a hint is also on Mochi's face
+        self._store.queue(
+            [DeviceCommand(command_id=self._ids.new("cmd"), kind=k, value=v) for k, v in wanted]
+        )
