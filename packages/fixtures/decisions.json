@@ -1109,5 +1109,547 @@
   "model": {
    "decision": "IGNORE"
   }
+ },
+ {
+  "id": "code_switch-101",
+  "case": "code_switch",
+  "text": "i need to adiar my meeting tomorrow",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-102",
+  "case": "code_switch",
+  "text": "I need to, um, adiar my meeting tomorrow.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-103",
+  "case": "code_switch",
+  "text": "Uh I need to adiar my meeting tomorrow",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-104",
+  "case": "code_switch",
+  "text": "I forgot my guarda chuva at the office.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-105",
+  "case": "code_switch",
+  "text": "i forgot my guarda chuva at the office",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-106",
+  "case": "code_switch",
+  "text": "I forgot my, uh, guarda-chuva at the office.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  }
+ },
+ {
+  "id": "code_switch-107",
+  "case": "code_switch",
+  "text": "I forgot my guarda-chuva at the office.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "code_switch",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "I need to adiar my meeting tomorrow.",
+   "Oh, why? What's going on?",
+   "Right, I'll postpone it to Friday."
+  ],
+  "hint_turns_ago": 3
+ },
+ {
+  "id": "quiet_rules-101",
+  "case": "quiet_rules",
+  "text": "Oh, why? What's going on?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "I need to adiar my meeting tomorrow."
+  ],
+  "hint_turns_ago": 1
+ },
+ {
+  "id": "quiet_rules-102",
+  "case": "quiet_rules",
+  "text": "Right, I'll postpone it to Friday.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "I need to adiar my meeting tomorrow.",
+   "Oh, why? What's going on?"
+  ],
+  "hint_turns_ago": 2
+ },
+ {
+  "id": "asks_mochi-201",
+  "case": "asks_mochi",
+  "text": "Hey there Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-202",
+  "case": "asks_mochi",
+  "text": "Hallo Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-203",
+  "case": "asks_mochi",
+  "text": "Oie Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-204",
+  "case": "asks_mochi",
+  "text": "Olá Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-205",
+  "case": "asks_mochi",
+  "text": "Eai Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-206",
+  "case": "asks_mochi",
+  "text": "E aí Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-207",
+  "case": "asks_mochi",
+  "text": "Opa Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-208",
+  "case": "asks_mochi",
+  "text": "Okay Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-209",
+  "case": "asks_mochi",
+  "text": "Yo Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-210",
+  "case": "asks_mochi",
+  "text": "Oh Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-211",
+  "case": "asks_mochi",
+  "text": "Ow Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-212",
+  "case": "asks_mochi",
+  "text": "Ok Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-213",
+  "case": "asks_mochi",
+  "text": "Hi Mochy, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-214",
+  "case": "asks_mochi",
+  "text": "Hi Mochee, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-215",
+  "case": "asks_mochi",
+  "text": "Hi Moxie, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-216",
+  "case": "asks_mochi",
+  "text": "Hi Mo chi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-217",
+  "case": "asks_mochi",
+  "text": "Hi Mo-chi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-218",
+  "case": "asks_mochi",
+  "text": "Hi Mo shi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-219",
+  "case": "asks_mochi",
+  "text": "Hi Mochê, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-220",
+  "case": "asks_mochi",
+  "text": "Hi Môchi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-221",
+  "case": "asks_mochi",
+  "text": "Hi Mouchi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-222",
+  "case": "asks_mochi",
+  "text": "Hi Mushi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-223",
+  "case": "asks_mochi",
+  "text": "Hi Moji, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-224",
+  "case": "asks_mochi",
+  "text": "Hi Mochi's, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-225",
+  "case": "asks_mochi",
+  "text": "Thanks Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-226",
+  "case": "asks_mochi",
+  "text": "Thank you Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-227",
+  "case": "asks_mochi",
+  "text": "Thx Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-228",
+  "case": "asks_mochi",
+  "text": "Obrigado Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-229",
+  "case": "asks_mochi",
+  "text": "Obrigada Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-230",
+  "case": "asks_mochi",
+  "text": "Valeu Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "SPEAK",
+   "expression": "queue",
+   "reason": "asks_mochi",
+   "target_user_id": "ana",
+   "speak_text": "You can say: queue."
+  }
+ },
+ {
+  "id": "asks_mochi-231",
+  "case": "asks_mochi",
+  "text": "Hi mocha, I love this latte.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-232",
+  "case": "asks_mochi",
+  "text": "I want a mocha latte.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-233",
+  "case": "asks_mochi",
+  "text": "Thanks for the coffee.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-234",
+  "case": "asks_mochi",
+  "text": "Ok let's go.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-235",
+  "case": "asks_mochi",
+  "text": "My mochi ice cream is melting.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-236",
+  "case": "asks_mochi",
+  "text": "Moji is my cat's name.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "asks_mochi-237",
+  "case": "asks_mochi",
+  "text": "Thanks Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "round_active": true
+ },
+ {
+  "id": "asks_mochi-238",
+  "case": "asks_mochi",
+  "text": "Valeu Mochi, what's the word for fila?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "round_active": true
+ },
+ {
+  "id": "asks_mochi-239",
+  "case": "asks_mochi",
+  "text": "Okay, mocha is my favorite drink.",
+  "expect": {
+   "decision": "IGNORE"
+  }
  }
 ]
