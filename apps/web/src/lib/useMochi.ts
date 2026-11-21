@@ -18,6 +18,7 @@ export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number }) {
   const [state, setState] = useState<ClientState>(initialState); // everything received so far
   const [connected, setConnected] = useState(false);              // is the connection open?
   const [now, setNow] = useState(() => Date.now());               // the current time
+  const [rejected, setRejected] = useState<string | null>(null);  // why the backend refused us (close 4400)
   const backend = useRef<Backend | null>(null);                   // the object used to send commands
   const key = JSON.stringify(who);                                // reconnect only if "who" really changes
 
@@ -26,9 +27,10 @@ export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number }) {
     const handlers = {
       // Each event updates the state through applyEvent (store.ts).
       onEvent: (e: Parameters<typeof applyEvent>[1]) => setState((s) => applyEvent(s, e, Date.now())),
+      onRejected: (reason: string) => setRejected(reason),
       onConnected: (c: boolean) => {
         setConnected(c);
-        if (c) setState(onNewConnection); // new connection: forget old sequence numbers
+        if (c) { setRejected(null); setState(onNewConnection); } // new connection: forget old sequence numbers
       },
     };
     const b = opts.mock ? connectMock(who, handlers, opts.mockSpeed) : connectReal(who, handlers);
@@ -43,5 +45,5 @@ export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number }) {
     return () => clearInterval(t);
   }, []);
 
-  return { state, connected, now, backend };
+  return { state, connected, now, backend, rejected };
 }

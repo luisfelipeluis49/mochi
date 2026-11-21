@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Activity, EventType, MochiEvent, PayloadByType } from "../contracts.ts";
-import { RESULT_SHOW_MS, applyAction, homeScreen, initialHomeLocal, onPress } from "./home.ts";
+import { RESULT_SHOW_MS, afterResultFailure, applyAction, resultVisible, homeScreen, initialHomeLocal, onPress } from "./home.ts";
 import { type ClientState, applyEvent, initialState } from "./store.ts";
 
 const T0 = Date.parse("2026-11-19T16:01:00.000Z");
@@ -116,4 +116,30 @@ test("big words shrink to stay on one line", async () => {
   const { fitFontSize } = await import("./i18n.ts");
   assert.equal(fitFontSize("umbrella", 34), "min(34vh, 18.1vw)");
   assert.equal(fitFontSize("make it later", 34), "min(34vh, 29vw)");
+});
+
+test("resultVisible: the result shows for RESULT_SHOW_MS after it arrives, then not (Home and Audience)", () => {
+  let s = withRound();
+  assert.equal(resultVisible(s, T0), false); // still ACTIVE_ROUND
+  s = applyEvent(s, ev("activity.state.changed", { ...activity, state: "ROUND_RESULT", result: "guessed", revealed_word: "umbrella" }), T0);
+  assert.equal(resultVisible(s, T0 + RESULT_SHOW_MS - 1), true);
+  assert.equal(resultVisible(s, T0 + RESULT_SHOW_MS), false);
+  assert.notEqual(homeScreen(s, initialHomeLocal, T0 + RESULT_SHOW_MS).kind, "game_result");
+});
+
+test("a 409 on the result goes back to following the server; other failures show the word again", () => {
+  const local = { revealedRoundId: null, sentRoundId: "round_001" };
+  assert.deepEqual(afterResultFailure(local, "round_001", 409), { revealedRoundId: null, sentRoundId: "round_001" });
+  assert.deepEqual(afterResultFailure(local, "round_001", 500), { revealedRoundId: "round_001", sentRoundId: null });
+  assert.deepEqual(afterResultFailure(local, "round_001", null), { revealedRoundId: "round_001", sentRoundId: null });
+  // after a 409 the screen is "waiting" (not revealed again), then the server's result takes over
+  assert.equal(homeScreen(withRound(), afterResultFailure(local, "round_001", 409), T0).kind, "game_waiting");
+});
+
+test("null activity fields from the backend do not break the screens", () => {
+  let s = applyEvent(initialState, ev("activity.state.changed",
+    { ...activity, round_id: null, describer_user_id: null, guesser_user_id: null, public_instruction: null, word_source: null }), T0);
+  assert.equal(homeScreen(s, initialHomeLocal, T0).kind, "game_hidden");
+  s = applyEvent(s, ev("activity.state.changed", { ...activity, state: "ROUND_RESULT", guesser_user_id: null, result: "skipped" }), T0);
+  assert.equal(homeScreen(s, initialHomeLocal, T0).kind, "game_result");
 });

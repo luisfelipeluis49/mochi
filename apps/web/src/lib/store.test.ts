@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { EventType, LearningEvent, MochiEvent, PayloadByType } from "../contracts.ts";
-import { applyEvent, initialState, isSpeaking, liveHint, onNewConnection, parseEvent, wordsNewestFirst } from "./store.ts";
+import { applyEvent, hintOptions, initialState, isSpeaking, liveHint, onNewConnection, parseEvent, wordsNewestFirst } from "./store.ts";
 
 const T0 = Date.parse("2026-11-19T16:00:04.700Z");
 let n = 0;
@@ -92,4 +92,20 @@ test("parseEvent rejects junk", () => {
   assert.equal(parseEvent("not json"), null);
   assert.equal(parseEvent('{"type":"x"}'), null);
   assert.equal(parseEvent(JSON.stringify(ev("hint.created", hint)))?.type, "hint.created");
+});
+
+test("hintOptions splits on ' · ' and keeps a single expression whole", () => {
+  assert.deepEqual(hintOptions("me queimei · tomei muito sol"), ["me queimei", "tomei muito sol"]);
+  assert.deepEqual(hintOptions("postpone"), ["postpone"]);
+});
+
+test("parseEvent with another schema_version still returns the event and warns once", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  const raw = (v: string, seq: number) => JSON.stringify({ schema_version: v, event_id: "e", type: "hint.cleared",
+    session_id: "demo", emitted_at: "2026-11-19T16:00:00.000Z", sequence: seq, payload: { hint_id: "h" } });
+  assert.equal(parseEvent(raw("0.5", 1))?.sequence, 1);
+  assert.equal(parseEvent(raw("0.9", 2))?.sequence, 2);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.equal(parseEvent(raw("0.4", 3))?.sequence, 3);
+  assert.equal(warn.mock.callCount(), 1);
 });
