@@ -30,3 +30,18 @@ export function wsQuery(who: Who): string {
   if (who.kind === "device") return `device=${encodeURIComponent(who.device)}`;
   return "view=audience";
 }
+
+/** The second demo person on the Index links. The backend roster is ana + ben; the mock uses "sophie".
+ *  Team decision: no rename yet, so the name lives in this one constant (the rename is one line). */
+export const SECOND_USER = "sophie";
+
+/** The links shown on the Index page. */
+export function indexLinks(): { href: string; label: string }[] {
+  return [
+    { href: "/home?device=home_pi_01", label: "Home view (Mochi's screen)" },
+    { href: "/m?user=ana", label: "Mobile view: Ana" },
+    { href: `/m?user=${SECOND_USER}`, label: `Mobile view: ${SECOND_USER[0].toUpperCase()}${SECOND_USER.slice(1)}` },
+    { href: "/m?user=ben", label: "Mobile view: Ben (backend roster)" },
+    { href: "/audience", label: "Audience view (projector)" },
+  ];
+}

@@ -12,6 +12,7 @@
 import type { Language } from "../contracts.ts";
 import { copyFor, displayName, fitFontSize } from "../lib/i18n.ts";
 import { type ClientState, hintOptions, isSpeaking, liveHint } from "../lib/store.ts";
+import { resultVisible } from "../lib/home.ts";
 import { Face } from "./HomeView.tsx";
 
 export function AudienceView({ state, now, lang }: { state: ClientState; now: number; lang: Language }) {
@@ -31,7 +32,7 @@ export function AudienceView({ state, now, lang }: { state: ClientState; now: nu
         <p className="aud-instruction">{a.public_instruction}</p>
       </>
     );
-  } else if (a && a.state === "ROUND_RESULT") {
+  } else if (a && a.state === "ROUND_RESULT" && resultVisible(state, now)) {
     // Round finished: now the word can be shown, with "Ana got it!" or "Skipped".
     body = (
       <>
