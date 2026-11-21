@@ -10,7 +10,9 @@ Loads .env (secrets), config/presets/prod.env, then the preset, then FORCES, so 
   MOCHI_LOCAL_DATA empty (memory only: real mode refuses the local file), dev routes on,
   a fresh random MOCHI_TURN_KEY each run, MOCHI_DEVICE_KEY from \$MOCHI_TEST_DEVICE_KEY or the
   git-ignored file .local/test-device-key (created 0600 on first run; give it to the Pi).
-The log is kept in .local/latency/<preset>-<time>.log (agent_started and model_usage lines)." "${1:-}"
+The log is kept in .local/latency/<preset>-<time>.log (agent_started and model_usage lines).
+MOCHI_BACKEND_DIR=/path/to/other/services/backend runs ANOTHER checkout of the backend (for example
+a git worktree of main) with the same presets and isolation: that is how the main baseline is tested." "${1:-}"
 need uv "install from https://docs.astral.sh/uv/"
 PRESET="${1:-}"
 TEST_URL="${2:-${MOCHI_TEST_PUBLIC_URL:-}}"
@@ -56,6 +58,6 @@ mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/$PRESET-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "preset=$PRESET channel=$MOCHI_CHANNEL url=$MOCHI_PUBLIC_URL storage=memory log=$LOG" >&2
 echo "Pi: config/mochi.local.toml [backend] kind=\"mochi_backend\", mochi_backend_url=\"$MOCHI_PUBLIC_URL\"" >&2
-cd "$ROOT/services/backend"
+cd "${MOCHI_BACKEND_DIR:-$ROOT/services/backend}"
 # No --reload: a reload would wipe the in-memory session in the middle of a run.
 uv run uvicorn mochi_backend.app:app_from_env --factory --port "${PORT:-8000}" 2>&1 | tee -a "$LOG"
