@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     mochi_tts_params: VendorParams = {}
     mochi_tts_credential_mode: str = ""
     mochi_end_of_speech_silence_ms: int = 900
+    # A sentence said while Mochi is still thinking or speaking. "" (Agora's default): it
+    # interrupts, and the answer under way is thrown away, so a voice in the room right after a
+    # question left the question unanswered. "append": Mochi finishes, then that sentence gets
+    # its turn. "ignore": it is discarded (not while two people talk: quick replies would be lost).
+    mochi_interruption: Literal["", "append", "ignore"] = ""
     mochi_agent_idle_timeout_seconds: int = 60
     mochi_speak_base_seconds: float = 0.6
     mochi_speak_seconds_per_word: float = 0.45

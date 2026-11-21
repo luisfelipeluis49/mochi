@@ -156,6 +156,7 @@ def _ares_ears(settings: Settings, words: tuple[str, ...]) -> SpeechTuning:
         tts_params=settings.mochi_tts_params,
         tts_credential_mode=settings.mochi_tts_credential_mode,
         end_of_speech_silence_ms=settings.mochi_end_of_speech_silence_ms,
+        interruption=settings.mochi_interruption,
     )
 
 

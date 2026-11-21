@@ -162,7 +162,12 @@ def _speech_blocks(tuning: SpeechTuning) -> dict[str, JsonValue]:
     turns: dict[str, JsonValue] = {"config": {"end_of_speech": {"mode": "vad", "vad_config": vad}}}
     if "," in tuning.asr_language:
         turns["language"] = tuning.asr_language
-    return {"asr": _asr_block(tuning), "tts": tts, "turn_detection": turns}
+    blocks: dict[str, JsonValue] = {"asr": _asr_block(tuning), "tts": tts, "turn_detection": turns}
+    if tuning.interruption:
+        # join page: `interruption.enable` false with `disabled_config.strategy` append | ignore
+        strategy: dict[str, JsonValue] = {"strategy": tuning.interruption}
+        blocks["interruption"] = {"enable": False, "disabled_config": strategy}
+    return blocks
 
 
 def join_body(request: AgentStartRequest, name: str) -> JsonValue:

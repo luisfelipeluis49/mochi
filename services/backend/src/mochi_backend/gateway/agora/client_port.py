@@ -33,6 +33,9 @@ class SpeechTuning:
     tts_params: VendorParams = field(default_factory=dict)
     tts_credential_mode: str = ""
     end_of_speech_silence_ms: int = 900
+    # What speech does while Mochi is thinking or speaking: "" = it interrupts (Agora's default, and
+    # the answer under way is dropped), "append" = it waits its turn, "ignore" = it is discarded.
+    interruption: str = ""
 
 
 @dataclass(frozen=True)

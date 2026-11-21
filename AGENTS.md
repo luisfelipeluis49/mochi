@@ -279,7 +279,7 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 ```
 
 - Command kinds: `mood`, `show`, `volume`, `temp`, `enroll`, `forget`, `bye`, and `hint` (value is a JSON card: `word`, `language`, `meaning`, `example`). A device does each `command_id` once. The gateway drops a command after 30 seconds.
-- **Proposed 2026-11-21 (DECISIONS D-31), on the `hardware` branch only:**
+- **Proposed 2026-11-21 (DECISIONS D-37; on `main` since PR #12):**
   - Command kind `round`: the Describe & Guess round for Mochi's own screen. Value is a JSON card in the Activity names: `round_id`, `state`, `describer_user_id`, `guesser_user_id`, `result`, `revealed_word`, plus `secret_word` and `language`. It is in the state on every poll while there is a round (`command_id` is `<round_id>:<state>`), not queued. `secret_word` is null unless `GET /state` was sent with `Authorization: Bearer <MOCHI_DEVICE_KEY>`; the route stays open.
   - Command kind `used` (value `{ "word", "language" }`: someone said a word they were given) has been sent since d2594e6 and was missing from this list.
   - `session_started(woken, language)`: the intelligence port's method takes the language Mochi was called in as an optional second argument.
@@ -346,8 +346,8 @@ Mochi's screen takes touch, but it is a basic panel: **the only control is a tap
 | `ROUND_RESULT` | the word + "Ana got it!" for a few seconds, then back to the face | — |
 
 - The Audience view shows who describes and who guesses, and the word only in `ROUND_RESULT`.
-- Roles swap: after a round, the next round's describer is the previous guesser (the deck: "Correct! Sophie, your turn to describe."). Language of the round follows the describer's target language. *The swap is built (proposed, D-31); the round language still comes from the session.*
-- On Mochi's own screen a tap on the result starts another round. The round is started by voice ("let's play": Mochi writes `[play]`) or by `POST /activity/start`. *Proposed, D-31.*
+- Roles swap: after a round, the next round's describer is the previous guesser (the deck: "Correct! Sophie, your turn to describe."). Language of the round follows the describer's target language. *The swap is built (proposed, D-37); the round language still comes from the session.*
+- On Mochi's own screen a tap on the result starts another round. The round is started by voice ("let's play": Mochi writes `[play]`) or by `POST /activity/start`. *Proposed, D-37.*
 - Whether the word is currently revealed is local state of the Home view; the server only needs the second tap.
 - Word choice: first a stock list of tangible words (umbrella, suitcase, corkscrew). From M4, the newest **describable** word in the guesser's learning events; the partner describes it and the learner guesses.
 
@@ -437,4 +437,5 @@ Do not write code that assumes these work. If your task depends on one, say so i
 
 ## 13. Changelog
 
+- **v0.6 (proposed, 2026-11-21).** The revised vision in code: Mochi asks "What would you like to do today?" after its name; Play starts by voice and runs on Mochi's own screen (`round` command, `[play]`, spoken result, role swap); the Pi tells who is talking in time, shows its temperature and a lost connection and says both; the ears can be left untold of the lexicon. See 6.6, 7.5 and DECISIONS D-34 to D-38. Open for the team: the round's language, real names instead of `ana`/`ben`, and whether the Pi's own page or `apps/web` is the Home view.
 - **v0.5 (proposed, 2026-11-21).** Product vision from the deck (three modes, wake start, role swap); the privacy rule now allows local wake-phrase listening; 6.6 records the merged additions, now including `Hint.candidates`/`context` (D-31); the secret word is never allowed in a hint or a spoken reply during a round; a character reply cannot delay a hint. Open for the team: rename `ben` to `sophie`; grammar feedback in Praticar (listed out of scope in Section 8); Mobile summary and the AR/Watch add-ons (section 1 still lists Mochi AR as not part of the hackathon build, even though `apps/glasses` and the candidates it needs now exist on `main` — a team decision, not made here).

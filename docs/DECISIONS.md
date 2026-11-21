@@ -589,3 +589,73 @@ word was saved for Ana.
 - **Also:** Agora ended the agent by itself 99 seconds into that session (no reason given, the backend
   had not asked); the Pi now ends the session when the agent leaves instead of staying awake.
 
+## D-37: the revised product vision in code: Mochi asks what to do, and Play works by voice on Mochi's own screen (2026-11-21)
+
+(This entry was D-31 on the `hardware` branch and went missing from `main` when the entry for the AR candidates, also numbered D-31, was merged. It is restored here unchanged under a new number; the code it describes has been on `main` since PR #12.)
+
+`vision/Mochi_Product_Vision.md` (revised 2026-11-20): after its name Mochi asks "What would you like to
+do today?" and the person picks, in ordinary words, Practice with Mochi, Practice with a Partner, or Play
+(Describe & Guess). Practice and Partner already existed as `attentive` and `[listen]` (D-26, D-27). Built
+on the `hardware` branch at Suhuai's request, in all three owners' directories; **for the team to accept
+or change.**
+- **Greeting** (`settings.py`): "Hi! What would you like to do today?" / "Oi! O que você quer fazer hoje?",
+  in the language of the wake phrase as before. `character.md` tells Mochi it asked that, so a one-word
+  answer ("Play.") is for it, and what the three things are. Secret Missions and the Fluency Helper are
+  named only as needing the watch and the glasses.
+- **The language Mochi was called in is the tie-breaker** for an answer that could be either language
+  (`session_started(woken, language)`, an optional second argument on the intelligence port). Seen with the
+  real model: "Play." after "hi Mochi" was answered in Portuguese, the last session's language.
+- **`[play]`**, a silent command like `[listen]` (it rides in `Speak.text`; not a contract value): the turn
+  that carries it starts a round inside its own commit (`TurnPipeline._with_round` ->
+  `ActivityService.start_in_turn`), and the host's line follows Mochi's in the same reply ("Yay, let's
+  play! Ben describes. Ana guesses!"). Starting it afterwards through `/speak` would cut Mochi's own
+  sentence off (`priority: INTERRUPT`). Once playing, Mochi is out of the talk as after `[listen]`.
+- **The round on the device**: a command of kind `round` in `GET /api/devices/home_pi_01/state`, built on
+  every poll from the round itself (`DeviceService._round`), not queued: a round lasts longer than the 30 s
+  a queued command lives, and a restarted device finds it again. Its `command_id` is
+  `<round_id>:<state>`, so the device acts once per state. The value uses the Activity field names plus
+  `secret_word` and `language`. **`secret_word` is only there when the reader sent the device key**: the
+  route itself stays open (6.4), and `scripts/test-client` reads it from the public URL.
+- **The result is said aloud** ("Ana got it!"): `RoundEngine._finish` returns a `Speak`, announced by
+  `ActivityService.finish`. Mochi does not judge the guess from what it hears: a turn has no speaker, so
+  the describer saying the word would count as a guess. The describer's tap decides (AGENTS 7.5).
+- **Roles swap** from round to round (`round_engine._names` reads the round before). Names only: the
+  language of a round still follows the session focus, which is English (`session_store.py`). AGENTS 7.5
+  ("the describer's target language") and M4 ("a word the guesser needed") disagree here. **For the team.**
+- **Fixed on the way:** a finished round still counted as a round in `DecisionFlow._follow_up` and
+  `_may_be_heard`, so after one round Mochi only answered "Oi Mochi ..." until Stop.
+- **Not built:** the Home view in `apps/web` (the Pi draws the round itself, `hardware/pi-setup/face.html`;
+  AGENTS 9.1 puts the Home view in `apps/web`, which is still empty); the names on the screen are the demo
+  roster (`ana`, `ben`), not the voices the Pi knows; a spoken "skip".
+- **From an independent review of this change, fixed before it was first tried:** the reply that starts a
+  round was screened for the secret word before the round existed, so "[play] ... umbrella ..." could be
+  said while "umbrella" was the word (now screened again once the word is drawn: only the host's line is
+  said); a round ended by Reset stayed on the device's screen (its absence from the state now clears it);
+  a result card was served for the rest of the session (now for 30 s); `.env.example` still had the old
+  greetings. **Left as they are, for the team:** `/ws?device=home_pi_01` has no key and receives the
+  private prompt, so the device key guards the state route only; a round can only be left by a touch or
+  Stop, and while it runs hints are off; the host's lines are English whatever language Mochi was called in.
+Checked with the real model through a scratch backend (fake Agora): "Let's play a game.", "Vamos jogar!",
+"Play.", "I want to practise with you.", "Just listen while we talk, please.", "A gente vai conversar, fica
+só ouvindo.", "What can you do?", "Can we play Secret Missions?" each got the right mode; a whole game
+(reveal, guessed, next round swapped, skipped by a long press) ran through the Pi's own code and the face
+page in a headless browser. **Not yet done with a person, a finger on the panel and Agora's voice.**
+
+## D-38: practising alone with Mochi: an answer is no longer thrown away, and Mochi is a partner first (2026-11-21)
+
+In the first spoken practice session Mochi's voice kept breaking off: three answers went out in three
+seconds. Measured on the Pi's backend (real Agora, a question and 0.9 s later a sentence by another voice):
+- **Agora's default drops the answer under way** when another sentence follows: only the answer to the
+  second sentence was spoken, so the person's question got none. Staying silent on the second sentence
+  (tried, and removed) left no answer at all in 2 of 3 runs.
+- **`MOCHI_INTERRUPTION=append`** (`interruption.enable` false, `disabled_config.strategy` "append" in the
+  join body; default "" = Agora's default): both answers were spoken in full, in order. Set on the Pi's
+  backend; **not yet on the deployed one**. "ignore" would discard speech while Mochi thinks, which loses
+  quick replies between two people, so it is not used.
+- **`character.md`, practising with Mochi:** asking to practise is the choice (no list of the three things
+  again); react and ask one question; talk at the person's level; a challenge to use a word only right after
+  giving it; no praise for ordinary sentences; a goodbye that names one thing from the talk. Compared with
+  the real model on three scripted conversations.
+- **Not solved:** a voice in the room is still answered when its sentence is clear, and when it follows
+  within the end-of-speech pause Agora joins it to the person's own sentence. That needs who is speaking.
+
