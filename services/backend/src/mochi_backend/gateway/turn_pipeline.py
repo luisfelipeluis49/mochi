@@ -13,6 +13,7 @@ from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
 from mochi_backend.gateway.roster import USER_IDS
+from mochi_backend.gateway.secret_screen import leaked_channel
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.platform.clock import Clock, iso_z
@@ -146,10 +147,22 @@ class TurnPipeline:
         if self._superseded(decision, generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
+        decision = self._without_secret(decision)
         await self._publish_results(decision)
         reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
         return TurnOutcome(reply, decision)
+
+    def _without_secret(self, decision: Decision) -> Decision:
+        """Silence a decision that would give the live round's secret word away."""
+        secrets = self._store.round_secrets
+        if not secrets or self._store.activity.state is not GameState.ACTIVE_ROUND:
+            return decision
+        channel = leaked_channel(decision, secrets)
+        if channel is None:
+            return decision
+        self._logger.log("secret_leak_blocked", {"channel": channel})
+        return silent_decision()
 
     def _superseded(self, decision: Decision, generation: int) -> bool:
         """True when Stop/Reset came while deciding, or a round started (wake phrases may speak)."""
@@ -238,5 +251,10 @@ class TurnPipeline:
             wanted = [(kind, value) for kind, value in wanted if kind != "show"]
             wanted.append(("hint", hint_card(decision.hint)))
         self._store.queue(
-            [DeviceCommand(command_id=self._ids.new("cmd"), kind=k, value=v) for k, v in wanted]
+            [
+                DeviceCommand(
+                    command_id=self._ids.new("cmd"), kind=k, value=v, at=self._clock.now()
+                )
+                for k, v in wanted
+            ]
         )

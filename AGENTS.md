@@ -2,24 +2,32 @@
 
 Copy this file to the root of the Mochi repository as `AGENTS.md`. It is written so that a coding agent can read it once and start work without reading anything else. Humans: give your agent this file plus one small task from Section 8.
 
-- **Status:** hackathon MVP, draft contracts v0.4. Roles and stack are proposals until kickoff confirms them.
-- **Full spec (for humans):** `Mochi_Product_MVP_Design_v2.1.md`. If this file and the spec disagree, this file wins for the hackathon build.
+- **Status:** hackathon MVP, draft contracts v0.4 plus the additions in Section 6.6, **proposed in v0.5** and waiting for the owners' sign-off (see the changelog at the end). Roles and stack are proposals until kickoff confirms them.
+- **Full spec (for humans):** `Mochi_Product_MVP_Design_v2.1.md`, and the product deck "Mochi — Visão de Produto" (November 2026), which sets the voice-first vision summarized in Section 1. If this file and the spec disagree, this file wins for the hackathon build.
 - **One rule above all:** the contracts in Section 6 are shared. Do not rename, add, or remove a field, event, endpoint, or enum value on your own. Propose it to a human.
 
 ---
 
 ## 1. What Mochi is
 
-Mochi is a small physical companion that helps **two people practice a language with each other**. They talk to each other, not to the device. Mochi listens during a session they start, shows a **one-word hint** when one of them gets stuck, can host a short **two-player game**, and **remembers** the words each person needed.
+Mochi is a small physical companion that turns real conversations into language practice. The best practice is talking; Mochi supports the conversation and does not replace it. The person says **"Oi, Mochi!"** and chooses one of three modes:
+
+| Mode | What Mochi does | Who talks |
+|---|---|---|
+| **Praticar** (practise) | A patient conversation partner that adapts to the speaker's level; notes mistakes and gives help only when asked or stuck | person ↔ Mochi |
+| **Companhia** (company) | Listens in silence while two people talk, shows a **one-word hint** when one of them gets stuck, speaks only when asked | person ↔ friend (Mochi on the table) |
+| **Jogar** (play) | Hosts **Describe & Guess**; the describer and the guesser swap roles from round to round | two people, Mochi hosts |
+
+It **remembers** the words each person needed. The core of the MVP is the Companhia mode and the game, because they prove that Mochi follows a real conversation between two people, acts at the right time and makes it useful. Practice with Mochi alone is second. Companions and add-ons (Mochi Mobile for the summary after a session; Mochi AR for hints on glasses; Mochi Watch for secret missions) are **not part of the hackathon build** except the Mobile "My words" page.
 
 The hackathon MVP supports **English and Brazilian Portuguese**, exactly **two people**, and **one shared microphone**.
 
 Product rules that decide design arguments:
 
-1. **Humans first.** Help the two people talk to each other, never to Mochi.
-2. **Quiet by default.** Say and show nothing unless a hint is clearly worth it.
+1. **Humans first.** In Companhia and Jogar, help the two people talk to each other, never to Mochi. Talking to Mochi is the point only in Praticar, or when someone asks it something.
+2. **Quiet by default.** In Companhia, say and show nothing unless a hint is clearly worth it. Speak aloud only when someone asked Mochi (by name, or while a Praticar session is on).
 3. **Personal.** A saved word belongs to one person and is shown only to them.
-4. **Only when started.** The microphone is live only between Start and Stop.
+4. **Only when started.** No audio leaves the device before the wake phrase ("Oi, Mochi") or Start, and none after Stop. The Pi may listen **locally** for the wake phrase; that audio is not recorded or sent anywhere.
 
 ## 2. The MVP as one walkthrough
 
@@ -30,17 +38,18 @@ Two example people are used everywhere, including in tests:
 
 The two-minute demo, which is also the acceptance test for the whole build:
 
-1. **Observe.** The Operator taps Start on a phone. Ana and Ben talk in English. Mochi shows a listening face and stays silent.
+1. **Observe.** Someone says "Oi, Mochi!" (or the Operator taps Start on a phone) and picks Companhia. Ana and Ben talk in English. Mochi shows a listening face and stays silent.
 2. **Help.** Ana says `I need to adiar my meeting tomorrow.` Mochi's screen shows **postpone**. Ana says `I forgot my guarda-chuva at the office.` Mochi's screen shows **umbrella**. Nothing is said aloud. Each hint is saved for Ana.
 3. **Play.** A round of Describe & Guess starts. Ben turns Mochi toward himself and taps its screen; it shows the secret word **umbrella**. Ben describes it ("You open it when it rains"). Ana says "umbrella". Ben taps the screen again.
 4. **Remember.** Ana's phone shows two cards: *umbrella — Recalled in a game* and *postpone — Used with help*.
+5. **Two languages (next demo step).** Ben (English at home, practising Portuguese) does the same in Portuguese; the language of a hint follows the language being practised in that sentence. In the next round the roles swap: Ben describes, Ana guesses. The deck's examples call the second person Sophie; the tests keep `ben` until the team renames it.
 
 ## 3. Glossary
 
 | Term | Meaning |
 |---|---|
 | **Mochi Home** | The device: Raspberry Pi 5, EMEET M1A speakerphone, 3.5-inch touch screen, printed shell |
-| **Pi bridge** | A small program on the Pi that sends the M1A microphone to Agora and plays Agora's audio back. Nothing else |
+| **Pi bridge** | The program on the Pi: it listens locally for the wake phrase, then sends the M1A microphone to Agora and plays Agora's audio back, follows the backend's device state, and applies the device commands. It never decides when Mochi helps |
 | **Agora agent** | Agora's Conversational AI Engine, started by our backend in "custom LLM" mode. It transcribes each finished sentence, calls our backend with the text, and speaks whatever text we return |
 | **Turn** | One finished, transcribed sentence, delivered by Agora to our backend |
 | **Backend** | Our one server process. It has two halves: `gateway` and `intelligence` |
@@ -92,7 +101,7 @@ mochi/
   scripts/                          Luis      start-dev.sh, say.sh, deploy.sh, reset-demo.sh
 ```
 
-Default stack: Python 3 + FastAPI for the backend; React + TypeScript (Vite) for the web app; C with the Agora IoT SDK on the Pi. **Do not use the Agora Python SDK on the Pi; it crashes there.**
+Default stack: Python 3 + FastAPI for the backend; React + TypeScript (Vite) for the web app; C with the Agora IoT SDK on the Pi. **Do not use the Agora Python RTC SDK on the Pi; it crashes there.** (The Pi may use `agora-agents`, a REST client for the Conversational AI Engine, only as an explicit, off-by-default fallback.)
 
 **An agent edits only the directory of the person who started it.** If the task seems to need a change elsewhere, stop and report what is needed.
 
@@ -257,6 +266,23 @@ def words_for(user_id: str) -> list[LearningEvent]: ...                 # newest
 - `handle()` is a pure function. It returns the new round state; the gateway keeps it in memory and passes it back in `context.activity`.
 - `decide()` and `handle()` create `hint_id`, `learning_event_id`, and `round_id` (any unique string). The gateway creates `segment_id` and all envelope fields.
 
+### 6.6 Additions merged in d2594e6, proposed in v0.5 (owners: Matheus for the shapes, Luís for the gateway)
+
+These are on `main` already. They are additive and nothing in 6.1–6.5 changed. They need a yes from the owners.
+
+```text
+POST /api/sessions/demo/start        body is optional: { "woken_by": "oi mochi" }  (the device heard its wake phrase)
+POST /api/devices/home_pi_01/status  { "volume": 80, "temperature": 52.4, "voices": ["Ana"], "speaker": "Ana" }
+POST /api/devices/home_pi_01/voices  { "name": "Ana", "language": "en" | "pt", "learned": true }
+     Both device routes need `Authorization: Bearer <MOCHI_DEVICE_KEY>` and validate their inputs (proposed).
+GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind", "value" } ]
+```
+
+- Command kinds: `mood`, `show`, `volume`, `temp`, `enroll`, `forget`, `bye`, and `hint` (value is a JSON card: `word`, `language`, `meaning`, `example`). A device does each `command_id` once. The gateway drops a command after 30 seconds.
+- The intelligence port has seven methods: the four in 6.5 plus the ones that carry Mochi's character, the heard sentence, device status and "say aloud" (`gateway/intelligence_port.py` is the source).
+- The Pi starts a session itself when it hears the wake phrase; the Operator's Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
+- `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
+
 ## 7. Behavior rules
 
 ### 7.1 Nine ways a person gets stuck on a word
@@ -282,8 +308,8 @@ def words_for(user_id: str) -> list[LearningEvent]: ...                 # newest
 - A small slip that did not block understanding. The MVP helps with words and short expressions, not grammar.
 - The conversation is personal or serious.
 - A hint was shown for one of the last two turns (cooldown).
-- A game round is active, unless the turn is a wake phrase.
-- The model call takes longer than two seconds.
+- A game round is active, unless the turn is a wake phrase. Even then, a hint or a spoken answer must never contain the round's secret word (the gateway drops it).
+- The model call takes longer than two seconds. A slow reply from Mochi's character voice never delays a hint.
 
 Match the wake phrase loosely: speech-to-text writes "Moshi", "Mochie", "Motchi".
 
@@ -313,6 +339,7 @@ Mochi's screen takes touch, but it is a basic panel: **the only control is a tap
 | `ROUND_RESULT` | the word + "Ana got it!" for a few seconds, then back to the face | — |
 
 - The Audience view shows who describes and who guesses, and the word only in `ROUND_RESULT`.
+- Roles swap: after a round, the next round's describer is the previous guesser (the deck: "Correct! Sophie, your turn to describe."). Language of the round follows the describer's target language. *Not built yet; the backend currently takes the round language from the session.*
 - Whether the word is currently revealed is local state of the Home view; the server only needs the second tap.
 - Word choice: first a stock list of tangible words (umbrella, suitcase, corkscrew). From M4, the newest **describable** word in the guesser's learning events; the partner describes it and the learner guesses.
 
@@ -337,7 +364,7 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 - **First task (M0):** a C program using the Agora IoT SDK that joins a channel given on the command line, sends the M1A microphone, and plays received audio through the M1A. Then a kiosk script that opens the Home view full screen on the 3.5-inch display with screen blanking off.
 - **M1:** poll `GET /api/devices/home_pi_01/state`; join and send only while `capturing` is true; leave the channel otherwise; respect `speaker_muted`.
 - **Test:** speak into the M1A and see the sentence in the backend log; trigger a spoken reply and hear it; confirm Mochi's own voice does not come back as a new turn.
-- **Do not:** put decisions, transcription, or UI in the bridge. Do not use the Agora Python SDK.
+- **Do not:** put decisions about hints or learning in the bridge, and do not use the Agora Python RTC SDK. Local wake-phrase spotting and voice identification are allowed (Section 6.6); full transcription is not. The Home view is `apps/web`, not a UI of the bridge's own. Never keep the Agora App Certificate on the device if the backend can give a token. Never send audio before the wake phrase or after Stop.
 - **Contracts:** keep `packages/contracts` equal to Section 6: one JSON example per event, Python models, TypeScript types, and a test in each language that loads every example.
 
 ### 9.2 Luís — `services/backend/gateway`, `services/backend/app.py`, `scripts/`
@@ -399,3 +426,7 @@ Do not write code that assumes these work. If your task depends on one, say so i
 2. **Mixed-language transcription.** That `adiar` and `guarda-chuva` survive speech-to-text inside English sentences.
 3. **Audio both ways on the Pi**, without Mochi hearing its own voice.
 4. **Touch.** That a tap anywhere on the 3.5-inch screen registers every time in the kiosk browser.
+
+## 13. Changelog
+
+- **v0.5 (proposed, 2026-11-21).** Product vision from the deck (three modes, wake start, role swap); the privacy rule now allows local wake-phrase listening; 6.6 records the merged additions; the secret word is never allowed in a hint or a spoken reply during a round; a character reply cannot delay a hint. Open for the team: rename `ben` to `sophie`; grammar feedback in Praticar (listed out of scope in Section 8); more than one expression per hint; Mobile summary and the AR/Watch add-ons.

@@ -1,6 +1,7 @@
 """The only module that calls the Agora Conversational AI REST API (see VERIFIED.md)."""
 
 import base64
+from typing import Self
 
 from pydantic import BaseModel, ValidationError
 
@@ -37,13 +38,24 @@ class AgoraRestClient:
     """Implements `AgoraAgentClient`. One retry on a 5xx or a connection error."""
 
     def __init__(
-        self, http: HttpClient, app_id: str, rest_key: str, rest_secret: str, ids: IdGenerator
+        self,
+        http: HttpClient,
+        app_id: str,
+        rest_key: str,
+        rest_secret: str,
+        ids: IdGenerator,
     ) -> None:
         self._http = http
+        self._secrets: tuple[str, ...] = ()
         self._root = f"{BASE_URL}/{app_id}"
         self._ids = ids
         basic = base64.b64encode(f"{rest_key}:{rest_secret}".encode()).decode()
         self._headers = {"Authorization": f"Basic {basic}", "Content-Type": "application/json"}
+
+    def hide_secrets(self, secrets: tuple[str, ...]) -> Self:
+        """Mask these values in anything logged from Agora's replies (empty ones are skipped)."""
+        self._secrets = tuple(secret for secret in secrets if secret)
+        return self
 
     async def start_agent(self, request: AgentStartRequest) -> str:
         """POST /join; returns `agent_id`. Greeting and failure message are omitted (= off)."""
@@ -52,11 +64,15 @@ class AgoraRestClient:
         if reply.status != HTTP_OK:
             refused = HTTP_BAD_REQUEST <= reply.status < HTTP_SERVER_ERROR
             problem = AgoraRejectedError if refused else AgoraError
-            raise problem(_describe(url, reply, "200 with a JSON body containing agent_id"))
+            raise problem(
+                _describe(url, reply, self._secrets, "200 with a JSON body containing agent_id")
+            )
         try:
             return _JoinReply.model_validate_json(reply.body).agent_id
         except ValidationError as error:
-            raise AgoraError(_describe(url, reply, "a JSON body containing agent_id")) from error
+            raise AgoraError(
+                _describe(url, reply, self._secrets, "a JSON body containing agent_id")
+            ) from error
 
     async def stop_agent(self, agent_id: str) -> None:
         """POST /agents/{id}/leave. A 404 means the agent is already gone."""
@@ -65,7 +81,7 @@ class AgoraRestClient:
         if reply.status == HTTP_NOT_FOUND:
             raise AgentAlreadyStoppedError(f"agent {agent_id!r} not found at {url}")
         if reply.status != HTTP_OK:
-            raise AgoraError(_describe(url, reply, "200 with an empty body"))
+            raise AgoraError(_describe(url, reply, self._secrets, "200 with an empty body"))
 
     async def speak(self, agent_id: str, text: str) -> None:
         """POST /agents/{id}/speak (max 512 bytes of text; interrupts whatever is playing)."""
@@ -75,7 +91,7 @@ class AgoraRestClient:
             url, {"text": clipped, "priority": "INTERRUPT", "interruptable": True}
         )
         if reply.status != HTTP_OK:
-            raise AgoraError(_describe(url, reply, "200"))
+            raise AgoraError(_describe(url, reply, self._secrets, "200"))
 
     async def _post(self, url: str, payload: JsonValue, attempts: int = 1) -> HttpResponse:
         """POST once, or up to `attempts` times for calls that are safe to repeat (/leave only)."""
@@ -95,8 +111,17 @@ class AgoraRestClient:
         raise AgoraError(f"POST {url} failed after {attempts} attempt{suffix}: {last_error}")
 
 
-def _describe(url: str, reply: HttpResponse, expected: str) -> str:
-    return f"POST {url} returned {reply.status}; expected {expected}; body: {reply.body[:200]!r}"
+def _redacted(body: str, secrets: tuple[str, ...]) -> str:
+    """Mask every secret. Example: ("k1",) turns "a k1 b" into "a *** b"."""
+    for secret in secrets:
+        body = body.replace(secret, "***")
+    return body
+
+
+def _describe(url: str, reply: HttpResponse, secrets: tuple[str, ...], expected: str) -> str:
+    # Redact before cutting, so a secret straddling the cut cannot survive as a prefix.
+    body = _redacted(reply.body, secrets)[:200]
+    return f"POST {url} returned {reply.status}; expected {expected}; body: {body!r}"
 
 
 def _llm_block(request: AgentStartRequest) -> JsonValue:

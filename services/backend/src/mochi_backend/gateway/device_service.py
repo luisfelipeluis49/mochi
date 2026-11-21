@@ -63,7 +63,7 @@ class DeviceService:
             capturing=True,
             agora=self._join_info(),
             speaker_muted=self._silence.speaker_muted(),
-            commands=self._store.commands,
+            commands=self._store.fresh_commands(self._clock.now()),
         )
 
     def _join_info(self) -> AgoraJoinInfo:

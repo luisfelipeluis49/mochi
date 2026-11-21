@@ -56,16 +56,20 @@ class Adapters:
     intelligence_name: str
 
 
-def _model_for(settings: Settings) -> HintModel:
+def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
     if not settings.model_configured:
         return NullHintModel()
-    return OpenAiHintModel(
-        HttpxClient(),
-        settings.mochi_model_base_url,
-        settings.mochi_model_name,
-        settings.model_api_key,
-        settings.mochi_decide_timeout_seconds,
-    ).thinking(settings.mochi_model_reasoning_effort)
+    return (
+        OpenAiHintModel(
+            HttpxClient(),
+            settings.mochi_model_base_url,
+            settings.mochi_model_name,
+            settings.model_api_key,
+            settings.mochi_decide_timeout_seconds,
+        )
+        .thinking(settings.mochi_model_reasoning_effort)
+        .logging(logger)
+    )
 
 
 def default_adapters(settings: Settings) -> Adapters:
@@ -77,7 +81,10 @@ def default_adapters(settings: Settings) -> Adapters:
         tokens: RtcTokenIssuer = LocalMockTokenIssuer()
     else:
         creds = (settings.agora_rest_key, settings.agora_rest_secret)
-        agora = AgoraRestClient(HttpxClient(), settings.agora_app_id, *creds, ids)
+        secrets = (settings.model_api_key, settings.mochi_turn_key, settings.mochi_device_key)
+        http = HttpxClient()
+        rest = AgoraRestClient(http, settings.agora_app_id, *creds, ids)
+        agora = rest.hide_secrets((*secrets, *creds))
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
     brain = _brain_for(settings, clock, ids, logger)
     name = "rules+model" if settings.model_configured else "rules"
@@ -95,7 +102,7 @@ def _brain_for(
         follow_up_seconds=settings.mochi_follow_up_seconds,
         hint_cooldown=settings.mochi_hint_cooldown,
     )
-    brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
+    brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
     if settings.character_configured:
         brain.speak_as(OpenAiCharacterModel(HttpxClient(), _character_model(settings), logger))
     return brain

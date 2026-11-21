@@ -3,12 +3,14 @@
 from mochi_backend.gateway.agora.client_port import AgoraAgentClient, AgoraError
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.errors import ConflictError
+from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
 from mochi_contracts import (
     Activity,
     ActivityCommand,
     ActivityResult,
     EventType,
+    PrivatePrompt,
     RoundResult,
     SessionMode,
     Speak,
@@ -31,10 +33,13 @@ class ActivityService:
     async def start(self) -> Activity:
         """Start a round: public state to everyone, the secret to the Home view only."""
         async with self._commit:
+            if not self._store.capturing:
+                raise ConflictError("session is not capturing; start it before starting a round")
             result = self._run(ActivityCommand(type="start", result=None))
             self._store.mode = SessionMode.ACTIVITY
             if result.private_prompt is not None:
                 self._hub.protect_secret(result.private_prompt.secret_word)
+                self._store.round_secrets = self._secrets_of(result.private_prompt)
             await self._publish_activity(result.activity)
             if result.private_prompt is not None:
                 await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
@@ -47,10 +52,21 @@ class ActivityService:
         async with self._commit:
             result = self._run(ActivityCommand(type="result", result=outcome))
             self._store.mode = SessionMode.TOGETHER
+            self._store.round_secrets = ()
             await self._publish_activity(result.activity)
             await self._pipeline.save_learning_events(result.learning_events)
             await self._publish_session()
         return result.activity
+
+    def _secrets_of(self, prompt: PrivatePrompt) -> tuple[str, ...]:
+        """The secret word, plus its meaning when it came from someone's saved words."""
+        meanings = [
+            event.meaning
+            for user in USER_IDS
+            for event in self._intelligence.words_for(user)
+            if event.learning_event_id == prompt.source_learning_event_id and event.meaning
+        ]
+        return (prompt.secret_word, *meanings)
 
     def _run(self, command: ActivityCommand) -> ActivityResult:
         try:

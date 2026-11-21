@@ -261,6 +261,7 @@ def test_real_mode_requires_an_https_public_url() -> None:
         "AGORA_REST_KEY": "c",
         "AGORA_REST_SECRET": "d",
         "MOCHI_TURN_KEY": "e",
+        "MOCHI_DEVICE_KEY": "f",
     }
     with pytest.raises(
         SettingsError, match=r"MOCHI_PUBLIC_URL='http://localhost:8000' must start with https://"

@@ -50,6 +50,24 @@ class DeviceTest(unittest.TestCase):
         d.set_muted(False)
         self.assertEqual(d.volume(), 60)
 
+    def test_a_volume_command_does_not_unmute_a_muted_speaker(self):
+        d = FakeMixer()
+        d.set_volume(60)
+        d.set_muted(True)
+        d.set_volume(40)                      # the backend still wants it quieter
+        self.assertTrue(d.muted)              # ...but Mochi stays silent
+        d.set_muted(False)
+        self.assertEqual((d.muted, d.volume()), (False, 40))  # and the new level is applied
+
+    def test_a_volume_command_on_a_muted_mixer_without_a_switch(self):
+        d = FakeMixer(switch=False)
+        d.set_volume(60)
+        d.set_muted(True)
+        d.set_volume(40)
+        self.assertEqual(d.volume(), 0)       # still silent
+        d.set_muted(False)
+        self.assertEqual(d.volume(), 40)
+
     def test_silent_commands_in_agent_reply(self):
         def tags(text):
             return [(m.group(1).lower(), m.group(2)) for m in TAG.finditer(text)]

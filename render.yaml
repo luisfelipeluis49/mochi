@@ -9,7 +9,7 @@ services:
     runtime: docker
     dockerfilePath: ./services/backend/Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     numInstances: 1 # all state is in memory: exactly one instance, one worker
     healthCheckPath: /healthz
     envVars:
@@ -23,6 +23,8 @@ services:
         sync: false # set to this service's https URL after the first deploy
       - key: MOCHI_TURN_KEY
         sync: false
+      - key: MOCHI_DEVICE_KEY
+        sync: false # the Pi sends it as "Authorization: Bearer <key>" on /status and /voices
       - key: AGORA_APP_ID
         sync: false
       - key: AGORA_APP_CERTIFICATE
