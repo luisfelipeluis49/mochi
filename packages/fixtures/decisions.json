@@ -1765,5 +1765,113 @@
     }
    ]
   }
+ },
+ {
+  "id": "quiet_rules-201",
+  "case": "quiet_rules",
+  "text": "The doctor says my father's illness is getting worse.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-202",
+  "case": "quiet_rules",
+  "text": "I have not been able to sleep since my grandmother passed away.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-203",
+  "case": "quiet_rules",
+  "text": "We need to talk about the fight we had last night.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-204",
+  "case": "quiet_rules",
+  "text": "She told me she is thinking about getting a divorce.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-205",
+  "case": "quiet_rules",
+  "text": "I was diagnosed with anxiety last month and I am scared.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-206",
+  "case": "quiet_rules",
+  "text": "He lost his job and now we cannot pay the rent.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-207",
+  "case": "quiet_rules",
+  "text": "I feel so alone since I moved to a new city.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-208",
+  "case": "quiet_rules",
+  "text": "My sister and I are not speaking after the argument about the funeral.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-209",
+  "case": "quiet_rules",
+  "text": "The test results came back and they are not good.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-210",
+  "case": "quiet_rules",
+  "text": "I am really worried about my mother's surgery on Monday.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-211",
+  "case": "quiet_rules",
+  "text": "Please do not tell anyone, but my marriage is falling apart.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
+ },
+ {
+  "id": "quiet_rules-212",
+  "case": "quiet_rules",
+  "text": "My brother was arrested and I do not know what to do.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "eval": false
  }
 ]

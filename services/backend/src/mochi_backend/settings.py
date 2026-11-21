@@ -73,7 +73,9 @@ class Settings(BaseSettings):
         "often mix both in one sentence. Write every word in the language it was spoken in; "
         "never translate."
     )
-    mochi_ares_language: str = "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT stands in
+    # Both languages as ONE string. "en-US,pt-BR" was also accepted by Agora (live probe 2026-11-21,
+    # VERIFIED.md); how well it recognises is unmeasured, so the default stays pt-PT for now.
+    mochi_ares_language: str = "en-US,pt-PT"
     mochi_asr_keywords: list[str] = ["Mochi"]  # names to expect
     # Also tell the ears the lexicon's words ("adiar", "chave", ...). It makes them hear those
     # words in unclear audio too: background speech came back as "I forgot my guarda-chuva." and
@@ -84,7 +86,8 @@ class Settings(BaseSettings):
     mochi_tts_vendor: str = "minimax"
     mochi_tts_params: VendorParams = {}
     mochi_tts_credential_mode: str = ""
-    mochi_end_of_speech_silence_ms: int = 900
+    # Below 600 ms risks splitting "trails off... um" turns in two.
+    mochi_end_of_speech_silence_ms: int = 600
     # A sentence said while Mochi is still thinking or speaking. "" (Agora's default): it
     # interrupts, and the answer under way is thrown away, so a voice in the room right after a
     # question left the question unanswered. "append": Mochi finishes, then that sentence gets
@@ -93,6 +96,15 @@ class Settings(BaseSettings):
     mochi_agent_idle_timeout_seconds: int = 60
     mochi_speak_base_seconds: float = 0.6
     mochi_speak_seconds_per_word: float = 0.45
+    # Latency levers (DECISIONS D-37). Each default is the behaviour before the lever existed.
+    # A newer Agora request (or Agora hanging up) cancels the older turn's decide() and model calls.
+    mochi_cancel_stale_turns: bool = False
+    # Re-send Mochi's reply request after this many seconds without an answer; first answer wins.
+    # 0 is off. Raises the model bill: every call slower than this is paid twice.
+    mochi_character_hedge_seconds: float = 0.0
+    # Stream Mochi's free-chat line to Agora while the model writes it (only with the
+    # empty_reply silence strategy, and never during a round).
+    mochi_stream_reply: bool = False
     port: int = 8000
 
     @field_validator("database_url")
@@ -139,6 +151,12 @@ class Settings(BaseSettings):
     def character_configured(self) -> bool:
         """True when Mochi writes its own lines (a model key, and not switched off)."""
         return self.model_configured and self.mochi_character_enabled
+
+    @property
+    def streams_reply(self) -> bool:
+        """MOCHI_STREAM_REPLY in effect: with `mute_speaker` the speaker is unmuted only once the
+        whole reply is decided, so streamed words would play muted; it stays off there."""
+        return self.mochi_stream_reply and self.mochi_silence_strategy == "empty_reply"
 
     @property
     def turn_timeout_seconds(self) -> float:

@@ -1,4 +1,7 @@
-"""The only module that calls the Agora Conversational AI REST API (see VERIFIED.md)."""
+"""The only module that calls the Agora Conversational AI REST API (see VERIFIED.md).
+
+`AgoraTurnsClient` (read-only Turns API) lives here too, so every Agora call is in one module.
+"""
 
 import base64
 from typing import Self
@@ -12,12 +15,14 @@ from mochi_backend.gateway.agora.client_port import (
     AgoraRejectedError,
     SpeechTuning,
 )
+from mochi_backend.gateway.agora.turns_client import Turn, TurnsError, parse_turns
 from mochi_backend.platform.http_client import (
     HTTP_BAD_REQUEST,
     HTTP_NOT_FOUND,
     HTTP_OK,
     HTTP_SERVER_ERROR,
     HttpClient,
+    HttpGetter,
     HttpResponse,
     HttpTransportError,
     JsonValue,
@@ -183,3 +188,23 @@ def join_body(request: AgentStartRequest, name: str) -> JsonValue:
         **_speech_blocks(request.tuning),
     }
     return {"name": name, "properties": properties}
+
+
+class AgoraTurnsClient:
+    """GET /agents/{id}/turns with the same Basic authentication as `AgoraRestClient`."""
+
+    def __init__(self, http: HttpGetter, app_id: str, rest_key: str, rest_secret: str) -> None:
+        self._http = http
+        self._root = f"{BASE_URL}/{app_id}"
+        basic = base64.b64encode(f"{rest_key}:{rest_secret}".encode()).decode()
+        self._headers = {"Authorization": f"Basic {basic}"}
+
+    async def turns(self, agent_id: str) -> list[Turn]:
+        """Per-turn latencies of the agent; an unknown agent or no turns yet gives []."""
+        url = f"{self._root}/agents/{agent_id}/turns"
+        reply = await self._http.get(url, self._headers, TIMEOUT_SECONDS)
+        if reply.status == HTTP_NOT_FOUND:
+            return []
+        if reply.status != HTTP_OK:
+            raise TurnsError(f"GET {url} returned {reply.status}; body: {reply.body[:200]!r}")
+        return parse_turns(reply.body)

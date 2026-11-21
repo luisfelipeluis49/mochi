@@ -60,6 +60,7 @@ from mochi_backend.intelligence.wake_phrase import (
     without_wake_phrase,
 )
 from mochi_backend.platform.clock import Clock, parse_iso_z
+from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     Decision,
     DecisionKind,
@@ -155,15 +156,22 @@ class DecisionFlow:
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
 
-    async def run(self, turn: Turn, context: SessionContext) -> Decision:
-        """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is."""
+    async def run(
+        self, turn: Turn, context: SessionContext, sink: TextSink | None = None
+    ) -> Decision:
+        """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is.
+
+        `sink`: Mochi's free-chat line may be passed on while it is written (D-37).
+        """
         assisted = assisted_updates(turn, context, self._clock, self._ttl)
-        decision = await self._decide(turn, context)
+        decision = await self._decide(turn, context, sink)
         return decision.model_copy(
             update={"learning_events": [*decision.learning_events, *assisted]}
         )
 
-    async def _decide(self, heard: Turn, session_context: SessionContext) -> Decision:
+    async def _decide(
+        self, heard: Turn, session_context: SessionContext, sink: TextSink | None
+    ) -> Decision:
         turn = _with_its_question(heard, session_context)
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
@@ -172,7 +180,7 @@ class DecisionFlow:
         self._talk.playing = round_is_active(context)
         # The wake phrase beats every quiet rule (AGENTS 7.2); a thank-you does not in a round.
         if has_wake_phrase(turn.text, round_is_active(context)):
-            return await self._answer_mochi(turn, context)
+            return await self._answer_mochi(turn, context, sink)
         return self._said_aloud(turn, context) or await self._watching(turn, context)
 
     async def _watching(self, turn: Turn, context: SessionContext) -> Decision:
@@ -422,30 +430,44 @@ class DecisionFlow:
         """The language the sentence is in; unclear ones follow the last sentence Mochi answered."""
         return spoken_language(text, self._lexicon, self._talk.language)
 
-    async def _line(self, turn: Turn, match: CaseMatch | None, *, named: bool) -> str | None:
+    async def _line(
+        self, turn: Turn, match: CaseMatch | None, *, named: bool, sink: TextSink | None = None
+    ) -> str | None:
+        language = self._language_of(turn.text)
+        if sink is not None:
+            return await self._talk.chat(turn.text, named=named, language=language, sink=sink)
         word, meaning = (match.expression, match.meaning) if match else (None, None)
         return await self._talk.reply(
-            turn.text,
-            named=named,
-            language=self._language_of(turn.text),
-            word=word,
-            meaning=meaning,
+            turn.text, named=named, language=language, word=word, meaning=meaning
         )
 
-    async def _answer_mochi(self, turn: Turn, context: SessionContext) -> Decision:
+    def _chat_sink(
+        self, match: CaseMatch | None, context: SessionContext, sink: TextSink | None
+    ) -> TextSink | None:
+        """Only a free chat streams: no word to teach, and no round whose word must stay secret."""
+        return sink if match is None and not round_is_active(context) else None
+
+    async def _answer_mochi(
+        self, turn: Turn, context: SessionContext, sink: TextSink | None = None
+    ) -> Decision:
         rest = without_wake_phrase(turn.text)
         if not normalized(rest):
             self._talk.called()  # just "Oi Mochi": nothing was asked yet, the next sentence is
         entry = mochi_entry(rest, context, self._lexicon)
         match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
+        chat = self._chat_sink(match, context, sink)
         if match is None and asks_for_word(rest):  # a word outside the lexicon: ask both at once
             match, line = await asyncio.gather(
                 self._ask_model(rest, [], context), self._line(turn, None, named=True)
             )
         else:
-            line = await self._line(turn, match, named=True)
+            line = await self._line(turn, match, named=True, sink=chat)
         if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
             return self._saying(ignore(), line, turn) if line else ignore()
+        return self._teaching(match, line, context)
+
+    def _teaching(self, match: CaseMatch, line: str | None, context: SessionContext) -> Decision:
+        """The word Mochi was asked for, shown and said (its own line, or the fixed one)."""
         # the language the model found stays: "como se diz abacaxi?" is asked in Portuguese for
         # an English word, which is the English learner's (AGENTS 7.3)
         asked = replace(match, reason=Reason.ASKS_MOCHI)

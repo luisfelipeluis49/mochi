@@ -35,9 +35,11 @@ async def demo() -> AsyncIterator[tuple[httpx.AsyncClient, Harness]]:
         yield client, harness
 
 
-async def _say(client: httpx.AsyncClient, harness: Harness, text: str) -> tuple[DecisionKind, str]:
-    """One turn over HTTP, one second after the last (the cooldown counts time and turns)."""
-    harness.clock.advance(1.0)
+async def _say(
+    client: httpx.AsyncClient, harness: Harness, text: str, gap: float = 1.0
+) -> tuple[DecisionKind, str]:
+    """One turn over HTTP, `gap` seconds after the last (the cooldown counts time and turns)."""
+    harness.clock.advance(gap)
     reply = await client.post("/dev/sessions/demo/turn", json={"text": text})
     assert reply.status_code == 200
     body = reply.json()
@@ -120,5 +122,44 @@ async def test_back_to_back_demo_sentences_hit_the_cooldown(
 ) -> None:
     """Documents the rule: a hint silences the next two turns, so script filler between them."""
     client, harness = demo
+    assert (await _say(client, harness, ADIAR))[0] is DecisionKind.SHOW_HINT
+    assert (await _say(client, harness, GUARDA_CHUVA))[0] is DecisionKind.IGNORE
+
+
+@pytest.fixture
+async def shown_demo() -> AsyncIterator[tuple[httpx.AsyncClient, Harness]]:
+    """The Render deploy runs MOCHI_HINT_COOLDOWN=while_shown (DECISIONS D-29)."""
+    env = {"MOCHI_ENABLE_DEV_ROUTES": "true", "MOCHI_HINT_COOLDOWN": "while_shown"}
+    harness = make_harness(env=env)
+    transport = httpx.ASGITransport(app=create_app(harness.container))
+    async with httpx.AsyncClient(transport=transport, base_url="http://demo") as client:
+        assert (await client.post("/api/sessions/demo/start")).status_code == 200
+        yield client, harness
+
+
+async def _four_line_script(
+    client: httpx.AsyncClient, harness: Harness, gap: float
+) -> DecisionKind:
+    """The approved script with `gap` seconds between lines; the decision on the last line."""
+    await _say(client, harness, ADIAR, gap)
+    await _say(client, harness, "Oh, why? What's going on?", gap)
+    await _say(client, harness, "Right, I'll postpone it to Friday.", gap)
+    return (await _say(client, harness, GUARDA_CHUVA, gap))[0]
+
+
+async def test_while_shown_approved_script_shows_the_umbrella_hint(
+    shown_demo: tuple[httpx.AsyncClient, Harness],
+) -> None:
+    """On Render (while_shown) the four-line script still ends in the umbrella hint."""
+    client, harness = shown_demo
+    for gap in (1.0, 3.0):  # the gap is a fake-clock step; the result must not depend on it
+        assert await _four_line_script(client, harness, gap) is DecisionKind.SHOW_HINT
+
+
+async def test_while_shown_back_to_back_sentences_are_still_held(
+    shown_demo: tuple[httpx.AsyncClient, Harness],
+) -> None:
+    """Pacing rule on Render too: the umbrella line needs filler turns after the postpone hint."""
+    client, harness = shown_demo
     assert (await _say(client, harness, ADIAR))[0] is DecisionKind.SHOW_HINT
     assert (await _say(client, harness, GUARDA_CHUVA))[0] is DecisionKind.IGNORE

@@ -7,6 +7,7 @@ after it spoke it also hears the next sentence, so a person can answer its quest
 
 import asyncio
 import re
+from collections.abc import Awaitable
 from datetime import datetime, timedelta
 
 from mochi_backend.intelligence.character_port import (
@@ -14,15 +15,18 @@ from mochi_backend.intelligence.character_port import (
     CharacterRequest,
     DeviceStatus,
     Exchange,
+    StreamingCharacterModel,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.streamed_line import PLAY, QUIET, streamed_line
 from mochi_backend.platform.clock import Clock
+from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import Language
 
-QUIET = "[quiet]"
 LISTEN = "[listen]"  # Mochi was asked to only watch: from now on it helps silently
 CHAT = "[chat]"  # Mochi was asked back into the talk
-PLAY = "[play]"  # Mochi was asked to host Describe & Guess: the two people talk to each other
+# PLAY ("[play]"): Mochi was asked to host Describe & Guess; the two people talk to each other.
+# QUIET ("[quiet]"): the sentence was not for Mochi. Both live in streamed_line, which needs them.
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
 SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
@@ -112,17 +116,17 @@ class MochiTalk:
         `language` is the one the sentence is in; the reply is asked for in the same.
         """
         request = self._request(text, named, language, word, meaning)
-        try:
-            answer = await asyncio.wait_for(self._model.reply(request), self._timeout)
-        except TimeoutError:
-            return None
-        line = spoken_line(answer)
-        if line is not None:
-            self.language = language
-            self._remember(text, line)
-            self._note_given(word, line)
-            self._change_mode(line)
-        return line
+        return await self._answered(request, None)
+
+    async def chat(
+        self, text: str, *, named: bool, language: Language, sink: TextSink
+    ) -> str | None:
+        """`reply` with no word to teach, passing the line to `sink` while it is written
+        (MOCHI_STREAM_REPLY). The whole line is returned and remembered exactly as `reply` does.
+
+        Example: `await talk.chat("Mochi, how are you?", named=True, language=EN, sink=outlet)`.
+        """
+        return await self._answered(self._request(text, named, language, None, None), sink)
 
     def _request(
         self, text: str, named: bool, language: Language, word: str | None, meaning: str | None
@@ -138,6 +142,26 @@ class MochiTalk:
             woken=self._attentive,
             given=[] if self.playing else list(self._given),
         )
+
+    async def _answered(self, request: CharacterRequest, sink: TextSink | None) -> str | None:
+        try:
+            answer = await asyncio.wait_for(self._written(request, sink), self._timeout)
+        except TimeoutError:
+            return None
+        line = spoken_line(answer)
+        if line is not None:
+            self.language = request.language
+            self._remember(request.text, line)
+            self._note_given(request.word, line)
+            self._change_mode(line)
+        return line
+
+    def _written(self, request: CharacterRequest, sink: TextSink | None) -> Awaitable[str | None]:
+        """The whole answer; streamed into `sink` on the way when there is one and it can be."""
+        model = self._model
+        if sink is None or not isinstance(model, StreamingCharacterModel):
+            return model.reply(request)
+        return streamed_line(model, request, sink)
 
     def _note_given(self, word: str | None, line: str) -> None:
         """Keep the word Mochi just handed over (the one it was told to teach, or one it showed).

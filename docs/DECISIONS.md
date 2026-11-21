@@ -191,6 +191,11 @@ only English is recognised (seen in a live session).
 Portuguese ARES made far fewer mistakes than Deepgram `nova-3` `multi` in the hardware owner's tests.
 **Not verified:** that ARES is accepted on the Render project (expected, same request); the Deepgram settings
 are kept as a comment in `.env.example`. Not a contract change (AGENTS 6 does not cover vendor settings).
+**Update 2026-11-21:** pt-PT was chosen because "ARES has no Brazilian Portuguese", which was never really tested.
+The earlier `en-US,pt-BR` attempt also sent `credential_mode: managed`, and that caused the 400. A live probe
+without `credential_mode` and with 24 keywords was ACCEPTED (HTTP 200) for both `en-US,pt-BR` and `pt-BR,en-US`.
+Recognition quality is still unmeasured, and the default stays `en-US,pt-PT` until the ARES arm of
+`docs/LATENCY_TEST_PLAN.md` passes.
 
 ## D-23: Mochi's character lives in the backend; a device channel for its body (2026-11-20)
 
@@ -589,7 +594,83 @@ word was saved for Ana.
 - **Also:** Agora ended the agent by itself 99 seconds into that session (no reason given, the backend
   had not asked); the Pi now ends the session when the agent leaves instead of staying awake.
 
-## D-37: the revised product vision in code: Mochi asks what to do, and Play works by voice on Mochi's own screen (2026-11-21)
+
+## D-37: latency levers, each behind its own flag (2026-11-21)
+
+Asked for as "D-32"; that number (and D-33 to D-36) was already taken, so this is D-37. Measured
+before (Agora Turns data): a spoken reply takes about 3.0-3.2 s at the median: `asr_ttlw` ~1.17 s,
+our `llm_ttft` ~1.3-1.6 s (decide() ~1.08 s median, ~0.2 s transit, plus lock queueing), `tts_ttfb`
+~0.32 s; `llm_ftfs` of 3-9 ms shows the reply leaves in one chunk. **Every default below is the
+behaviour before the lever existed**, so merging changes nothing; the test arms set the flags.
+
+| Flag (default) | What it does | Expected saving (confidence) |
+|---|---|---|
+| `model_usage` log line (always on) | One line per model call that answered: `model`, `kind` (`hint`/`character`), `prompt_tokens`, `completion_tokens`, `cached_tokens` (0 when absent), `latency_ms`. Never text. | none; it prices the other levers |
+| `MOCHI_CANCEL_STALE_TURNS` (false) | A newer Agora request cancels the decide() and model calls of an older one still deciding; one still waiting for the lock is skipped; with the flag the route also watches the ASGI `http.disconnect` and cancels on hang-up. Only deciding is cancelled (nothing is applied or published before the commit); the cancelled turn answers empty, and `last_heard` is restored so the newer request's cumulative text covers it. A turn that has already said words is never cancelled. Log: `turn_dropped_stale` (`why`: superseded / disconnected). | p95 only, 0.4-1.0 s (golden turn 4 waited ~400 ms behind abandoned turns) |
+| `MOCHI_CHARACTER_HEDGE_SECONDS` (0 = off) | After that long without an answer, Mochi's reply request is sent a second time (`intelligence/hedged.first_answer`, as the hint model does); first answer wins, the other is cancelled. Log: `character_hedge_used`. **Costs more:** every call slower than the value is paid twice. Not applied to the streamed path. | p95 ~0.5-1.0 s |
+| `MOCHI_STREAM_REPLY` (false) | Mochi's free-chat line (wake phrase, no lexicon or asked-for word, no round) goes to Agora in several SSE deltas as the model writes it; every other turn is one chunk as before. | 0.15-0.3 s likely (one estimate says up to 0.4-1 s) |
+
+How the stream stays safe (`gateway/spoken_release.py`, `intelligence/streamed_line.py`):
+- The turn runs in a task the pipeline owns (holding the turn lock as before); the route only reads
+  pieces from a queue, so Agora hanging up never cuts a commit in half.
+- Nothing inside an unfinished `[` is released and every bracket is removed with `split_commands`,
+  so commands never reach the voice; the first piece waits for `. , ? !` or six words.
+- `[quiet]` anywhere stops passing text on (the line is then not remembered); `[play]` holds the
+  rest, and the commit says it after `_with_round` and the secret check (the prompt puts `[play]`
+  first, so in practice nothing streams). A Stop, Reset or round starting ends the release.
+- `[listen]`/`[chat]`, `_remember`, learning events, device commands, `agent.speak.requested` and the
+  `reply` log run on the full text at the commit, exactly as before; the commit's reply minus what
+  was already said is sent last. A mid-stream failure ends with stop + `[DONE]`, never another line.
+- Off with `MOCHI_SILENCE_STRATEGY=mute_speaker` (the speaker is unmuted only at the commit).
+- The model is asked with `stream: true` and `stream_options.include_usage` (for `model_usage`).
+- Reading the numbers: with streaming on, `decision.latency_ms` and `arrived_to_decided_ms` cover
+  the whole streamed line, so they grow; the gain shows in `reply_first_byte` and Agora's `llm_ttft`.
+
+**Proposal (contract-adjacent, internal):** `gateway/intelligence_port.py` gains `StreamingDecider`
+(`decide_streaming(turn, context, sink)`, returning the same `Decision`), implemented by
+`Intelligence`; the sink type is `platform/text_sink.TextSink`. AGENTS 6.5 and `packages/contracts`
+are unchanged.
+
+**Not covered / open for a human:**
+- After "Oi Mochi" wakes it, most later sentences go through `_watching`/`_follow_up`, not
+  `_answer_mochi`; as specified, only wake-phrase turns stream. Extending it to follow-ups is a
+  small change in `decision_flow._follow_up` if the arm shows a gain.
+- Not verified with Agora: that it speaks several content deltas as one reply (the custom-LLM page
+  describes OpenAI SSE chunks, VERIFIED.md), and that it closes the connection of a request it
+  abandons (if it does not, only the newer-request path cancels).
+- If `[play]` were written after words (against the prompt), words said before it cannot be
+  unsaid when the drawn word happens to be among them.
+- A cancelled or timed-out decide can leave Mochi's own talk history updated (as the existing
+  timeout already can).
+- `HttpxClient.post_lines` is not covered by a test (it needs a network or an injected transport).
+
+## D-38: practising alone with Mochi: an answer is no longer thrown away, and Mochi is a partner first (2026-11-21)
+
+In the first spoken practice session Mochi's voice kept breaking off: three answers went out in three
+seconds. Measured on the Pi's backend (real Agora, a question and 0.9 s later a sentence by another voice):
+- **Agora's default drops the answer under way** when another sentence follows: only the answer to the
+  second sentence was spoken, so the person's question got none. Staying silent on the second sentence
+  (tried, and removed) left no answer at all in 2 of 3 runs.
+- **`MOCHI_INTERRUPTION=append`** (`interruption.enable` false, `disabled_config.strategy` "append" in the
+  join body; default "" = Agora's default): both answers were spoken in full, in order. Set on the Pi's
+  backend; **not yet on the deployed one**. "ignore" would discard speech while Mochi thinks, which loses
+  quick replies between two people, so it is not used.
+- **`character.md`, practising with Mochi:** asking to practise is the choice (no list of the three things
+  again); react and ask one question; talk at the person's level; a challenge to use a word only right after
+  giving it; no praise for ordinary sentences; a goodbye that names one thing from the talk. Compared with
+  the real model on three scripted conversations.
+- **`append` while two people talk** (Mochi only watching, empty replies), two runs: every sentence was
+  heard and decided, nothing was spoken, nothing was lost. `render.yaml` and `.env.example` now carry it.
+- **The goodbye names a word.** The history holds four exchanges, so a goodbye after a longer talk had
+  forgotten the word. `MochiTalk` keeps the last three words Mochi handed over in the session (the word it
+  was told to teach, or one it wrote in `[show]`), `CharacterRequest.given` carries them, and a note next
+  to the sentence offers them for a goodbye only. Real model, 3 of 3: "Bye! You used postpone well today.";
+  no mention of the word in the turns between. When Mochi taught a word without `[show]`, nothing is kept.
+  While a round is on the words are withheld: the round's secret is the newest word Mochi taught.
+- **Not solved:** a voice in the room is still answered when its sentence is clear, and when it follows
+  within the end-of-speech pause Agora joins it to the person's own sentence. That needs who is speaking.
+
+## D-39: the revised product vision in code: Mochi asks what to do, and Play works by voice on Mochi's own screen (2026-11-21)
 
 (This entry was D-31 on the `hardware` branch and went missing from `main` when the entry for the AR candidates, also numbered D-31, was merged. It is restored here unchanged under a new number; the code it describes has been on `main` since PR #12.)
 
@@ -641,29 +722,40 @@ só ouvindo.", "What can you do?", "Can we play Secret Missions?" each got the r
 (reveal, guessed, next round swapped, skipped by a long press) ran through the Pi's own code and the face
 page in a headless browser. **Not yet done with a person, a finger on the panel and Agora's voice.**
 
-## D-38: practising alone with Mochi: an answer is no longer thrown away, and Mochi is a partner first (2026-11-21)
+## D-40: Mochi Home runs the LIKELY configuration with "append" (2026-11-21)
 
-In the first spoken practice session Mochi's voice kept breaking off: three answers went out in three
-seconds. Measured on the Pi's backend (real Agora, a question and 0.9 s later a sentence by another voice):
-- **Agora's default drops the answer under way** when another sentence follows: only the answer to the
-  second sentence was spoken, so the person's question got none. Staying silent on the second sentence
-  (tried, and removed) left no answer at all in 2 of 3 runs.
-- **`MOCHI_INTERRUPTION=append`** (`interruption.enable` false, `disabled_config.strategy` "append" in the
-  join body; default "" = Agora's default): both answers were spoken in full, in order. Set on the Pi's
-  backend; **not yet on the deployed one**. "ignore" would discard speech while Mochi thinks, which loses
-  quick replies between two people, so it is not used.
-- **`character.md`, practising with Mochi:** asking to practise is the choice (no list of the three things
-  again); react and ask one question; talk at the person's level; a challenge to use a word only right after
-  giving it; no praise for ordinary sentences; a goodbye that names one thing from the talk. Compared with
-  the real model on three scripted conversations.
-- **`append` while two people talk** (Mochi only watching, empty replies), two runs: every sentence was
-  heard and decided, nothing was spoken, nothing was lost. `render.yaml` and `.env.example` now carry it.
-- **The goodbye names a word.** The history holds four exchanges, so a goodbye after a longer talk had
-  forgotten the word. `MochiTalk` keeps the last three words Mochi handed over in the session (the word it
-  was told to teach, or one it wrote in `[show]`), `CharacterRequest.given` carries them, and a note next
-  to the sentence offers them for a goodbye only. Real model, 3 of 3: "Bye! You used postpone well today.";
-  no mention of the word in the turns between. When Mochi taught a word without `[show]`, nothing is kept.
-  While a round is on the words are withheld: the round's secret is the newest word Mochi taught.
-- **Not solved:** a voice in the room is still answered when its sentence is clear, and when it follows
-  within the end-of-speech pause Agora joins it to the person's own sentence. That needs who is speaking.
+`latency-performance` (D-37) is merged into `hardware`, and its `likely` preset is the configuration: ARES
+`en-US,pt-BR` with the lexicon named as keywords, the Cartesia voice, `MOCHI_CANCEL_STALE_TURNS=true`,
+`MOCHI_CHARACTER_HEDGE_SECONDS=1.0`, together with `MOCHI_INTERRUPTION=append` (D-38). `render.yaml`
+carries these values; settings defaults are unchanged. Suhuai tried it by voice on the device and chose it.
+
+Measured on the Pi (test backend on the Pi, channel `mochi-test`, the same 14 recorded sentences per arm, a
+woken session; "first sound" = end of the speech to Mochi's first audio arriving at the Pi; medians):
+
+| Arm | Pi first sound | Agora e2e | asr_ttlw | tts_ttfb |
+|---|---|---|---|---|
+| main, first / last run | 4.10 s / 3.75 s | - | - | - |
+| branch, flags off | 4.08 s | 2926 ms | 1032 | 251 |
+| safe | 3.91 s | 2821 ms | 1139 | 229 |
+| ares | 3.64 s | 2332 ms | 647 | 243 |
+| cartesia | 3.95 s | 2621 ms | 1038 | 101 |
+| stream | 3.83 s | 2853 ms | 1104 | 247 |
+| likely | 3.23 s | 2240 ms | 677 | 90 |
+| stretch | 3.20 s | 2114 ms | 567 | 146 |
+
+- The two runs of `main` differ by 0.35 s: smaller differences are noise. Only `likely` and `stretch` are
+  beyond it; `stretch`'s 480 ms pause adds nothing visible, so it is not taken.
+- The Pi hears Mochi 1.0 to 1.15 s after Agora's e2e in every arm (the plan estimated 0.25 s). Not explained.
+- `stream` cannot gain in a woken session: only sentences with the wake phrase stream.
+- **ARES hears a Portuguese word inside English only when it is named.** Same clips, `en-US,pt-BR` both
+  times, three runs each: without the list "adiar" was "adjust" 3/3 and "guarda-chuva" "guarded shoe" 3/3;
+  with it both were right 3/3. Words not on the list (garfo, feira, presente, trânsito) were wrong either
+  way. So hints work for the lexicon's words and not for others a learner says; gpt-4o-transcribe needs
+  no list but garbled these sentences in about a third of the runs.
+- **Open:** D-36's risk (named words "heard" in faint background talk) was not measured for ARES; the
+  Cartesia voice has one language per session ("en"), so Portuguese is spoken by an English voice; its
+  billing under Agora's managed key is undocumented; real voices were tried informally, not scored 10/10.
+- Also seen, on `main` too: in a woken session "How do you say X in Portuguese?" is a race between the
+  hint model and Mochi's line (`_model_before_line`); when the hint wins Mochi shows the word and says
+  nothing (typed, 12 each: `main` 7 silent, the branch 2). Not fixed here.
 
