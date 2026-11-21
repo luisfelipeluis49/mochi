@@ -318,3 +318,30 @@ test('the stand-in replaces a hint with hint.cleared and clears it at expiry', a
     await backend.close();
   }
 });
+
+test('a socket that fails with only an error event (no close) is retried', async () => {
+  // Node 22's WebSocket behaves this way when the connection is refused.
+  const statuses = [];
+  const sockets = [];
+  class ErrorOnlySocket {
+    constructor() {
+      this.readyState = 0;
+      sockets.push(this);
+      setTimeout(() => this.onerror && this.onerror({}), 5);
+    }
+    close() {}
+  }
+  const connection = createConnection({
+    url: 'ws://127.0.0.1:1/ws?user=ana',
+    WebSocketImpl: ErrorOnlySocket,
+    onStatus: (status) => statuses.push(status),
+    onMessage: () => assert.fail('no message expected'),
+  });
+  connection.start();
+  try {
+    await until(() => statuses.includes(STATUS.RECONNECTING), 'the retry after an error without close');
+    await until(() => sockets.length >= 2, 'a second attempt', 3000);
+  } finally {
+    connection.stop();
+  }
+});

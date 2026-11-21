@@ -15,6 +15,7 @@
 
 import { parseEvent } from './protocol.js';
 
+const OPEN_STATE = 1; // WebSocket.OPEN
 const RETRY_MS = [1000, 2000, 5000];
 const CONNECT_TIMEOUT_MS = 8000;
 export const CLOSE_REJECTED = 4400;
@@ -84,7 +85,17 @@ export function createConnection({ url, onMessage, onStatus, WebSocketImpl, conn
       onMessage(event.data);
     };
     current.onerror = () => {
-      // A close event always follows; the retry is scheduled there.
+      // Some runtimes (Node 22's WebSocket) send `error` and never `close` when the connection cannot be
+      // made, so a socket that is not open is given up here instead of waiting for a close that may not come.
+      if (socket !== current || current.readyState === OPEN_STATE) return;
+      socket = null;
+      clearConnectTimer();
+      try {
+        current.close();
+      } catch {
+        // already closed
+      }
+      scheduleRetry();
     };
     current.onclose = (event) => {
       if (socket !== current) return;
