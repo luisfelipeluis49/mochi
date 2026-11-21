@@ -1,4 +1,4 @@
-"""The live sessions, each with its own state, so a phone never disturbs the Pi (DECISIONS D-37).
+"""The live sessions, each with its own state, so a phone never disturbs the Pi (DECISIONS D-41).
 
 A session is everything one conversation needs: its store, hub view, live hint, silence policy,
 turn pipeline, game and Agora agent. The demo session (the Pi's) always exists. Any other id is

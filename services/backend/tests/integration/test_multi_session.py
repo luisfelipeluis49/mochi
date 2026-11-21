@@ -1,4 +1,4 @@
-"""Several sessions at once: a phone's never disturbs the Pi's (DECISIONS D-37)."""
+"""Several sessions at once: a phone's never disturbs the Pi's (DECISIONS D-41)."""
 
 import pytest
 from fastapi.testclient import TestClient

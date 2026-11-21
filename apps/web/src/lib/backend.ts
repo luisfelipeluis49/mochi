@@ -18,6 +18,7 @@ import { type Who, wsQuery } from "./who.ts";
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
   start(): Promise<void>;                              // POST /api/sessions/<this phone's session>/start
+  usesMic: boolean;                                    // true when this phone is the microphone (its own session); false in the mock and when it only controls the Pi's session
   phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/sessions/<session>/agora (null in the mock, and for the Pi's session: no mic)
   stop(): Promise<void>;                               // POST /api/sessions/<session>/stop
   activityStart(): Promise<void>;                      // POST /api/sessions/<session>/activity/start
@@ -39,7 +40,7 @@ function baseUrl(): string {
   return (env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
 }
 
-/** The session a page follows (D-37): a phone has its own; Mochi's screen and the projector the Pi's. */
+/** The session a page follows (D-41): a phone has its own; Mochi's screen and the projector the Pi's. */
 export function sessionOf(who: Who): string {
   return who.kind === "user" ? sessionFor(who.session) : PI_SESSION;
 }
@@ -119,6 +120,7 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   // The commands: each one is a POST to the address from AGENTS.md §6.4.
   const s = `/api/sessions/${session}`;
   return {
+    usesMic: session !== PI_SESSION,
     // A phone's own session may still be there from a tab that was closed without Stop (its agent
     // is gone): stop it first so Start always begins a fresh one. Stopping nothing is a 200.
     start: async () => {
@@ -147,6 +149,7 @@ export function connectMock(who: Who, h: BackendHandlers, speed: number, people?
   gw.connect(scenario === "demo"); // the demo plays by itself; the /me page waits for "Record"
   return {
     start: async () => gw.start(),
+    usesMic: false,
     phoneAudio: async () => null, // the mock has no Agora: the phone just plays the fake demo
     stop: async () => gw.stop(),
     activityStart: async () => gw.activityStart(),

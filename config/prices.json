@@ -1,0 +1,66 @@
+{
+  "currency": "USD",
+  "checked_on": "2026-11-21",
+  "note": "List prices, read by scripts/cost_estimate.py. verified=false means no current public source confirmed the number.",
+  "agora_audio_task": {
+    "per_minute": 0.10,
+    "free_minutes_per_month": 300,
+    "source": "https://docs.agora.io/en/ai/reference/pricing",
+    "verified": true,
+    "note": "Same rate with our own keys (BYOK). The managed key includes ARES, Deepgram nova-2/3, MiniMax 2.6/2.8 Turbo and OpenAI TTS-1. An older release note (v1.6) speaks of a separate 'ARES ASR Task'; the current pricing page does not."
+  },
+  "transcription_per_minute": {
+    "openai": {
+      "per_minute": 0.006,
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "verified": true,
+      "note": "gpt-4o-transcribe, OpenAI's own per-minute estimate (billed as $2.50/1M input, $10/1M output tokens), billed by OpenAI on MODEL_API_KEY. Whether Agora sends all audio or only speech is not known: minutes x price is an upper bound."
+    },
+    "ares": {
+      "per_minute": 0.0,
+      "source": "https://docs.agora.io/en/ai/reference/pricing",
+      "verified": true,
+      "note": "Included in the Agora audio task (managed key)."
+    }
+  },
+  "tts_per_minute": {
+    "minimax": {
+      "per_minute": 0.0,
+      "source": "https://docs.agora.io/en/ai/reference/pricing",
+      "verified": true,
+      "note": "MiniMax 2.8 Turbo is on Agora's managed-key list: included in the audio task."
+    },
+    "cartesia": {
+      "per_minute": 0.0,
+      "source": "https://docs.agora.io/en/ai/reference/pricing",
+      "verified": false,
+      "note": "Cartesia worked with credential_mode managed (2026-11-21 probe) but is NOT on Agora's included list; how it is billed is undocumented."
+    }
+  },
+  "models": {
+    "gpt-5.4-mini": {
+      "input_per_mtok": 0.75,
+      "cached_input_per_mtok": 0.075,
+      "output_per_mtok": 4.50,
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "verified": true,
+      "note": "Standard tier."
+    },
+    "gpt-4o-mini": {
+      "input_per_mtok": 0.15,
+      "cached_input_per_mtok": 0.075,
+      "output_per_mtok": 0.60,
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "verified": true,
+      "note": "Standard tier."
+    },
+    "gpt-4.1-mini": {
+      "input_per_mtok": 0.40,
+      "cached_input_per_mtok": 0.10,
+      "output_per_mtok": 1.60,
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "verified": true,
+      "note": "Standard tier."
+    }
+  }
+}

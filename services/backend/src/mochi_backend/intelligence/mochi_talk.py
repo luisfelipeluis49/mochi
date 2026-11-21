@@ -6,6 +6,8 @@ after it spoke it also hears the next sentence, so a person can answer its quest
 """
 
 import asyncio
+import re
+from collections.abc import Awaitable
 from datetime import datetime, timedelta
 
 from mochi_backend.intelligence.character_port import (
@@ -13,18 +15,24 @@ from mochi_backend.intelligence.character_port import (
     CharacterRequest,
     DeviceStatus,
     Exchange,
+    StreamingCharacterModel,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.streamed_line import PLAY, QUIET, streamed_line
 from mochi_backend.platform.clock import Clock
+from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import Language
 
-QUIET = "[quiet]"
 LISTEN = "[listen]"  # Mochi was asked to only watch: from now on it helps silently
 CHAT = "[chat]"  # Mochi was asked back into the talk
-PLAY = "[play]"  # Mochi was asked to host Describe & Guess: the two people talk to each other
+# PLAY ("[play]"): Mochi was asked to host Describe & Guess; the two people talk to each other.
+# QUIET ("[quiet]"): the sentence was not for Mochi. Both live in streamed_line, which needs them.
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
 SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
+# A word Mochi put on its screen.
+SHOWN = re.compile(r"\[\s*show\b\s*:?\s*([^\]]+?)\s*\]", re.IGNORECASE)
+GIVEN_LIMIT = 3  # words remembered for the goodbye: the newest ones
 
 
 def spoken_line(answer: str | None) -> str | None:
@@ -45,8 +53,10 @@ class MochiTalk:
         self._timeout = settings.character_timeout_seconds
         self._follow_up = timedelta(seconds=settings.follow_up_seconds)
         self._history: list[Exchange] = []
+        self._given: list[str] = []  # words Mochi handed over in this session, newest last
         self._until: datetime | None = None
         self._attentive = False  # someone is talking WITH Mochi, not next to it
+        self.playing = False  # a round is on: Mochi is told no word it gave (it may be the secret)
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
@@ -67,6 +77,7 @@ class MochiTalk:
         tie-breaker for a sentence that could be either language, not the last session's.
         """
         self._history, self._until, self._attentive = [], None, woken
+        self._given = []
         self.language = language or self.language
         if woken:
             self.called()
@@ -94,6 +105,7 @@ class MochiTalk:
     def reset(self) -> None:
         """Forget the conversation (demo reset)."""
         self._history, self._until, self._attentive = [], None, False
+        self._given = []
 
     async def reply(
         self,
@@ -108,7 +120,23 @@ class MochiTalk:
 
         `language` is the one the sentence is in; the reply is asked for in the same.
         """
-        request = CharacterRequest(
+        request = self._request(text, named, language, word, meaning)
+        return await self._answered(request, None)
+
+    async def chat(
+        self, text: str, *, named: bool, language: Language, sink: TextSink
+    ) -> str | None:
+        """`reply` with no word to teach, passing the line to `sink` while it is written
+        (MOCHI_STREAM_REPLY). The whole line is returned and remembered exactly as `reply` does.
+
+        Example: `await talk.chat("Mochi, how are you?", named=True, language=EN, sink=outlet)`.
+        """
+        return await self._answered(self._request(text, named, language, None, None), sink)
+
+    def _request(
+        self, text: str, named: bool, language: Language, word: str | None, meaning: str | None
+    ) -> CharacterRequest:
+        return CharacterRequest(
             text=text,
             history=self._recent(),
             status=self.status,
@@ -117,17 +145,39 @@ class MochiTalk:
             named=named,
             language=language,
             woken=self._attentive,
+            given=[] if self.playing else list(self._given),
         )
+
+    async def _answered(self, request: CharacterRequest, sink: TextSink | None) -> str | None:
         try:
-            answer = await asyncio.wait_for(self._model.reply(request), self._timeout)
+            answer = await asyncio.wait_for(self._written(request, sink), self._timeout)
         except TimeoutError:
             return None
         line = spoken_line(answer)
         if line is not None:
-            self.language = language
-            self._remember(text, line)
+            self.language = request.language
+            self._remember(request.text, line)
+            self._note_given(request.word, line)
             self._change_mode(line)
         return line
+
+    def _written(self, request: CharacterRequest, sink: TextSink | None) -> Awaitable[str | None]:
+        """The whole answer; streamed into `sink` on the way when there is one and it can be."""
+        model = self._model
+        if sink is None or not isinstance(model, StreamingCharacterModel):
+            return model.reply(request)
+        return streamed_line(model, request, sink)
+
+    def _note_given(self, word: str | None, line: str) -> None:
+        """Keep the word Mochi just handed over (the one it was told to teach, or one it showed).
+
+        The history holds only the last few lines, so without this a goodbye after a longer
+        talk could not say "today you learned postpone" (D-38).
+        """
+        found = [word] if word else [shown.strip() for shown in SHOWN.findall(line)]
+        known = {w.lower() for w in self._given}
+        fresh = [w for w in found if w and w.lower() not in known]
+        self._given = [*self._given, *fresh][-GIVEN_LIMIT:]
 
     def _change_mode(self, line: str) -> None:
         """What Mochi wrote can change how it listens from now on.

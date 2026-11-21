@@ -28,9 +28,9 @@ words during a session started on the Pi.
 - One session at a time (`demo`). No speaker identification on a phone (AGENTS.md 7.3 decides).
 - iPhone/Android need **https** for the mic (the Vercel link, not `http://<laptop-ip>:5173`).
 
-## Update (D-37): the limits above are gone
+## Update (D-41): the limits above are gone
 
 The backend now keeps one session per phone (`/api/sessions/<id>/...`, its own Agora channel and turn
 endpoint). The phone no longer reads the Pi's device state; it joins with `GET /api/sessions/<id>/agora`.
 The Pi can be on during a phone session, and a phone's Stop never stops the Pi. `?session=demo` on `/m`
-makes a phone the Pi's remote control (no microphone). See docs/DECISIONS.md D-37.
+makes a phone the Pi's remote control (no microphone). See docs/DECISIONS.md D-41.

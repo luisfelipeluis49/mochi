@@ -25,7 +25,7 @@ async def start_session(
     """Start the Agora agent; capturing becomes true.
 
     `demo` is the Pi's session. Any other id opens a session of its own (a phone's): its own
-    channel, agent, hints and game, apart from every other session (DECISIONS D-37).
+    channel, agent, hints and game, apart from every other session (DECISIONS D-41).
     When the device was woken by its wake phrase, Mochi greets in that language and the next
     sentence is meant for it.
     """

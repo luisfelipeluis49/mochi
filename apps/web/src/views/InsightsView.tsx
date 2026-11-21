@@ -22,6 +22,7 @@ import { type RefObject, useEffect, useState } from "react";
 import type { ConversationReport, Language } from "../contracts.ts";
 import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
+import { tabHref } from "../lib/tabs.ts";
 import { usePhoneMic } from "../lib/usePhoneMic.ts";
 import {
   conversations, improvementPercent, mistakeCount, mistakesPer10Min, practiceNext, topMistakes, totals,
@@ -67,7 +68,7 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Record uses THIS phone's microphone, not the Pi's (see usePhoneMic.ts).
-  const { startHere, stopHere } = usePhoneMic(recording, () => setError(t.micFailed));
+  const { startHere, stopHere } = usePhoneMic(recording, (problem) => setError(t.micProblem[problem]));
 
   // Start the timer when the recording starts (from this phone or from the device), clear it when it stops.
   useEffect(() => {
@@ -94,14 +95,15 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
           <div className="record-status"><span className="rec-dot" /> {t.recording} · {stopwatch(startedAt ? now - startedAt : 0)}</div>
           <p className="record-hint">{t.onlyYou}</p>
           {/* Notice: the numbers of this session show on the analytics page (/m), same person and options */}
-          <p className="record-notice">
-            {t.analyticsNotice} <a href={`/m${window.location.search}`}>{t.openAnalytics}</a>
-          </p>
+          <div className="record-notice">
+            <p>{t.analyticsNotice}</p>
+            <a className="btn secondary link-btn" href={tabHref("analytics", window.location.search)}>{t.openAnalytics}</a>
+          </div>
           <button className="btn stop" disabled={busy} onClick={() => send(stopHere)}>{t.stopRecording}</button>
         </>
       ) : (
         <>
-          <button className="btn record-btn" disabled={busy} onClick={() => send(startHere)}>● {t.recordTitle}</button>
+          <button className="btn record-btn" disabled={busy} onClick={() => send(startHere)}>{t.recordTitle}</button>
           <p className="record-hint">{t.recordHint}</p>
         </>
       )}
@@ -115,7 +117,7 @@ function ConversationDetail({ r, lang, onBack }: { r: ConversationReport; lang: 
   const t = copyFor(lang);
   return (
     <>
-      <button className="back" onClick={onBack}>{t.backToAll}</button>
+      <button className="btn secondary back-btn" onClick={onBack}>{t.backToAll}</button>
       <section>
         <h1>{conversationName(r, lang)}</h1>
         <p className="subtitle">

@@ -7,6 +7,7 @@ from mochi_backend.gateway.container import AppContainer
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.turn_pipeline import TurnOutcome
+from mochi_backend.intelligence.character_port import CharacterModel
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
@@ -16,7 +17,6 @@ from mochi_backend.storage.event_log import StorageEventSink
 from mochi_backend.storage.factory import StorageStart
 from mochi_backend.storage.port import NullStorage, Storage
 from tests.fakes.fake_agora import FakeAgoraClient, FakeTokenIssuer
-from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_scheduler import FakeScheduler
@@ -63,7 +63,7 @@ def _brain(
     clock: FakeClock,
     ids: SequentialIdGenerator,
     model: FakeHintModel | None,
-    character: FakeCharacterModel | None,
+    character: CharacterModel | None,
     hint_ttl_seconds: float,
 ) -> Intelligence:
     brain = Intelligence(
@@ -82,7 +82,7 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     env: dict[str, str] | None = None,
     intelligence: IntelligencePort | None = None,
     model: FakeHintModel | None = None,
-    character: FakeCharacterModel | None = None,
+    character: CharacterModel | None = None,
     gated: bool = False,
     storage: Storage | None = None,
 ) -> Harness:

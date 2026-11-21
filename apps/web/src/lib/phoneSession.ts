@@ -1,7 +1,7 @@
 // =============================================================================
 // phoneSession.ts  —  LANGUAGE: TypeScript
 // -----------------------------------------------------------------------------
-// Each phone has its OWN session on the backend (DECISIONS D-37): its own Agora channel, its own
+// Each phone has its OWN session on the backend (DECISIONS D-41): its own Agora channel, its own
 // hints and cooldown. Starting or stopping it never touches the Pi's session ("demo") or another
 // phone's. The id is random, kept in sessionStorage so a reload of this tab finds the same session.
 // `?session=demo` on /m makes the phone follow and control the Pi's session instead (the Operator's

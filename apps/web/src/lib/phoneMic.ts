@@ -4,7 +4,7 @@
 // THE PHONE AS MOCHI'S MICROPHONE (proposal: apps/web/PROPOSAL_phone_microphone.md).
 //   - Started on the PHONE: this phone's mic listens and the hints show here.
 //   - Started on the PI:    the Pi listens; this phone shows no live words, only analytics afterwards.
-// SINCE D-37 each phone has its OWN session (phoneSession.ts): it joins its own Agora channel
+// SINCE D-41 each phone has its OWN session (phoneSession.ts): it joins its own Agora channel
 // (GET /api/sessions/<id>/agora), so the Pi can stay on and neither disturbs the other.
 // This file: (1) remembers whether THIS phone started the session, (2) joins the Agora channel with
 // the phone's mic. The Agora Web SDK is loaded from Agora's CDN only when the mic starts, so the app
@@ -62,6 +62,30 @@ export function startedHere(s: Store | null = storage()): boolean {
  *  No while a session started on the Pi is running. */
 export function showLive(capturing: boolean, here: boolean): boolean {
   return !capturing || here;
+}
+
+// --- What went wrong, in words the person can act on -----------------------------------
+/** unsupported: no mic in this browser/page (http:// on a phone, or no microphone)
+ *  denied:      the person or the phone's settings blocked the mic
+ *  no-agora:    the backend sent no audio details (no session running, or no Agora)
+ *  agora:       the SDK did not load or joining the channel failed */
+export type MicProblem = "unsupported" | "denied" | "no-agora" | "agora";
+
+/** Map a browser error from getUserMedia to a MicProblem. */
+export function problemOf(err: unknown): MicProblem {
+  const name = (err as { name?: string } | null)?.name ?? "";
+  if (name === "NotAllowedError" || name === "SecurityError") return "denied";
+  if (name === "NotFoundError" || name === "Unsupported" || name === "TypeError") return "unsupported";
+  return "agora";
+}
+
+/** Ask for the mic RIGHT AWAY (on the tap), so the browser shows its permission question before
+ *  anything slow happens. Throws an error named "Unsupported" when this page cannot use a mic. */
+export async function askForMic(): Promise<void> {
+  const md = (globalThis.navigator as Navigator | undefined)?.mediaDevices;
+  if (!md?.getUserMedia) throw Object.assign(new Error("no mediaDevices"), { name: "Unsupported" });
+  const stream = await md.getUserMedia({ audio: true });
+  for (const track of stream.getTracks()) track.stop(); // only the permission; Agora opens its own track
 }
 
 // --- The mic itself ---------------------------------------------------------------

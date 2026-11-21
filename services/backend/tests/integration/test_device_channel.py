@@ -223,3 +223,18 @@ def test_mochi_writes_its_own_lines_only_with_a_model_key_and_gets_more_time() -
         {"MOCHI_AGORA_MODE": "fake", "MODEL_API_KEY": "k", "MOCHI_CHARACTER_ENABLED": "false"}
     )
     assert off.character_configured is False
+
+
+def test_mochi_can_be_told_to_finish_its_answer_before_the_next_sentence() -> None:
+    """Agora drops the answer under way when a sentence follows; "append" queues it instead."""
+    plain = AgentStartRequest("chan", 1002, 1001, "tok", "https://x/y", "k", SpeechTuning())
+    body = join_body(plain, "n")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    assert "interruption" not in body["properties"]  # unset: Agora's default, as before
+    queued = AgentStartRequest(
+        "chan", 1002, 1001, "tok", "https://x/y", "k", SpeechTuning(interruption="append")
+    )
+    body = join_body(queued, "n")
+    assert isinstance(body, dict) and isinstance(body["properties"], dict)
+    expected = {"enable": False, "disabled_config": {"strategy": "append"}}
+    assert body["properties"]["interruption"] == expected
