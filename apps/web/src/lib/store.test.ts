@@ -94,6 +94,17 @@ test("parseEvent rejects junk", () => {
   assert.equal(parseEvent(JSON.stringify(ev("hint.created", hint)))?.type, "hint.created");
 });
 
+test("the speaker's name shows only while Mochi is listening", async () => {
+  const { speakerName } = await import("./store.ts");
+  let s = applyEvent(initialState, ev("speaker.changed", { name: "Tasnim", user_id: "tasnim" }), T0);
+  assert.equal(speakerName(s), null); // not listening yet
+  s = applyEvent(s, ev("session.state.changed",
+    { status: "active", mode: "together", focus: "en", capturing: true, participants: ["tasnim", "matheus"] }), T0);
+  assert.equal(speakerName(s), "Tasnim");
+  s = applyEvent(s, ev("speaker.changed", { name: null, user_id: null }), T0);
+  assert.equal(speakerName(s), null);
+});
+
 test("hintOptions splits on ' · ' and keeps a single expression whole", () => {
   assert.deepEqual(hintOptions("me queimei · tomei muito sol"), ["me queimei", "tomei muito sol"]);
   assert.deepEqual(hintOptions("postpone"), ["postpone"]);

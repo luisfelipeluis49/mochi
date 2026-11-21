@@ -54,7 +54,9 @@ A análise de **uma conversa real** de **uma pessoa** (reunião de trabalho, lig
 ```json
 { "report_id": "rep_001", "user_id": "tasnim", "target_language": "en",
   "title": "Weekly sync with the team", "context": "meeting",
-  "started_at": "2026-11-20T13:00:00.000Z", "speaking_minutes": 20,
+  "started_at": "2026-11-20T13:00:00.000Z", "ended_at": "2026-11-20T13:30:00.000Z", "speaking_minutes": 20,
+  "my_sentences": [ { "at": "2026-11-20T13:04:00.000Z", "text": "I finish the slides yesterday.",
+                      "better": "I finished the slides yesterday.", "topic": "Past tense" } ],
   "mistakes": [ { "kind": "grammar", "topic": "Past tense",
                   "said": "I finish the slides yesterday.", "better": "I finished the slides yesterday.", "count": 1 } ],
   "unknown_words": [ { "expression": "deadline", "meaning": "prazo", "said_instead": "prazo", "times": 1 } ],
@@ -62,11 +64,29 @@ A análise de **uma conversa real** de **uma pessoa** (reunião de trabalho, lig
   "focus_next": ["Past tense: sent, received, finished"] }
 ```
 
+- **Cada gravação é uma conversa.** A pessoa aperta **Gravar conversa** no celular (`POST /api/sessions/demo/start`) e **Parar e salvar** (`/stop`). Um relatório é criado para aquele intervalo, com `started_at` e `ended_at`. Uma hora depois, outra gravação vira outro relatório.
+- **Só as frases da própria pessoa:** o campo `my_sentences` traz, em ordem, o que **ela** disse: `{ "at", "text", "better", "topic" }`. `better` é a frase corrigida (ou `null`); `topic` é o grupo do erro (ou `null` quando é só uma palavra que faltou). **O que a outra pessoa disse nunca vai para a página dela.** Isso depende de saber de quem é cada frase: o Pi já reconhece as vozes (seção 3c).
 - `kind`: `grammar`, `word_choice` ou `false_friend`. `context`: `meeting`, `conversation` ou `practice`.
 - **Quem gera:** a parte de inteligência (Kauê). Isso **inclui correção de gramática**, que o AGENTS.md v0.4 deixa fora do MVP (seção 8): é uma decisão do time.
 - **Precisa saber quem falou:** só as frases **daquela pessoa** entram no relatório dela. Depende da decisão de "quem disse o quê".
 - **Reenviar ao conectar:** a página só mostra progresso se o backend reenviar todos os relatórios antigos daquela pessoa quando ela abre a página.
 - **Privacidade:** em reuniões há outras pessoas. O Mochi só ouve entre Iniciar e Parar, e a página lembra de avisar os outros.
+
+## 3c. Um evento novo: `speaker.changed` (quem está falando agora)
+
+O Pi do Matheus **já reconhece as vozes** (`hardware/pi-bridge/mochi_device/speakers.py`) e já manda o nome para o backend em `POST /api/devices/home_pi_01/status` (`"speaker": "Tasnim"`, AGENTS.md 6.6). A tela do próprio aparelho (`face.html`) já mostra esse nome no canto.
+
+Para o Mochi do **web app** mostrar o mesmo (tela do Mochi e telão), o gateway só precisa **repassar** esse valor quando ele muda:
+
+```json
+{ "type": "speaker.changed", "payload": { "name": "Tasnim", "user_id": "tasnim" } }
+```
+
+- `name`: o nome com que a voz foi aprendida. `null` quando ninguém conhecido está falando.
+- `user_id`: o id do usuário, quando o gateway souber ligar o nome ao id (ex.: minúsculas: "Tasnim" → "tasnim").
+- **Enviado para:** todas as conexões.
+- **Quem faz:** Luís (gateway). Nada muda no Pi.
+- **Bônus:** com isso, o backend também sabe **de quem é cada frase**. É o que falta para os relatórios de "Minhas conversas" serem de cada pessoa.
 
 ## 4. Dica com até 3 opções, sem mudar campo
 

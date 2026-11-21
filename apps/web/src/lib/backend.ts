@@ -110,10 +110,12 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
 }
 
 /** Connect to the FAKE backend (?mock=1). It replays the demo by itself. */
-export function connectMock(who: Who, h: BackendHandlers, speed: number): Backend {
-  const gw = new MockGateway(who, h.onEvent, speed);
+/** scenario "recording" (the /me page): nothing plays by itself; Record and Stop make a new conversation. */
+export function connectMock(who: Who, h: BackendHandlers, speed: number, people?: [string, string],
+  scenario: "demo" | "recording" = "demo"): Backend {
+  const gw = new MockGateway(who, h.onEvent, speed, () => Date.now(), people, scenario);
   h.onConnected(true);
-  gw.connect(true); // true = play the demo automatically
+  gw.connect(scenario === "demo"); // the demo plays by itself; the /me page waits for "Record"
   return {
     start: async () => gw.start(),
     stop: async () => gw.stop(),

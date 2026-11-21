@@ -7,6 +7,8 @@
 // What it shows (one at a time, full screen, big text, no animation):
 //   sleeping face → "What do you want to do today?" → listening face → a hint (1-3 options)
 //   → "speaking" (with what Mochi says) → the game screens
+// On every screen, a badge in the top-left corner shows WHO IS TALKING (e.g. "Tasnim"), when Mochi
+// recognises the voice — like the device's own face (hardware/pi-setup/face.html).
 // Face screens are cream, like Mochi's body; word screens are dark, like the vision slides.
 // The ONLY input: tap anywhere on the screen, or hold (long press).
 // The decision "which screen to show" is made in lib/home.ts; this file only draws it
@@ -17,7 +19,7 @@ import { type PointerEvent, type RefObject, useRef, useState } from "react";
 import { type Backend, HttpError } from "../lib/backend.ts";
 import { type HomeLocal, LONG_PRESS_MS, type Press, afterResultFailure, applyAction, homeScreen, initialHomeLocal, onPress } from "../lib/home.ts";
 import { copyFor, displayName, fitFontSize } from "../lib/i18n.ts";
-import type { ClientState } from "../lib/store.ts";
+import { type ClientState, speakerName } from "../lib/store.ts";
 import type { Language } from "../contracts.ts";
 
 // "Props" = the inputs this component receives from main.tsx.
@@ -54,6 +56,8 @@ export function HomeView({ state, now, lang, backend }: Props) {
 
   // Ask lib/home.ts: "with this data, which screen should Mochi show right now?"
   const screen = homeScreen(state, local, now);
+  // Whose voice Mochi hears right now, e.g. "Tasnim" (null = nobody it knows). Same badge as the device's face.html.
+  const who = speakerName(state);
 
   // Called after we know if it was a "tap" or a "long" press.
   const press = (p: Press) => {
@@ -155,6 +159,7 @@ export function HomeView({ state, now, lang, backend }: Props) {
       onPointerLeave={cancel}
       onContextMenu={(e) => e.preventDefault()} // a long press must not open the right-click menu
     >
+      {who && <div className="who" data-who={who}>{who}</div>}
       {body}
     </main>
   );

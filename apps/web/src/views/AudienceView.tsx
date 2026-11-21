@@ -11,7 +11,7 @@
 
 import type { Language } from "../contracts.ts";
 import { copyFor, displayName, fitFontSize } from "../lib/i18n.ts";
-import { type ClientState, hintOptions, isSpeaking, liveHint } from "../lib/store.ts";
+import { type ClientState, hintOptions, isSpeaking, liveHint, speakerName } from "../lib/store.ts";
 import { resultVisible } from "../lib/home.ts";
 import { Face } from "./HomeView.tsx";
 
@@ -81,5 +81,7 @@ export function AudienceView({ state, now, lang }: { state: ClientState; now: nu
     );
   }
 
-  return <main className="audience">{body}</main>;
+  // Who is talking right now, in the corner (like Mochi's own screen)
+  const who = speakerName(state);
+  return <main className="audience">{who && <div className="who" data-who={who}>{who}</div>}{body}</main>;
 }

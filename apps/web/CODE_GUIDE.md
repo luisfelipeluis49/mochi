@@ -26,10 +26,11 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 | File | What it does |
 |---|---|
 | `src/main.tsx` | Starting point. Reads the URL, picks the screen, draws it |
+| `src/views/StartPage.tsx` | The page at `/`: goes straight to this phone's owner's page; first time, explains how to open your link |
 | `src/views/HomeView.tsx` | Mochi's 3.5-inch screen: face, the mode question, hints, what Mochi says, the game. Turns touches into tap / long press |
 | `src/views/MobileView.tsx` | The phone ("Mochi Mobile"), the analytics page: Start/Stop, progress numbers, last session, sessions bars, "My words" cards |
 | `src/views/AudienceView.tsx` | The projector. Never shows the secret word during a round |
-| `src/views/InsightsView.tsx` | "My conversations" (`/me?user=`): the analytics of a person's real conversations |
+| `src/views/InsightsView.tsx` | "My conversations" (`/me?user=`): Record/Stop, the history (one entry per recording), one conversation with only your sentences, and the analytics |
 | `src/views/DebugPanel.tsx` | The `?debug=1` list of the last 10 events |
 
 ## 2. TypeScript (`.ts`): the logic, with no screen
@@ -42,6 +43,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 | `src/lib/home.ts` | The rules of Mochi's screen and the game (which screen, what a tap does) |
 | `src/lib/backend.ts` | The **only** file that talks to the backend (WebSocket + POST requests) |
 | `src/lib/useMochi.ts` | React hook: connects once, keeps the data, ticks the clock |
+| `src/lib/people.ts` | Each phone remembers its owner; reading `?people=` for the demo |
 | `src/lib/who.ts` | URL → "am I Mochi, a phone, or the projector?" |
 | `src/lib/i18n.ts` | Every text on screen, in English and Portuguese |
 | `src/contracts.ts` | The shape of every message (types only). Temporary until Matheus's `packages/contracts` exists. Lines marked `PROPOSED v0.5` are the proposal |
