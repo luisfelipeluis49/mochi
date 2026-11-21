@@ -284,13 +284,14 @@ def test_parse_target_surface_ar_makes_a_glasses_target() -> None:
 
 
 def test_glasses_never_get_cards_prompts_game_or_speech() -> None:
-    for event, payload in [
+    cases: list[tuple[EventType, EventPayload]] = [
         (EventType.LEARNING_EVENT_CREATED, _card("ana")),
         (EventType.LEARNING_EVENT_UPDATED, _card("ana")),
         (EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT),
         (EventType.ACTIVITY_STATE_CHANGED, _activity(GameState.ACTIVE_ROUND)),
         (EventType.AGENT_SPEAK_REQUESTED, SPEAK),
-    ]:
+    ]
+    for event, payload in cases:
         assert not is_recipient(event, payload, ANA_AR, None)
 
 
