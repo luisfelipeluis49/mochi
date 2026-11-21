@@ -15,7 +15,9 @@ _REAL_MODE_REQUIRED = (
     "agora_rest_key",
     "agora_rest_secret",
     "mochi_turn_key",
+    "mochi_device_key",
 )
+DEV_DEVICE_KEY = "dev-device-key"  # fake mode only; the Pi sends it as `Authorization: Bearer`
 
 
 class SettingsError(Exception):
@@ -32,6 +34,7 @@ class Settings(BaseSettings):
     agora_rest_key: str = ""
     agora_rest_secret: str = ""
     mochi_turn_key: str = ""
+    mochi_device_key: str = ""
     model_api_key: str = ""
     mochi_public_url: str = "http://localhost:8000"
     mochi_agora_mode: Literal["fake", "real"] = "real"
@@ -84,6 +87,7 @@ class Settings(BaseSettings):
     def _real_mode_needs_credentials(self) -> Self:
         if self.mochi_agora_mode == "fake":
             self.mochi_turn_key = self.mochi_turn_key or "dev-turn-key"
+            self.mochi_device_key = self.mochi_device_key or DEV_DEVICE_KEY
             return self
         missing = [name.upper() for name in _REAL_MODE_REQUIRED if not getattr(self, name)]
         if missing:

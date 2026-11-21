@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from mochi_backend.gateway.device_commands import QUEUE_LIMIT, DeviceCommand
+from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, QUEUE_LIMIT, DeviceCommand
 from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID, USER_IDS
 from mochi_contracts import (
     Activity,
@@ -49,6 +49,8 @@ class SessionStore:
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
         self.commands: list[DeviceCommand] = []  # for the device, newest last (this session's)
+        self.round_secrets: tuple[str, ...] = ()  # the word (and its meaning) of the live round
+        self.served_byes: set[str] = set()  # `bye` is handed to the device once, never replayed
         self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
 
@@ -59,6 +61,17 @@ class SessionStore:
         before it changes anything and drops itself when it differs.
         """
         self.generation += 1
+
+    def fresh_commands(self, now: datetime) -> list[DeviceCommand]:
+        """What the device may still do: nothing past its lifetime, and `bye` only once.
+
+        Example: a `bye` queued 40 seconds ago is dropped; one just served is not served again.
+        """
+        alive = [c for c in self.commands if c.at is None or now - c.at <= COMMAND_LIFETIME]
+        self.commands = [c for c in alive if c.command_id not in self.served_byes]
+        handed_out = list(self.commands)
+        self.served_byes |= {c.command_id for c in handed_out if c.kind == "bye"}
+        return handed_out
 
     def queue(self, commands: list[DeviceCommand]) -> None:
         """Hand the device more to do; it reads them from its state. Only the last few are kept."""
@@ -82,6 +95,7 @@ class SessionStore:
     def end_game(self) -> None:
         """Back to IDLE and `together` without touching history (used by Stop)."""
         self.activity = idle_activity()
+        self.round_secrets = ()
         self.mode = SessionMode.TOGETHER
 
     def session_state(self) -> SessionState:

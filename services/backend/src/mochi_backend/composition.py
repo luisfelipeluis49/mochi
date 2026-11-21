@@ -77,7 +77,10 @@ def default_adapters(settings: Settings) -> Adapters:
         tokens: RtcTokenIssuer = LocalMockTokenIssuer()
     else:
         creds = (settings.agora_rest_key, settings.agora_rest_secret)
-        agora = AgoraRestClient(HttpxClient(), settings.agora_app_id, *creds, ids)
+        secrets = (settings.model_api_key, settings.mochi_turn_key, settings.mochi_device_key)
+        http = HttpxClient()
+        rest = AgoraRestClient(http, settings.agora_app_id, *creds, ids)
+        agora = rest.hide_secrets((*secrets, *creds))
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
     brain = _brain_for(settings, clock, ids, logger)
     name = "rules+model" if settings.model_configured else "rules"
