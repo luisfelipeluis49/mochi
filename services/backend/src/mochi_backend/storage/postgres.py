@@ -91,7 +91,8 @@ class PostgresStorage:
             try:
                 kept.append(parse(row))
             except (ValidationError, ValueError):
-                self._logger.log("storage_row_skipped", {"table": table, "key": str(row[0])[:60]})
+                key = "" if table == "voices" else str(row[0])[:60]  # a voice name is personal
+                self._logger.log("storage_row_skipped", {"table": table, "key": key})
         return kept
 
     def save_voice(self, voice: VoiceProfile) -> None:

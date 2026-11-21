@@ -226,3 +226,33 @@ def test_a_failed_reset_is_retried_in_order_with_the_saves_around_it() -> None:
     behind.save_event(_event("new"))
     behind.flush()
     assert list(inner.events) == ["new"]
+
+
+def test_a_reset_made_during_an_outage_wins_over_words_saved_before_it() -> None:
+    inner = FakeStorage()
+    behind = WriteBehindStorage(inner, FakeEventLogger())
+    behind.save_event(_event("old"))
+    behind.flush()
+    inner.broken = True
+    behind.clear_events()
+    behind.save_event(_event("b"))
+    behind.clear_events()  # a second reset: "b" is older than it and must not survive
+    behind.flush()
+    assert behind.unsaved_writes() == 1  # only the reset waits
+    inner.broken = False
+    behind.save_event(_event("c"))
+    behind.flush()
+    assert list(inner.events) == ["c"] and behind.unsaved_writes() == 0
+
+
+def test_during_an_outage_a_new_write_waits_without_another_attempt() -> None:
+    inner = FakeStorage()
+    behind = WriteBehindStorage(inner, FakeEventLogger())
+    inner.broken = True
+    behind.save_event(_event("a"))
+    behind.flush()
+    inner.calls.clear()
+    behind.save_event(_event("b"))
+    behind.flush()
+    assert inner.calls == ["save_event"]  # the retry of "a" failed; "b" was not even tried
+    assert behind.unsaved_writes() == 2

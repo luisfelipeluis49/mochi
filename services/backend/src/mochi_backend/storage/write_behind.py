@@ -14,6 +14,8 @@ from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import Storage, voice_key
 from mochi_contracts import LearningEvent, User, VoiceProfile
 
+CLEAR_KEY = "events:clear"
+
 
 class WriteBehindStorage:
     """Implements `Storage` over another `Storage`. One worker keeps the writes in order."""
@@ -29,25 +31,46 @@ class WriteBehindStorage:
         self._worker.submit(self._run, key, write)
 
     def _run(self, key: str, write: Callable[[], None]) -> None:
-        """Worker thread: first the writes that failed before, then this one."""
-        for old_key, old_write in self._snapshot_failed():
-            self._try(old_key, old_write)
-        self._try(key, write)
+        """Worker thread: the writes that failed before go first; this one only if they all pass.
 
-    def _snapshot_failed(self) -> list[tuple[str, Callable[[], None]]]:
+        A write that comes after a failed one waits behind it without trying, so an outage costs one
+        timeout per write at most, and nothing is ever applied out of order.
+        """
+        if key == CLEAR_KEY:
+            self._drop_pending_events()  # every one of them is older than this clear
+        if self._retry_backlog() and self._attempt(key, write):
+            return
+        self._park(key, write)
+
+    def _drop_pending_events(self) -> None:
         with self._lock:
-            return list(self._failed.items())
+            self._failed = {k: w for k, w in self._failed.items() if not k.startswith("event:")}
 
-    def _try(self, key: str, write: Callable[[], None]) -> None:
+    def _retry_backlog(self) -> bool:
+        """Try the failed writes oldest first; stop at the first that fails again."""
+        with self._lock:
+            waiting = list(self._failed.items())
+        for key, write in waiting:
+            if not self._attempt(key, write):
+                return False
+            with self._lock:
+                self._failed.pop(key, None)
+        return True
+
+    def _attempt(self, key: str, write: Callable[[], None]) -> bool:
         try:
             write()
         except Exception as error:  # noqa: BLE001 - any driver error must stay off the turn path
-            with self._lock:
-                self._failed[key] = write  # a key that is already waiting keeps its place
             self._logger.log("storage_write_failed", {"what": key, "error": type(error).__name__})
-        else:
-            with self._lock:
+            return False
+        return True
+
+    def _park(self, key: str, write: Callable[[], None]) -> None:
+        """Keep a write for the next try. A reset goes to the end: it is newer than what waits."""
+        with self._lock:
+            if key == CLEAR_KEY:
                 self._failed.pop(key, None)
+            self._failed[key] = write
 
     def unsaved_writes(self) -> int:
         """How many writes failed and are waiting for the next try. 0 means everything is saved."""
@@ -76,7 +99,7 @@ class WriteBehindStorage:
 
     def clear_events(self) -> None:
         """Queue the delete."""
-        self._later("events:clear", self._inner.clear_events)
+        self._later(CLEAR_KEY, self._inner.clear_events)
 
     def load_voices(self) -> list[VoiceProfile]:
         """Pass-through read."""

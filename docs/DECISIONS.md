@@ -472,7 +472,8 @@ apps really use what the database holds. **Touches `hardware/pi-bridge` (Matheus
   Off by default, so tests write no files; `scripts/start-dev.sh` turns it on (`.local/`, git-ignored).
   `/readyz` then shows `storage: local_file`.
 - **Failures are visible and healed.** A failed write is kept (newest per record) and retried before the next
-  write, in order, so a retried save cannot undo a later delete or reset. `/readyz` has `storage_unsaved`
+  write, in order; a write that comes after a failed one waits behind it without trying (one timeout per write at
+  most). A reset drops the older waiting word saves and goes to the end, so a retry cannot undo a later delete or reset. `/readyz` has `storage_unsaved`
   (writes waiting); `ready` is **not** changed, because the memory fallback is meant to look healthy to
   `smoke.sh` and `deploy.sh`. Startup tries the database 3 times, 2 s apart, and every statement has a 10 s
   timeout. A database still down after that means memory only until the next restart (logged

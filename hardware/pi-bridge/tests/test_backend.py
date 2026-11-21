@@ -464,6 +464,28 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup.face.show_for.assert_called_with(10, word="queue", note="")
 
 
+class RestoredVoicesTest(unittest.TestCase):
+    def test_voices_from_the_backend_are_handed_to_the_listener(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.kws = MagicMock()
+        voices = [{"name": "Ana", "voiceprint": [0.1, 0.2]}]
+        sup.on_agent_event("voices", voices)
+        sup.kws.merge_voices.assert_called_once_with(voices)
+
+    def test_an_enrolled_voice_sends_its_vector_with_the_announcement(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.kws, sup.face, sup.enrol_lang = MagicMock(), MagicMock(), "pt"
+        sup.kws.voiceprints.return_value = {"Ana": {"voiceprint": [0.1], "saved": None}}
+        sup.backend = MagicMock(voice_enrolled=AsyncMock())
+
+        async def run():
+            sup.on_voice_event(("enrolled", "Ana", 9.0))
+            await asyncio.sleep(0)
+
+        asyncio.run(run())
+        sup.backend.voice_enrolled.assert_awaited_once_with("Ana", "pt", True, {"voiceprint": [0.1], "saved": None})
+
+
 class UsedWordTest(unittest.IsolatedAsyncioTestCase):
     """Someone says a word they were just given: the face cheers, silently."""
 
