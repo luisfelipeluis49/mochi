@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
+from mochi_backend.platform.json_logging import EventLogger
 from mochi_contracts import Reason
 
 SYSTEM_PROMPT = """You are the silent helper inside a language-practice device. Two people \
@@ -84,7 +85,11 @@ Example, focus en: "I need to go, ok? Tchau tchau!" -> {"decision": "IGNORE"}.""
 
 
 def _confidence(value: object) -> float | None:
-    """The model's confidence as 0-1; a percentage is scaled, anything else is no statement."""
+    """The model's confidence as 0-1; a percentage is scaled, anything else is no statement.
+
+    None means the model did not say how sure it is; `DecisionFlow` then treats the hint as
+    NOT sure and stays quiet. Example: `_confidence(95)` is 0.95, `_confidence("high")` is None.
+    """
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return value / 100 if value > 1 else float(value)
@@ -125,9 +130,15 @@ class OpenAiHintModel:
     """Example: `OpenAiHintModel(http, base_url, "model", key, 2.0)`; see `suggest`."""
 
     def __init__(
-        self, http: HttpClient, base_url: str, model_name: str, api_key: str, timeout_seconds: float
+        self,
+        http: HttpClient,
+        base_url: str,
+        model_name: str,
+        api_key: str,
+        timeout_seconds: float,
     ) -> None:
         self._http = http
+        self._logger: EventLogger | None = None
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._model_name = model_name
         self._api_key = api_key
@@ -141,6 +152,14 @@ class OpenAiHintModel:
         hint; it also takes no `temperature`. Leave empty for models without the setting.
         """
         self._reasoning_effort = effort
+        return self
+
+    def logging(self, logger: EventLogger) -> "OpenAiHintModel":
+        """Log a metadata-only line when a call fails, and return self.
+
+        Example: `OpenAiHintModel(...).thinking("none").logging(logger)`.
+        """
+        self._logger = logger
         return self
 
     def _payload(self, request: ModelRequest) -> JsonValue:
@@ -166,6 +185,11 @@ class OpenAiHintModel:
             return {"reasoning_effort": self._reasoning_effort}
         return {"temperature": 0}
 
+    def _failed(self, why: str) -> None:
+        """No hint because the call failed: log what failed, never the sentence or the key."""
+        if self._logger is not None:
+            self._logger.log("hint_model_failed", {"model": self._model_name, "why": why})
+
     async def suggest(self, request: ModelRequest) -> ModelSuggestion | None:
         """Ask the model; None on transport error, non-200, or output that is not strict JSON."""
         headers = {"Authorization": f"Bearer {self._api_key}"}
@@ -174,8 +198,10 @@ class OpenAiHintModel:
                 self._url, headers, self._payload(request), self._timeout
             )
             if reply.status != HTTP_OK:
+                self._failed(f"HTTP {reply.status}")
                 return None
             content = _ChatReply.model_validate_json(reply.body).choices[0].message.content
             return _suggestion(content, asked=bool(request.asked_about))
-        except (HttpTransportError, ValidationError, IndexError, ValueError):
+        except (HttpTransportError, ValidationError, IndexError, ValueError) as error:
+            self._failed(type(error).__name__)  # the class only: a message may quote the sentence
             return None

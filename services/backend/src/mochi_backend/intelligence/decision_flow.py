@@ -225,9 +225,24 @@ class DecisionFlow:
         found = self._by_rules(turn.text, context)
         if not self._needs_model(found, turn.text, context):
             return found, await self._follow_up(turn, context, found)
-        return await asyncio.gather(
-            self._by_model(found, turn.text, context), self._follow_up(turn, context, None)
-        )
+        return await self._model_before_line(found, turn, context)
+
+    async def _model_before_line(
+        self, found: CaseMatch | None, turn: Turn, context: SessionContext
+    ) -> tuple[CaseMatch | None, str | None]:
+        """Both are asked at once, but a hint never waits for Mochi's line (AGENTS 7.2).
+
+        The line is kept only if it is ready when the hint model answers, or when there is no
+        hint and the line is all that is left; its own timeout bounds that wait.
+        """
+        line = asyncio.ensure_future(self._follow_up(turn, context, None))
+        try:
+            match = await self._by_model(found, turn.text, context)
+            if match is None or line.done():
+                return match, await line
+            return match, None
+        finally:
+            line.cancel()
 
     def _by_rules(self, text: str, context: SessionContext) -> CaseMatch | None:
         history = [t.text for t in context.recent_turns]
@@ -259,7 +274,7 @@ class DecisionFlow:
         AGENTS 7.1 has a model judge case 8 in context, and 7.2 says quiet by default, so with no
         model (or a model that disagrees or is slow) the answer is IGNORE.
         """
-        answer = await self._ask_model(text, history, context)
+        answer = await self._ask_model(text, history, context, by_rule=True)
         agrees = answer is not None and answer.expression.lower() == candidate.expression.lower()
         return candidate if agrees else None
 
@@ -275,7 +290,7 @@ class DecisionFlow:
         )
 
     async def _ask_model(
-        self, text: str, history: list[str], context: SessionContext
+        self, text: str, history: list[str], context: SessionContext, by_rule: bool = False
     ) -> CaseMatch | None:
         sentence = question_itself(text)
         request = ModelRequest(
@@ -289,43 +304,55 @@ class DecisionFlow:
         suggestion = await first_answer(
             lambda: self._model.suggest(request), self._hedge_after, self._model_timeout
         )
-        match = self._accepted(text, suggestion, context)
+        match = self._accepted(text, suggestion, context, by_rule)
         if match and match.reason is Reason.ASKS_PARTNER and not addressed_partner(text, context):
             # nobody was named, so nobody in particular was asked: the label must not vary
             match = replace(match, reason=Reason.SAYS_UNKNOWN)
         return match
 
     def _accepted(
-        self, text: str, suggestion: ModelSuggestion | None, context: SessionContext
+        self,
+        text: str,
+        suggestion: ModelSuggestion | None,
+        context: SessionContext,
+        by_rule: bool,
     ) -> CaseMatch | None:
         """The model's answer as a hint, or None: no hint, incomplete, unsure or off the rules."""
         if suggestion is None or suggestion.decision != "SHOW_HINT":
             return None
         answer = right_way_round(text, suggestion)
-        if answer is None or not answer.reason or self._rejected(text, answer, context):
+        if answer is None or not answer.reason or self._rejected(text, answer, context, by_rule):
             return None
         language = language_named(answer.expression_language) if open_ask(text) else None
         return CaseMatch(
             answer.reason, answer.expression or "", answer.meaning, answer.example, language
         )
 
-    def _rejected(self, text: str, answer: ModelSuggestion, context: SessionContext) -> bool:
+    def _rejected(
+        self, text: str, answer: ModelSuggestion, context: SessionContext, by_rule: bool
+    ) -> bool:
         """The checks that keep a wrong or unwanted hint off the screen (DECISIONS D-29)."""
         word, said = answer.expression or "", answer.meaning
-        if self._doubtful(answer, context.focus, open_ask(text)) or made_up(text, answer):
+        if self._doubtful(answer, context.focus, open_ask(text), by_rule) or made_up(text, answer):
             return True
         if only_the_word(text, answer, context):
             return True  # "Molho para salada?": trying out a word they were just given
         return not asks_for_word(text) and only_extends(word, said)
 
-    def _doubtful(self, answer: ModelSuggestion, focus: Language, open_ask: bool) -> bool:
+    def _doubtful(
+        self, answer: ModelSuggestion, focus: Language, open_ask: bool, by_rule: bool
+    ) -> bool:
         """The model is not sure itself, or its word is not in the language being practised.
 
         Seen with real sentences: "maybe a ranch?" (English) got the hint "fazenda". Quiet first.
         A question that names no language ("Como se diz abacaxi?") is asked in one language for
         a word of the other, so there the model's own label decides and is not held against it.
         """
-        unsure = answer.confidence is not None and answer.confidence < self._min_confidence
+        # No stated confidence is no certainty: quiet first (AGENTS 7.2). Only a word the lexicon
+        # rules already found (a false-friend candidate the model is confirming) may go without.
+        unsure = (answer.confidence is None and not by_rule) or (
+            answer.confidence is not None and answer.confidence < self._min_confidence
+        )
         hint_in = language_named(answer.expression_language)
         said_in = language_named(answer.meaning_language)
         wrong_side = not open_ask and hint_in is not None and hint_in is not focus
@@ -381,9 +408,10 @@ class DecisionFlow:
             line = await self._line(turn, match, named=True)
         if match is None:  # not a word: a chat, or something for Mochi to do (only in character)
             return self._saying(ignore(), line, turn) if line else ignore()
-        shown = self._show(
-            CaseMatch(Reason.ASKS_MOCHI, match.expression, match.meaning, match.example), context
-        )
+        # the language the model found stays: "como se diz abacaxi?" is asked in Portuguese for
+        # an English word, which is the English learner's (AGENTS 7.3)
+        asked = replace(match, reason=Reason.ASKS_MOCHI)
+        shown = self._show(asked, in_its_language(context, asked))
         text = line or _ANSWER_LINES[context.focus].format(w=match.expression)
         speak = Speak(text=text, language=context.focus, reason=SpeakReason.ASKS_MOCHI)
         return shown.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})

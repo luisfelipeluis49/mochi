@@ -721,7 +721,8 @@
    "reason": "says_unknown",
    "expression": "cancel",
    "meaning": "cancelar",
-   "example": "I need to cancel the trip."
+   "example": "I need to cancel the trip.",
+   "confidence": 0.9
   }
  },
  {
@@ -833,7 +834,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "fork",
-   "meaning": "garfo"
+   "meaning": "garfo",
+   "confidence": 0.9
   }
  },
  {
@@ -850,7 +852,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "traffic",
-   "meaning": "trânsito"
+   "meaning": "trânsito",
+   "confidence": 0.9
   }
  },
  {
@@ -867,7 +870,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "carteira",
-   "meaning": "wallet"
+   "meaning": "wallet",
+   "confidence": 0.9
   }
  },
  {
@@ -884,7 +888,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "sal",
-   "meaning": "salt"
+   "meaning": "salt",
+   "confidence": 0.9
   }
  },
  {
@@ -901,7 +906,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "supermercado",
-   "meaning": "supermarket"
+   "meaning": "supermarket",
+   "confidence": 0.9
   }
  },
  {
@@ -973,7 +979,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "milk",
-   "meaning": "leite"
+   "meaning": "leite",
+   "confidence": 0.9
   }
  },
  {
@@ -990,7 +997,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "head",
-   "meaning": "cabeça"
+   "meaning": "cabeça",
+   "confidence": 0.9
   }
  },
  {
@@ -1007,7 +1015,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "reunião",
-   "meaning": "meeting"
+   "meaning": "meeting",
+   "confidence": 0.9
   }
  },
  {
@@ -1024,7 +1033,8 @@
    "decision": "SHOW_HINT",
    "reason": "code_switch",
    "expression": "carregador",
-   "meaning": "charger"
+   "meaning": "charger",
+   "confidence": 0.9
   }
  },
  {
@@ -1041,7 +1051,8 @@
    "decision": "SHOW_HINT",
    "reason": "says_unknown",
    "expression": "spoon",
-   "meaning": "colher"
+   "meaning": "colher",
+   "confidence": 0.9
   }
  },
  {

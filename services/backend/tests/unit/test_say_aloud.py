@@ -99,7 +99,12 @@ async def test_asking_how_to_say_a_dish_is_a_question_not_a_dish_dropped_in_on_p
         assert asks_for_word(question), question
     assert asked_term("You know, how do you say feijoada in") == "feijoada"
     stew = ModelSuggestion.model_validate(
-        {"decision": "SHOW_HINT", "reason": "says_unknown", "expression": "bean stew"}
+        {
+            "decision": "SHOW_HINT",
+            "reason": "says_unknown",
+            "expression": "bean stew",
+            "confidence": 0.9,
+        }
     )
     brain = Intelligence(clock=FakeClock(), ids=SequentialIdGenerator(), model=FakeHintModel(stew))
     asked = await brain.decide(make_turn("How do you say feijoada in English?"), make_context())

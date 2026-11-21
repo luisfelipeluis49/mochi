@@ -169,7 +169,11 @@ async def test_someone_who_woke_mochi_keeps_its_attention_for_the_whole_session(
 def _two_minds(mochi: FakeCharacterModel, clock: FakeClock) -> Intelligence:
     """Mochi's scripted lines, and a hint model that knows one word outside the lexicon."""
     fork = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="fork", meaning="garfo"
+        decision="SHOW_HINT",
+        reason=Reason.CODE_SWITCH,
+        expression="fork",
+        meaning="garfo",
+        confidence=0.9,
     )
     tuning = IntelligenceSettings(character_timeout_seconds=6.0, follow_up_seconds=15.0)
     brain = Intelligence(
@@ -300,7 +304,9 @@ async def test_mochi_is_told_the_language_of_each_sentence_and_whether_it_was_wo
 async def test_when_the_hint_model_is_needed_mochi_does_not_wait_for_it() -> None:
     """Both models are asked at once: the word then reaches the screens but not Mochi's line."""
     hints = FakeHintModel(
-        ModelSuggestion(decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="cancel")
+        ModelSuggestion(
+            decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="cancel", confidence=0.9
+        )
     )
     mochi = FakeCharacterModel("[mood happy] ok")
     tuning = IntelligenceSettings(character_timeout_seconds=6.0, follow_up_seconds=15.0)
