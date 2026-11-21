@@ -45,6 +45,7 @@ from mochi_backend.intelligence.quiet_rules import (
     hint_on_screen,
     hints_of_last_turns,
     lasting_quiet_reason,
+    round_is_active,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
@@ -142,7 +143,8 @@ class DecisionFlow:
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
         context = session_context.model_copy(update={"focus": spoken})
-        if has_wake_phrase(turn.text):  # the wake phrase beats every quiet rule (AGENTS 7.2)
+        # The wake phrase beats every quiet rule (AGENTS 7.2); a thank-you does not in a round.
+        if has_wake_phrase(turn.text, round_is_active(context)):
             return await self._answer_mochi(turn, context)
         return self._said_aloud(turn, context) or await self._watching(turn, context)
 
