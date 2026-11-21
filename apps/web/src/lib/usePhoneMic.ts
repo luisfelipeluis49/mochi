@@ -10,9 +10,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Backend } from "./backend.ts";
-import { markStartedHere, startedHere, startPhoneMic } from "./phoneMic.ts";
+import { askForMic, type MicProblem, markStartedHere, problemOf, startedHere, startPhoneMic } from "./phoneMic.ts";
 
-export function usePhoneMic(capturing: boolean, onMicFailed: () => void) {
+export function usePhoneMic(capturing: boolean, onMicFailed: (problem: MicProblem) => void) {
   const [here, setHere] = useState(() => startedHere());
   const micStop = useRef<(() => Promise<void>) | null>(null); // stops this phone's mic, when it is on
   const wasCapturing = useRef(capturing);
@@ -36,15 +36,25 @@ export function usePhoneMic(capturing: boolean, onMicFailed: () => void) {
   useEffect(() => () => { void micStop.current?.(); }, []);
 
   const startHere = async (b: Backend) => {
+    // 1. Ask for the mic on the tap itself (not in the mock). No mic = no session.
+    if (b.usesMic) {
+      try {
+        await askForMic();
+      } catch (err) {
+        onMicFailed(problemOf(err));
+        return;
+      }
+    }
     markStartedHere(true);
     setHere(true);
-    await b.start();
-    const join = await b.phoneAudio(); // null in the mock: no mic
-    if (!join) return;
+    await b.start();                   // 2. the usual Start
+    if (!b.usesMic) return;            //    the mock stops here
+    const join = await b.phoneAudio(); // 3. where to join
+    if (!join) return onMicFailed("no-agora");
     try {
-      micStop.current = await startPhoneMic(join);
+      micStop.current = await startPhoneMic(join); // 4. join Mochi's channel with this mic
     } catch {
-      onMicFailed(); // no permission, no HTTPS, or the SDK did not load
+      onMicFailed("agora");
     }
   };
 

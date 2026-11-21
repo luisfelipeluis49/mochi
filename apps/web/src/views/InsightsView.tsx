@@ -67,7 +67,7 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Record uses THIS phone's microphone, not the Pi's (see usePhoneMic.ts).
-  const { startHere, stopHere } = usePhoneMic(recording, () => setError(t.micFailed));
+  const { startHere, stopHere } = usePhoneMic(recording, (problem) => setError(t.micProblem[problem]));
 
   // Start the timer when the recording starts (from this phone or from the device), clear it when it stops.
   useEffect(() => {

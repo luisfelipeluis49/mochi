@@ -17,6 +17,7 @@ import { type Who, wsQuery } from "./who.ts";
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
   start(): Promise<void>;                              // POST /api/sessions/demo/start
+  usesMic: boolean;                                    // true with the real backend; false in the mock (no mic)
   phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/devices/home_pi_01/state → its "agora" (null in the mock: no mic)
   stop(): Promise<void>;                               // POST /api/sessions/demo/stop
   activityStart(): Promise<void>;                      // POST /api/sessions/demo/activity/start
@@ -112,6 +113,7 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   const s = "/api/sessions/demo";
   return {
     start: () => post(`${s}/start`),
+    usesMic: true,
     // No new backend route: the phone joins with the same block the Pi gets (see phoneMic.ts).
     phoneAudio: async () => joinFrom(await getJson<{ agora?: AgoraJoin | null }>("/api/devices/home_pi_01/state")),
     stop: () => post(`${s}/stop`),
@@ -134,6 +136,7 @@ export function connectMock(who: Who, h: BackendHandlers, speed: number, people?
   gw.connect(scenario === "demo"); // the demo plays by itself; the /me page waits for "Record"
   return {
     start: async () => gw.start(),
+    usesMic: false,
     phoneAudio: async () => null, // the mock has no Agora: the phone just plays the fake demo
     stop: async () => gw.stop(),
     activityStart: async () => gw.activityStart(),

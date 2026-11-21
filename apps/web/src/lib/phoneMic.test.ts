@@ -39,3 +39,16 @@ test("the phone takes the device state's join block; none when no session runs",
 test("the Agora SDK is a pinned https URL", () => {
   assert.match(AGORA_SDK_URL, /^https:\/\/download\.agora\.io\/.+AgoraRTC_N-\d+\.\d+\.\d+\.js$/);
 });
+
+test("a browser error becomes a problem the person can act on", async () => {
+  const { problemOf } = await import("./phoneMic.ts");
+  assert.equal(problemOf({ name: "NotAllowedError" }), "denied");
+  assert.equal(problemOf({ name: "NotFoundError" }), "unsupported");
+  assert.equal(problemOf({ name: "Unsupported" }), "unsupported");
+  assert.equal(problemOf(new Error("boom")), "agora");
+});
+
+test("without navigator.mediaDevices (http:// on a phone) asking for the mic says Unsupported", async () => {
+  const { askForMic } = await import("./phoneMic.ts");
+  await assert.rejects(askForMic(), { name: "Unsupported" });
+});
