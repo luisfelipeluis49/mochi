@@ -10,17 +10,23 @@
 
 import type { MochiEvent, RoundResult } from "../contracts.ts";
 import { MockGateway } from "../mock/demoScript.ts";
+import type { AgoraJoin } from "./phoneMic.ts";
 import { parseEvent } from "./store.ts";
 import { type Who, wsQuery } from "./who.ts";
 
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
-  start(): Promise<void>;                              // POST /api/sessions/demo/start
+  start(source?: SessionSource): Promise<void>;       // POST /api/sessions/demo/start ({"source":"phone"} from a phone)
+  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/sessions/demo/phone-audio (null in the mock: no mic)
   stop(): Promise<void>;                               // POST /api/sessions/demo/stop
   activityStart(): Promise<void>;                      // POST /api/sessions/demo/activity/start
   activityResult(result: RoundResult): Promise<void>;  // POST /api/sessions/demo/activity/result
   close(): void;                                       // close the connection (when the page goes away)
 }
+
+/** Who listens in a session: Mochi's own mic ("device", the default) or the phone that started it.
+ *  PROPOSED, see apps/web/PROPOSAL_phone_microphone.md. */
+export type SessionSource = "device" | "phone";
 
 /** What to do when something arrives. Given by useMochi.ts. */
 export interface BackendHandlers {
@@ -67,6 +73,18 @@ async function post(path: string, body?: unknown): Promise<void> {
   if (!res.ok) throw new HttpError(path, res.status);
 }
 
+/** Send one GET request and read the JSON answer. */
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${baseUrl()}${path}`);
+  if (!res.ok) throw new HttpError(path, res.status);
+  return (await res.json()) as T;
+}
+
+/** The body of POST /start: nothing for a device session (as before), { source: "phone" } for a phone one. */
+export function startBody(source: SessionSource = "device"): { source: "phone" } | undefined {
+  return source === "phone" ? { source: "phone" } : undefined;
+}
+
 /** Connect to the REAL backend. */
 export function connectReal(who: Who, h: BackendHandlers): Backend {
   let ws: WebSocket | null = null;
@@ -97,7 +115,8 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   // The commands: each one is a POST to the address from AGENTS.md §6.4.
   const s = "/api/sessions/demo";
   return {
-    start: () => post(`${s}/start`),
+    start: (source) => post(`${s}/start`, startBody(source)),
+    phoneAudio: () => getJson<AgoraJoin>(`${s}/phone-audio`),
     stop: () => post(`${s}/stop`),
     activityStart: () => post(`${s}/activity/start`),
     activityResult: (result) => post(`${s}/activity/result`, { result }), // body: { "result": "guessed" }
@@ -118,6 +137,7 @@ export function connectMock(who: Who, h: BackendHandlers, speed: number, people?
   gw.connect(scenario === "demo"); // the demo plays by itself; the /me page waits for "Record"
   return {
     start: async () => gw.start(),
+    phoneAudio: async () => null, // the mock has no Agora: the phone just plays the fake demo
     stop: async () => gw.stop(),
     activityStart: async () => gw.activityStart(),
     activityResult: async (r) => gw.activityResult(r),

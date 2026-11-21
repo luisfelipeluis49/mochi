@@ -1,6 +1,7 @@
 """The one session's in-memory state. Saved words and voices live in storage (D-32), not here."""
 
 from datetime import datetime
+from typing import Literal
 
 from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, QUEUE_LIMIT, DeviceCommand
 from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID, USER_IDS
@@ -36,6 +37,9 @@ def idle_activity() -> Activity:
     )
 
 
+SessionSource = Literal["device", "phone"]
+
+
 class SessionStore:
     """Status, mode, agent id, game state and the last few turns and hints."""
 
@@ -43,6 +47,10 @@ class SessionStore:
         self.status = SessionStatus.CREATED
         self.mode = SessionMode.TOGETHER
         self.capturing = False
+        # Where this session was started: "device" (the Pi: wake phrase or its own Start) or "phone"
+        # (a phone's Start, whose own microphone then stands in for the Pi's). Proposed, see
+        # apps/web/PROPOSAL_phone_microphone.md.
+        self.source: SessionSource = "device"
         self.agent_id: str | None = None
         self.pi_token: str | None = None
         self.pi_token_expires_at: datetime | None = None

@@ -48,6 +48,7 @@ const en = {
     USED_INDEPENDENTLY: "Great. Keep using it.",
   } as Record<LearningState, string>,
   requestFailed: "Could not reach Mochi. Try again.",
+  micFailed: "Could not turn on this phone's microphone. Allow it, and open the https:// link.",
   // ---- New product vision: modes, hints for someone, session summary ----
   choosing: "What do you want to do today?",
   modeName: { together: "Company", activity: "Play", practice: "Practice", choosing: "Choosing" } as Record<SessionMode, string>,
@@ -156,6 +157,7 @@ const ptBR: Copy = {
     USED_INDEPENDENTLY: "Ótimo. Continue usando.",
   },
   requestFailed: "Não foi possível falar com o Mochi. Tente de novo.",
+  micFailed: "Não foi possível ligar o microfone do celular. Permita o acesso e abra o link https://.",
   choosing: "O que você quer fazer hoje?",
   modeName: { together: "Companhia", activity: "Jogar", practice: "Praticar", choosing: "Escolhendo" },
   modeFace: { together: "Ouvindo", activity: "Hora do jogo", practice: "Praticando", choosing: "Ouvindo" },
