@@ -3,9 +3,10 @@
 Mochi is a small physical companion that helps **two people practice a language with each other**
 (English and Brazilian Portuguese). It listens during a session they start, shows a one-word hint
 when one of them gets stuck, hosts a short two-player game, and remembers the words each person
-needed. Product and contracts: [`AGENTS.md`](AGENTS.md). This repository currently holds the
-**backend**, the shared contracts and the scripts; the web app (`apps/web`) and the Pi bridge
-(`hardware/`) are owned by other teammates.
+needed. Product and contracts: [`AGENTS.md`](AGENTS.md). This repository holds the **backend**,
+the shared contracts and the scripts, the web app (`apps/web`: Home, Mobile and Audience views),
+the Mochi AR glasses app (`apps/glasses`, outside the hackathon MVP) and the Pi bridge
+(`hardware/`); each app has its own README and owner.
 
 ```mermaid
 flowchart LR
