@@ -9,4 +9,9 @@ for the turn that many turns ago), `round_active`, `participants` ("both_learnin
 unknown), `model` (what the scripted fake model answers). `expect` holds `decision`, `expression`,
 `reason`, `target_user_id` and, for SPEAK, `speak_text`.
 
+`expect.candidates` (list of expressions) and `expect.context`: PROPOSAL (see docs/DECISIONS.md),
+checked only when the fixture sets them. Only trails_off, restarts and talks_around ever carry
+them — there the speaker named no single word, so the model may offer up to three (Mochi AR,
+`apps/glasses`). Every other case leaves `Hint.candidates`/`context` `None`, same as before.
+
 Run: `make -C services/backend test` (`tests/unit/test_decision_fixtures.py`).

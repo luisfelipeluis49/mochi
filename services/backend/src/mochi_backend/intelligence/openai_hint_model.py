@@ -69,11 +69,16 @@ give a short everyday sentence that uses the expression.
 - "meaning_language" and "expression_language": "en" or "pt-BR", the language each of the two is \
 really written in. Be honest: `expression` must be in the focus language and `meaning` in the \
 other one. If both turn out to be the same language, there is no hint: IGNORE.
+- "candidates", only for trails_off, restarts or talks_around: they named no single word, so up \
+to three plausible completions help more than one guess. Each is {"expression", "meaning"}, same \
+rules as above; put the one you are most sure of in "expression" first, and repeat it as the \
+first candidate. Every other reason has one right word: omit "candidates" or leave it empty.
 
 Reply with strict JSON only. To stay quiet, exactly: {"decision": "IGNORE"}. For a hint: \
 {"decision": "SHOW_HINT", "reason": <reason>, "meaning": <string or null>, "meaning_language": \
 <"en"|"pt-BR">, "expression": <string>, "expression_language": <"en"|"pt-BR">, "confidence": \
-<number>, "example": <string or null>}.
+<number>, "example": <string or null>, "candidates": <array, trails_off/restarts/talks_around \
+only>}.
 Example, focus en: "Can you pass me the garfo, please?" -> {"decision": "SHOW_HINT", "reason": \
 "code_switch", "meaning": "garfo", "meaning_language": "pt-BR", "expression": "fork", \
 "expression_language": "en", "confidence": 0.95, "example": "Can you pass me the fork, please?"}.
@@ -81,6 +86,11 @@ Example, focus pt-BR: "Como se diz traffic jam em português?" -> {"decision": "
 "reason": "says_unknown", "meaning": "traffic jam", "meaning_language": "en", "expression": \
 "engarrafamento", "expression_language": "pt-BR", "confidence": 0.95, "example": "Fiquei preso \
 num engarrafamento."}.
+Example, focus en: "I wanted to go, but..." -> {"decision": "SHOW_HINT", "reason": "trails_off", \
+"meaning": "embora", "meaning_language": "pt-BR", "expression": "although", "expression_language": \
+"en", "confidence": 0.8, "example": null, "candidates": [{"expression": "although", "meaning": \
+"embora"}, {"expression": "unfortunately", "meaning": "infelizmente"}, {"expression": "instead", \
+"meaning": "em vez disso"}]}.
 Example, focus en: "I need to go, ok? Tchau tchau!" -> {"decision": "IGNORE"}."""
 
 
@@ -93,6 +103,27 @@ def _confidence(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return value / 100 if value > 1 else float(value)
+
+
+def _candidates(value: object) -> list[dict[str, str | None]]:
+    """The model's extra completions, kept only where `expression` is a string.
+
+    A malformed entry must not cost the primary hint: see `_suggestion`.
+    """
+    if not isinstance(value, list):
+        return []
+    cleaned: list[dict[str, str | None]] = []
+    for entry in value:
+        if not isinstance(entry, dict) or not isinstance(entry.get("expression"), str):
+            continue
+        meaning = entry.get("meaning")
+        cleaned.append(
+            {
+                "expression": entry["expression"],
+                "meaning": meaning if isinstance(meaning, str) else None,
+            }
+        )
+    return cleaned
 
 
 def _suggestion(content: str, asked: bool) -> ModelSuggestion:
@@ -111,6 +142,7 @@ def _suggestion(content: str, asked: bool) -> ModelSuggestion:
     for label in ("expression_language", "meaning_language"):
         if not isinstance(fields.get(label), str):
             fields[label] = None
+    fields["candidates"] = _candidates(fields.get("candidates"))
     return ModelSuggestion.model_validate(fields)
 
 

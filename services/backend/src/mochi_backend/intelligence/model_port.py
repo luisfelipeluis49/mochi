@@ -17,6 +17,13 @@ class ModelRequest(BaseModel):
     asked_about: str | None = None  # what a "how do you say ...?" in the sentence names
 
 
+class CandidateSuggestion(BaseModel):
+    """One of the model's extra candidates, for a reason with no single known word."""
+
+    expression: str | None = None
+    meaning: str | None = None
+
+
 class ModelSuggestion(BaseModel):
     """Strict JSON the model must return."""
 
@@ -28,6 +35,10 @@ class ModelSuggestion(BaseModel):
     confidence: float | None = None  # 0-1, how sure the model is that this word was needed
     expression_language: str | None = None  # the language the model says `expression` is in
     meaning_language: str | None = None  # ... and the language of the word they said (`meaning`)
+    # Up to two more plausible completions, asked for only when `reason` is trails_off,
+    # restarts or talks_around: there the speaker named no word, so more than one may fit
+    # (AGENTS 7.1 cases 5-6). `expression` above is always the first candidate.
+    candidates: list[CandidateSuggestion] = []
 
 
 class HintModel(Protocol):

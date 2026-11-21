@@ -421,55 +421,37 @@ From the same conversation:
 Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
 nothing, because that hint was still on the screen (`while_shown`).
 
-## D-31: the revised product vision in code: Mochi asks what to do, and Play works by voice on Mochi's own screen (2026-11-21)
+## D-31: up to three candidate words, for Mochi AR (2026-11-21)
 
-`vision/Mochi_Product_Vision.md` (revised 2026-11-20): after its name Mochi asks "What would you like to
-do today?" and the person picks, in ordinary words, Practice with Mochi, Practice with a Partner, or Play
-(Describe & Guess). Practice and Partner already existed as `attentive` and `[listen]` (D-26, D-27). Built
-on the `hardware` branch at Suhuai's request, in all three owners' directories; **for the team to accept
-or change.**
-- **Greeting** (`settings.py`): "Hi! What would you like to do today?" / "Oi! O que você quer fazer hoje?",
-  in the language of the wake phrase as before. `character.md` tells Mochi it asked that, so a one-word
-  answer ("Play.") is for it, and what the three things are. Secret Missions and the Fluency Helper are
-  named only as needing the watch and the glasses.
-- **The language Mochi was called in is the tie-breaker** for an answer that could be either language
-  (`session_started(woken, language)`, an optional second argument on the intelligence port). Seen with the
-  real model: "Play." after "hi Mochi" was answered in Portuguese, the last session's language.
-- **`[play]`**, a silent command like `[listen]` (it rides in `Speak.text`; not a contract value): the turn
-  that carries it starts a round inside its own commit (`TurnPipeline._with_round` ->
-  `ActivityService.start_in_turn`), and the host's line follows Mochi's in the same reply ("Yay, let's
-  play! Ben describes. Ana guesses!"). Starting it afterwards through `/speak` would cut Mochi's own
-  sentence off (`priority: INTERRUPT`). Once playing, Mochi is out of the talk as after `[listen]`.
-- **The round on the device**: a command of kind `round` in `GET /api/devices/home_pi_01/state`, built on
-  every poll from the round itself (`DeviceService._round`), not queued: a round lasts longer than the 30 s
-  a queued command lives, and a restarted device finds it again. Its `command_id` is
-  `<round_id>:<state>`, so the device acts once per state. The value uses the Activity field names plus
-  `secret_word` and `language`. **`secret_word` is only there when the reader sent the device key**: the
-  route itself stays open (6.4), and `scripts/test-client` reads it from the public URL.
-- **The result is said aloud** ("Ana got it!"): `RoundEngine._finish` returns a `Speak`, announced by
-  `ActivityService.finish`. Mochi does not judge the guess from what it hears: a turn has no speaker, so
-  the describer saying the word would count as a guess. The describer's tap decides (AGENTS 7.5).
-- **Roles swap** from round to round (`round_engine._names` reads the round before). Names only: the
-  language of a round still follows the session focus, which is English (`session_store.py`). AGENTS 7.5
-  ("the describer's target language") and M4 ("a word the guesser needed") disagree here. **For the team.**
-- **Fixed on the way:** a finished round still counted as a round in `DecisionFlow._follow_up` and
-  `_may_be_heard`, so after one round Mochi only answered "Oi Mochi ..." until Stop.
-- **Not built:** the Home view in `apps/web` (the Pi draws the round itself, `hardware/pi-setup/face.html`;
-  AGENTS 9.1 puts the Home view in `apps/web`, which is still empty); the names on the screen are the demo
-  roster (`ana`, `ben`), not the voices the Pi knows; a spoken "skip".
-- **From an independent review of this change, fixed before it was first tried:** the reply that starts a
-  round was screened for the secret word before the round existed, so "[play] ... umbrella ..." could be
-  said while "umbrella" was the word (now screened again once the word is drawn: only the host's line is
-  said); a round ended by Reset stayed on the device's screen (its absence from the state now clears it);
-  a result card was served for the rest of the session (now for 30 s); `.env.example` still had the old
-  greetings. **Left as they are, for the team:** `/ws?device=home_pi_01` has no key and receives the
-  private prompt, so the device key guards the state route only; a round can only be left by a touch or
-  Stop, and while it runs hints are off; the host's lines are English whatever language Mochi was called in.
-Checked with the real model through a scratch backend (fake Agora): "Let's play a game.", "Vamos jogar!",
-"Play.", "I want to practise with you.", "Just listen while we talk, please.", "A gente vai conversar, fica
-só ouvindo.", "What can you do?", "Can we play Secret Missions?" each got the right mode; a whole game
-(reveal, guessed, next round swapped, skipped by a long press) ran through the Pi's own code and the face
-page in a headless browser. **Not yet done with a person, a finger on the panel and Agora's voice.**
+Asked for by the team: when the speaker named no single word (reasons trails_off, restarts,
+talks_around; AGENTS 7.1 cases 5-6), give up to three plausible completions instead of one guess,
+so `apps/glasses` (Mochi AR, PR #3) can show real choices instead of its own mock backend's two
+scripted words. Every other reason keeps one known word — code_switch, says_unknown, asks_partner
+and asks_mochi already know which word is needed, so a second or third guess would be invented,
+not found.
+
+**Contract PROPOSAL, additive and optional (needs Matheus's sign-off):** `Hint` gains
+`candidates: [{expression, meaning}] | None` (the primary word repeated as the first entry, so a
+client that reads `candidates` never also needs the top-level `expression`) and
+`context: string | None` (the sentence the speaker stopped in). Both `None` for every other
+reason, so a client that does not know them (today's Mobile and Home views) is unaffected.
+`packages/contracts/schema` regenerated (`make contracts-schema`); the three examples that embed
+a `Hint` updated to the now-explicit `null`s. This is exactly the shape `apps/glasses/README.md`
+already proposed and tests against — no change needed on the glasses side.
+
+**Intelligence** (`model_port.CandidateSuggestion`, `openai_hint_model.SYSTEM_PROMPT`,
+`decision_flow._extra_candidates`): the model is asked for `candidates` only for the three open
+reasons; a malformed entry (not an object, no string `expression`) is dropped, never costing the
+primary hint (same defensiveness as the rest of `_suggestion`). Candidates are deduplicated
+against the primary and each other and capped at three. The lexicon-only path (the curated
+10-word list) still returns one word: there is no second translation for "umbrella" to offer.
+Fixtures: `trails_off-67`, `restarts-68`, `talks_around-69` (beyond the lexicon, scripted model).
+
+**Not done:** anything in `gateway/` — none is needed, since the gateway already forwards the
+whole `Hint` payload unchanged (`LiveHint.show`). `&surface=ar` itself arrived separately on `main`
+(AGENTS 6.6, `gateway/connections.py`): the glasses get session state and that user's hints only. **Not verified:** a real multi-word
+suggestion reaching real Rokid Glasses (only the two-word, one-hesitation mock backend has run on
+the hardware so far, per PR #3).
 
 ## D-32: durable storage in Postgres (2026-11-21)
 

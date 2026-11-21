@@ -9,6 +9,7 @@ from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_contracts import (
     Hint,
+    HintCandidate,
     Language,
     LearningEvent,
     LearningState,
@@ -29,6 +30,11 @@ class CaseMatch:
     # Set when the word is in another language than the sentence suggests: "Como se diz
     # abacaxi?" is asked in Portuguese for an English word. None: the context's focus.
     language: Language | None = None
+    # PROPOSAL (docs/DECISIONS.md): up to two more plausible words, for a reason with no
+    # single known answer (trails_off, restarts, talks_around). None for every other reason.
+    candidates: tuple[HintCandidate, ...] | None = None
+    # PROPOSAL: the sentence the speaker stopped in, alongside `candidates`.
+    context: str | None = None
 
 
 def match_from_entry(entry: LexiconEntry, reason: Reason, context: SessionContext) -> CaseMatch:
@@ -61,6 +67,8 @@ class HintFactory:
             example=match.example,
             reason=match.reason,
             expires_at=iso_z(expires),
+            candidates=list(match.candidates) if match.candidates else None,
+            context=match.context,
         )
 
     def event_for(self, hint: Hint) -> LearningEvent:

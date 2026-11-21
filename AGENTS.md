@@ -288,6 +288,7 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 - The Pi starts a session itself when it hears the wake phrase; the Operator's Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
 - `GET /ws?user=ana&surface=ar` (proposed, owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody, never cards, the private prompt or other users' hints; an unknown `surface` closes 4400.
+- **Hint** gains `candidates: [{ "expression", "meaning" }] | None` and `context: string | None` (owner: Kauê, docs/DECISIONS.md D-31), for Mochi AR (`apps/glasses/README.md`). Set only for trails_off, restarts and talks_around, where no single word is known; every other reason leaves both `null`, so today's Mobile and Home views are unaffected.
 
 ## 7. Behavior rules
 
@@ -436,5 +437,4 @@ Do not write code that assumes these work. If your task depends on one, say so i
 
 ## 13. Changelog
 
-- **v0.6 (proposed, 2026-11-21, `hardware` branch).** The revised vision (`vision/Mochi_Product_Vision.md`): Mochi asks "What would you like to do today?" after its name; Play starts by voice and runs on Mochi's own screen (`round` command, `[play]`, spoken result, role swap); the Pi tells who is talking in time. See 6.6, 7.5 and DECISIONS D-31, D-34, D-35. Open for the team: the round's language, real names instead of `ana`/`ben`, and whether the Pi's own page or `apps/web` is the Home view.
-- **v0.5 (proposed, 2026-11-21).** Product vision from the deck (three modes, wake start, role swap); the privacy rule now allows local wake-phrase listening; 6.6 records the merged additions; the secret word is never allowed in a hint or a spoken reply during a round; a character reply cannot delay a hint. Open for the team: rename `ben` to `sophie`; grammar feedback in Praticar (listed out of scope in Section 8); more than one expression per hint; Mobile summary and the AR/Watch add-ons.
+- **v0.5 (proposed, 2026-11-21).** Product vision from the deck (three modes, wake start, role swap); the privacy rule now allows local wake-phrase listening; 6.6 records the merged additions, now including `Hint.candidates`/`context` (D-31); the secret word is never allowed in a hint or a spoken reply during a round; a character reply cannot delay a hint. Open for the team: rename `ben` to `sophie`; grammar feedback in Praticar (listed out of scope in Section 8); Mobile summary and the AR/Watch add-ons (section 1 still lists Mochi AR as not part of the hackathon build, even though `apps/glasses` and the candidates it needs now exist on `main` — a team decision, not made here).

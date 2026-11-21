@@ -37,8 +37,22 @@ class SessionState(ContractModel):
     participants: list[str]
 
 
+class HintCandidate(ContractModel):
+    """One of up to three plausible words for a hint with no single known answer."""
+
+    expression: str
+    meaning: str | None
+
+
 class Hint(ContractModel):
-    """One word or short expression shown to help a stuck speaker."""
+    """One word or short expression shown to help a stuck speaker.
+
+    PROPOSAL (not yet signed off, see docs/DECISIONS.md): `candidates` and `context` are
+    additive and optional. They are set only for a hint with no single known word (reasons
+    trails_off, restarts, talks_around): up to three plausible completions instead of one
+    guess, plus the sentence they stopped in. Every other reason leaves both `None`, and a
+    client that does not know them still shows `expression`/`meaning` as before.
+    """
 
     hint_id: str
     target_user_id: str | None
@@ -48,6 +62,8 @@ class Hint(ContractModel):
     example: str | None
     reason: Reason
     expires_at: IsoTimestamp
+    candidates: list[HintCandidate] | None = None
+    context: str | None = None
 
 
 class HintCleared(ContractModel):

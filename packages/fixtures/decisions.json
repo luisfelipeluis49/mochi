@@ -1651,5 +1651,119 @@
   "expect": {
    "decision": "IGNORE"
   }
+ },
+ {
+  "id": "trails_off-67",
+  "case": "trails_off",
+  "text": "I wanted to go, but...",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "although",
+   "reason": "trails_off",
+   "target_user_id": "ana",
+   "candidates": [
+    "although",
+    "unfortunately",
+    "instead"
+   ],
+   "context": "I wanted to go, but..."
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "trails_off",
+   "expression": "although",
+   "meaning": "embora",
+   "confidence": 0.8,
+   "candidates": [
+    {
+     "expression": "although",
+     "meaning": "embora"
+    },
+    {
+     "expression": "unfortunately",
+     "meaning": "infelizmente"
+    },
+    {
+     "expression": "instead",
+     "meaning": "em vez disso"
+    }
+   ]
+  }
+ },
+ {
+  "id": "restarts-68",
+  "case": "restarts",
+  "text": "I keep... I keep putting it off... it's fine.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "procrastinating",
+   "reason": "restarts",
+   "target_user_id": "ana",
+   "candidates": [
+    "procrastinating",
+    "stalling",
+    "delaying"
+   ],
+   "context": "I keep... I keep putting it off... it's fine."
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "restarts",
+   "expression": "procrastinating",
+   "meaning": "procrastinando",
+   "confidence": 0.8,
+   "candidates": [
+    {
+     "expression": "procrastinating",
+     "meaning": "procrastinando"
+    },
+    {
+     "expression": "stalling",
+     "meaning": "enrolando"
+    },
+    {
+     "expression": "delaying",
+     "meaning": "atrasando"
+    }
+   ]
+  }
+ },
+ {
+  "id": "talks_around-69",
+  "case": "talks_around",
+  "text": "It's the thing you use to clean the floor when it's wet.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "mop",
+   "reason": "talks_around",
+   "target_user_id": "ana",
+   "candidates": [
+    "mop",
+    "broom",
+    "squeegee"
+   ],
+   "context": "It's the thing you use to clean the floor when it's wet."
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "talks_around",
+   "expression": "mop",
+   "meaning": "rodo",
+   "confidence": 0.8,
+   "candidates": [
+    {
+     "expression": "mop",
+     "meaning": "rodo"
+    },
+    {
+     "expression": "broom",
+     "meaning": "vassoura"
+    },
+    {
+     "expression": "squeegee",
+     "meaning": "rodinho"
+    }
+   ]
+  }
  }
 ]

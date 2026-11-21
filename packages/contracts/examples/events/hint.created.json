@@ -13,6 +13,8 @@
     "meaning": "adiar",
     "example": "I need to postpone my meeting.",
     "reason": "code_switch",
-    "expires_at": "2026-11-19T16:00:12.700Z"
+    "expires_at": "2026-11-19T16:00:12.700Z",
+    "candidates": null,
+    "context": null
   }
 }
