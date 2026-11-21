@@ -54,7 +54,7 @@ UPSERT_EVENT = """
         user_id = EXCLUDED.user_id, expression = EXCLUDED.expression,
         learning_state = EXCLUDED.learning_state, body = EXCLUDED.body, updated_at = now()
 """
-SELECT_EVENTS = "SELECT body::text FROM learning_events ORDER BY seq"
+SELECT_EVENTS = "SELECT learning_event_id, body::text FROM learning_events ORDER BY seq"
 DELETE_EVENTS = "DELETE FROM learning_events"
 UPSERT_VOICE = """
     INSERT INTO voices (name_key, name, user_id, language, voiceprint, saved)

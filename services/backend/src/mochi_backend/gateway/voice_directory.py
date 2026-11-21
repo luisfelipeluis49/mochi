@@ -31,12 +31,14 @@ def check_voiceprint(vector: list[float]) -> None:
 
 
 class VoiceDirectory:
-    """Voices by name. Example: `directory.link("Ana", "pt")` then `directory.owner_of("ana")`."""
+    """Voices by name. Example: `directory.link("Ana", "pt")` then `directory.owner_of("ana")`.
 
-    def __init__(self, storage: Storage, users: list[User]) -> None:
+    `voices` are the ones storage held at startup (read once by `storage_for`)."""
+
+    def __init__(self, storage: Storage, voices: list[VoiceProfile], users: list[User]) -> None:
         self._storage = storage
         self._users = users
-        self._voices = {voice_key(v.name): v for v in storage.load_voices()}
+        self._voices = {voice_key(v.name): v for v in voices}
 
     def all(self) -> list[VoiceProfile]:
         """Every learned voice, by name."""

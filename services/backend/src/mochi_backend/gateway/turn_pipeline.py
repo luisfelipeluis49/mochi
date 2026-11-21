@@ -16,6 +16,7 @@ from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.secret_screen import leaked_channel
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
+from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.json_logging import EventLogger
@@ -87,6 +88,7 @@ class PipelineDeps:
         ""  # what speech-to-text was told, if anything: it can echo into a transcript
     )
     ears_words: tuple[str, ...] = ()
+    voices: VoiceDirectory | None = None  # forgetting a voice also deletes the stored copy
 
 
 class TurnPipeline:
@@ -104,6 +106,7 @@ class TurnPipeline:
         self._timeout = deps.decide_timeout_seconds
         self._lock = asyncio.Lock()
         self._commit = deps.commit_lock
+        self._voices = deps.voices
         self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
 
     def build_context(self) -> SessionContext:
@@ -242,7 +245,16 @@ class TurnPipeline:
             if event.learning_state in used and event.expression in shown
         ]
 
+    def _forget_voices(self, written: list[Written]) -> None:
+        """`[forget Ana]` makes the device forget a voice; the stored voiceprint goes too."""
+        if self._voices is None:
+            return
+        for kind, value in written:
+            if kind == "forget" and value.strip():
+                self._voices.forget(value.strip())
+
     def _tell_device(self, decision: Decision, written: list[Written]) -> None:
+        self._forget_voices(written)
         wanted = list(written)
         wanted += [("used", used_card(event)) for event in self._used_now(decision)]
         if decision.hint is not None:

@@ -13,6 +13,8 @@ from mochi_backend.settings import SettingsError, load_settings
 from mochi_backend.storage.event_log import StorageEventSink
 from mochi_backend.storage.factory import storage_for
 from mochi_backend.storage.port import NullStorage, voice_key
+from mochi_backend.storage.postgres import PostgresStorage
+from mochi_backend.storage.postgres import _event as _event_row
 from mochi_backend.storage.write_behind import WriteBehindStorage
 from mochi_contracts import (
     Language,
@@ -22,6 +24,7 @@ from mochi_contracts import (
     StateChange,
     VoiceprintUpload,
 )
+from tests.fakes.fake_postgres import ReadFailsPostgres
 from tests.fakes.fake_sender import FakeEventLogger
 from tests.fakes.fake_storage import FakeStorage
 
@@ -89,15 +92,15 @@ def test_a_failed_write_is_logged_and_never_raised() -> None:
 
 def test_without_a_database_url_storage_is_memory_only() -> None:
     logger = FakeEventLogger()
-    storage, name = storage_for("", logger, DEMO_USERS)
-    assert isinstance(storage, NullStorage) and name == "memory"
+    start = storage_for("", logger, DEMO_USERS)
+    assert isinstance(start.storage, NullStorage) and start.name == "memory"
     assert logger.names() == ["storage_memory_only"]
 
 
 def test_an_unreachable_database_falls_back_to_memory_and_says_so() -> None:
     logger = FakeEventLogger()
-    storage, name = storage_for("postgresql://u:p@127.0.0.1:1/none", logger, DEMO_USERS)
-    assert isinstance(storage, NullStorage) and name == "memory"
+    start = storage_for("postgresql://u:p@127.0.0.1:1/none", logger, DEMO_USERS)
+    assert isinstance(start.storage, NullStorage) and start.name == "memory"
     assert logger.names() == ["storage_unavailable"]
     assert "127.0.0.1" not in repr(logger.lines) and "p@" not in repr(logger.lines)
 
@@ -111,7 +114,7 @@ def test_database_url_must_be_postgres_and_is_masked_in_errors() -> None:
 
 def _directory(storage: FakeStorage | None = None) -> tuple[VoiceDirectory, FakeStorage]:
     kept = storage or FakeStorage()
-    return VoiceDirectory(kept, DEMO_USERS), kept
+    return VoiceDirectory(kept, kept.load_voices(), DEMO_USERS), kept
 
 
 def test_a_voice_name_is_linked_to_its_user_in_any_case() -> None:
@@ -147,3 +150,23 @@ def test_voices_stored_before_a_restart_are_loaded() -> None:
     first.store_vector("Ben", VoiceprintUpload(language="en", voiceprint=[0.5], saved=None))
     again, _ = _directory(kept)
     assert [v.name for v in again.all()] == ["Ben"] and again.all()[0].user_id == "ben"
+
+
+def test_stored_rows_that_no_longer_fit_the_contract_are_skipped_not_fatal() -> None:
+    logger = FakeEventLogger()
+    storage = PostgresStorage("postgresql://unused", logger)
+    good = _event("a").model_dump_json()
+    stale = good.replace('"expression"', '"added_later":1,"expression"')
+    rows: list[tuple[object, ...]] = [("old", stale), ("a", good), ("junk", "{not json")]
+    kept = storage._parsed("learning_events", rows, _event_row)  # noqa: SLF001 - no database here
+    assert [e.learning_event_id for e in kept] == ["a"]
+    assert logger.lines == [
+        ("storage_row_skipped", {"table": "learning_events", "key": "old"}),
+        ("storage_row_skipped", {"table": "learning_events", "key": "junk"}),
+    ]
+
+
+def test_a_database_that_fails_while_loading_does_not_stop_startup() -> None:
+    logger = FakeEventLogger()
+    start = storage_for("postgresql://unused", logger, DEMO_USERS, ReadFailsPostgres)
+    assert start.name == "memory" and logger.names() == ["storage_unavailable"]

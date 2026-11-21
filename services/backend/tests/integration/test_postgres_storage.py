@@ -20,6 +20,7 @@ from mochi_contracts import (
     StateChange,
     VoiceProfile,
 )
+from tests.fakes.fake_sender import FakeEventLogger
 
 URL = os.environ.get("MOCHI_TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not URL, reason="MOCHI_TEST_DATABASE_URL is not set")
@@ -29,7 +30,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="MOCHI_TEST_DATABASE_URL is not 
 def storage() -> Iterator[PostgresStorage]:
     with psycopg.connect(URL, autocommit=True) as connection:
         connection.execute("DROP TABLE IF EXISTS voices, learning_events, users")
-    database = PostgresStorage(URL)
+    database = PostgresStorage(URL, FakeEventLogger())
     database.prepare()
     database.seed_users(DEMO_USERS)
     yield database

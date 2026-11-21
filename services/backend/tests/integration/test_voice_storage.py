@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from mochi_backend.app import create_app
 from mochi_backend.settings import DEV_DEVICE_KEY
+from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_storage import FakeStorage
 from tests.harness import make_harness
 
@@ -91,3 +92,18 @@ def test_words_and_voices_survive_a_restart_and_reset_clears_only_words() -> Non
 
 def test_readyz_says_whether_words_are_kept() -> None:
     assert _client(FakeStorage()).get("/readyz").json()["storage"] == "memory"
+
+
+def test_mochi_forgetting_a_voice_deletes_the_stored_voiceprint_too() -> None:
+    storage = FakeStorage()
+    mochi = FakeCharacterModel("[forget Ana] Okay, I forgot your voice.")
+    harness = make_harness(
+        storage=storage, character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"}
+    )
+    client = TestClient(create_app(harness.container))
+    client.put(f"{VOICES}/Ana/voiceprint", json=UPLOAD, headers=KEY)
+    client.put(f"{VOICES}/Ben/voiceprint", json={**UPLOAD, "language": "en"}, headers=KEY)
+    client.post("/api/sessions/demo/start")
+    client.post("/dev/sessions/demo/turn", json={"text": "Hi Mochi, please forget my voice."})
+    assert list(storage.voices) == ["ben"]
+    assert [v["name"] for v in client.get(VOICES, headers=KEY).json()] == ["Ben"]

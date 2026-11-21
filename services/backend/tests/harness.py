@@ -13,6 +13,7 @@ from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import load_settings
 from mochi_backend.storage.event_log import StorageEventSink
+from mochi_backend.storage.factory import StorageStart
 from mochi_backend.storage.port import NullStorage, Storage
 from tests.fakes.fake_agora import FakeAgoraClient, FakeTokenIssuer
 from tests.fakes.fake_character_model import FakeCharacterModel
@@ -91,12 +92,13 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     clock, ids, logger = FakeClock(), SequentialIdGenerator(), FakeEventLogger()
     kept = storage or NullStorage()
     ttl = settings.mochi_hint_ttl_seconds
+    start = StorageStart.read(kept, "memory")
     brain = intelligence or _brain(clock, ids, model, character, ttl)
     if isinstance(brain, Intelligence):
-        brain.keep_words_in(MemoryStore(kept.load_events(), StorageEventSink(kept)))
+        brain.keep_words_in(MemoryStore(start.events, StorageEventSink(kept)))
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()
-    adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules", kept)
+    adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules", start)
     container = build_container(settings, adapters)
     return Harness(container, clock, scheduler, agora, tokens, logger, gate)

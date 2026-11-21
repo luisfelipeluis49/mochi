@@ -1,7 +1,11 @@
 """Postgres through psycopg 3. One short connection per call: writes are rare and run off-loop."""
 
-import psycopg
+from collections.abc import Callable
 
+import psycopg
+from pydantic import ValidationError
+
+from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage import schema
 from mochi_backend.storage.port import voice_key
 from mochi_contracts import Language, LearningEvent, User, VoiceProfile
@@ -12,8 +16,9 @@ CONNECT_TIMEOUT_SECONDS = 5
 class PostgresStorage:
     """Implements `Storage`. Example: `PostgresStorage(url).prepare()` then `load_events()`."""
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, logger: EventLogger) -> None:
         self._url = url
+        self._logger = logger
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(self._url, connect_timeout=CONNECT_TIMEOUT_SECONDS, autocommit=True)
@@ -28,7 +33,7 @@ class PostgresStorage:
         """Every user, oldest first."""
         with self._connect() as connection:
             rows = connection.execute(schema.SELECT_USERS).fetchall()
-        return [_user(row) for row in rows]
+        return self._parsed("users", rows, _user)
 
     def seed_users(self, users: list[User]) -> None:
         """Insert the users that do not exist yet; an existing one is left as it is."""
@@ -42,7 +47,7 @@ class PostgresStorage:
         """Every learning event in the order it was first saved."""
         with self._connect() as connection:
             rows = connection.execute(schema.SELECT_EVENTS).fetchall()
-        return [LearningEvent.model_validate_json(str(row[0])) for row in rows]
+        return self._parsed("learning_events", rows, _event)
 
     def save_event(self, event: LearningEvent) -> None:
         """Insert or replace one event by id."""
@@ -65,7 +70,23 @@ class PostgresStorage:
         """Every learned voice, with its vector."""
         with self._connect() as connection:
             rows = connection.execute(schema.SELECT_VOICES).fetchall()
-        return [_voice(row) for row in rows]
+        return self._parsed("voices", rows, _voice)
+
+    def _parsed[T](
+        self, table: str, rows: list[tuple[object, ...]], parse: Callable[[tuple[object, ...]], T]
+    ) -> list[T]:
+        """Parse each row on its own: a stored row that no longer fits the contract is skipped.
+
+        Contract models refuse unknown fields, so after a contract change an old row can fail to
+        load; that must cost one word, not the whole startup. Logs the table and the row's key only.
+        """
+        kept: list[T] = []
+        for row in rows:
+            try:
+                kept.append(parse(row))
+            except (ValidationError, ValueError):
+                self._logger.log("storage_row_skipped", {"table": table, "key": str(row[0])[:60]})
+        return kept
 
     def save_voice(self, voice: VoiceProfile) -> None:
         """Insert or replace one voice by name."""
@@ -84,6 +105,10 @@ class PostgresStorage:
         """Delete one voice and its vector."""
         with self._connect() as connection:
             connection.execute(schema.DELETE_VOICE, (voice_key(name),))
+
+
+def _event(row: tuple[object, ...]) -> LearningEvent:
+    return LearningEvent.model_validate_json(str(row[1]))
 
 
 def _user(row: tuple[object, ...]) -> User:
