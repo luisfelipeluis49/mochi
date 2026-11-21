@@ -1,6 +1,6 @@
 """HTTP behind a project-owned protocol; httpx is an implementation detail."""
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -42,6 +42,19 @@ class HttpGetter(Protocol):
         ...
 
 
+class HttpLineStreamer(Protocol):
+    """Posts JSON and yields the reply line by line as it arrives (server-sent events).
+
+    Raises `HttpTransportError` on network failure, a non-200 reply, or a stalled stream.
+    """
+
+    def post_lines(
+        self, url: str, headers: Mapping[str, str], payload: JsonValue, timeout_seconds: float
+    ) -> AsyncIterator[str]:
+        """POST `payload` as JSON to `url`; each yielded item is one line of the reply."""
+        ...
+
+
 class HttpTransportError(Exception):
     """Connection failure or timeout. The message names the URL and the cause."""
 
@@ -79,6 +92,32 @@ class HttpxClient:
             ) from error
         return HttpResponse(status=reply.status_code, body=reply.text)
 
+    async def post_lines(
+        self, url: str, headers: Mapping[str, str], payload: JsonValue, timeout_seconds: float
+    ) -> AsyncIterator[str]:
+        """POST JSON and yield the reply's lines as they arrive.
+
+        `timeout_seconds` bounds each wait (connecting, and every gap between two chunks).
+        Example: `async for line in HttpxClient().post_lines(url, {}, {"stream": True}, 6.0)`.
+        """
+        try:
+            async for line in self._lines(url, headers, payload, timeout_seconds):
+                yield line
+        except httpx.HTTPError as error:
+            raise HttpTransportError(
+                f"POST {url} stream failed: {error!r}; expected lines within {timeout_seconds}s"
+            ) from error
+
+    async def _lines(
+        self, url: str, headers: Mapping[str, str], payload: JsonValue, timeout_seconds: float
+    ) -> AsyncIterator[str]:
+        async with self._open().stream(
+            "POST", url, headers=dict(headers), json=payload, timeout=timeout_seconds
+        ) as reply:
+            _refuse_unless_ok(url, reply.status_code)
+            async for line in reply.aiter_lines():
+                yield line
+
     async def get(
         self, url: str, headers: Mapping[str, str], timeout_seconds: float
     ) -> HttpResponse:
@@ -90,3 +129,8 @@ class HttpxClient:
                 f"GET {url} failed: {error!r}; expected an HTTP reply within {timeout_seconds}s"
             ) from error
         return HttpResponse(status=reply.status_code, body=reply.text)
+
+
+def _refuse_unless_ok(url: str, status: int) -> None:
+    if status != HTTP_OK:
+        raise HttpTransportError(f"POST {url} answered HTTP {status}; expected 200 and a stream")

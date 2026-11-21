@@ -11,13 +11,15 @@ from dataclasses import dataclass
 
 from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
 from mochi_backend.gateway.event_hub import EventHub
-from mochi_backend.gateway.intelligence_port import IntelligencePort
+from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
 from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.secret_screen import leaked_channel
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
+from mochi_backend.gateway.spoken_release import SpokenOutlet
+from mochi_backend.gateway.stale_turns import Gone, StaleTurns, Ticket
 from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
@@ -43,6 +45,8 @@ class TurnOutcome:
     reply: str
     decision: Decision
     segment_id: str | None = None  # the turn's id; None when no turn was run
+    stale: bool = False  # cancelled because Agora sent a newer request or hung up (D-37)
+    spoken: SpokenOutlet | None = None  # the reply streams from here instead (MOCHI_STREAM_REPLY)
 
 
 def hint_card(hint: Hint) -> str:
@@ -96,6 +100,8 @@ class PipelineDeps:
     )
     ears_words: tuple[str, ...] = ()
     voices: VoiceDirectory | None = None  # forgetting a voice also deletes the stored copy
+    cancel_stale_turns: bool = False  # MOCHI_CANCEL_STALE_TURNS (DECISIONS D-37)
+    streamer: StreamingDecider | None = None  # set only with MOCHI_STREAM_REPLY (D-37)
 
 
 class TurnPipeline:
@@ -116,6 +122,9 @@ class TurnPipeline:
         self._voices = deps.voices
         self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
         self._start_round: RoundStarter | None = None
+        self._stale = StaleTurns(deps.cancel_stale_turns)
+        self._streamer = deps.streamer
+        self._speaking: set[asyncio.Task[None]] = set()  # streamed turns still running
 
     def play_with(self, start_round: RoundStarter) -> None:
         """Give the pipeline the way to start a round when Mochi writes `[play]`.
@@ -135,22 +144,93 @@ class TurnPipeline:
             return await self._handle(text.strip())
 
     async def handle_heard(
-        self, heard: str, position: int, arrived: float | None = None
+        self,
+        heard: str,
+        position: int,
+        arrived: float | None = None,
+        gone: Gone | None = None,
+        stream: bool = False,
     ) -> TurnOutcome:
         """A turn as Agora sends it: everything said since Mochi last finished speaking.
 
         `position` is the index of that user message in the request. Only the part not handled
         before is run through the chain. Example: "A." got silence, then Agora sends "A.  B." at
         the same position: only "B." is a new turn. `arrived` is `time.monotonic()` at the request.
+        `gone` returns once Agora hung up; with MOCHI_CANCEL_STALE_TURNS that, or a newer request,
+        cancels this turn's deciding and it is answered with silence.
+        `stream`: Agora asked for a stream; with MOCHI_STREAM_REPLY the outcome returns at once
+        and its `spoken` outlet yields the reply as it is written.
         """
-        async with self._lock:
-            said = self._store.new_speech(heard.strip(), position)
-            text = without_prompt_echo(said, self._ears_prompt, self._ears_words)
-            if text != " ".join(said.split()):
-                self._logger.log("ears_prompt_echo", {"heard": said, "kept": text})
-            return await self._handle(text, arrived)
+        if stream and self._streamer is not None:
+            return self._aloud(heard, position, arrived, gone)
+        return await self._queued(heard, position, arrived, self._stale.arrive(gone))
 
-    async def _handle(self, text: str, arrived: float | None = None) -> TurnOutcome:
+    async def _queued(
+        self, heard: str, position: int, arrived: float | None, ticket: Ticket
+    ) -> TurnOutcome:
+        try:
+            async with self._lock:
+                return await self._heard(heard.strip(), position, arrived, ticket)
+        finally:
+            self._stale.leave(ticket)
+
+    def _aloud(
+        self, heard: str, position: int, arrived: float | None, gone: Gone | None
+    ) -> TurnOutcome:
+        """Run the turn in a task the pipeline owns, so a caller hanging up never cuts a commit
+        in half; the caller reads what to say from the outlet."""
+        generation = self._store.generation
+        outlet = SpokenOutlet(lambda: self._may_speak(generation))
+        ticket = self._stale.arrive(gone, outlet.spoken)
+        ticket.outlet = outlet
+        task = asyncio.ensure_future(self._speak_through(heard, position, arrived, ticket, outlet))
+        self._speaking.add(task)
+        task.add_done_callback(self._speaking.discard)
+        return TurnOutcome("", silent_decision(), spoken=outlet)
+
+    async def _speak_through(
+        self,
+        heard: str,
+        position: int,
+        arrived: float | None,
+        ticket: Ticket,
+        outlet: SpokenOutlet,
+    ) -> None:
+        try:
+            outcome = await self._queued(heard, position, arrived, ticket)
+            outlet.finish(outcome.reply)
+        except Exception as error:  # the stream must end whatever happened
+            self._logger.log(
+                "reply_stream_failed", {"segment_id": outlet.segment_id, "error": repr(error)}
+            )
+        finally:
+            outlet.close()
+
+    def _may_speak(self, generation: int) -> bool:
+        """No Stop or Reset since the turn began, and no round whose word must stay secret."""
+        store = self._store
+        playing = store.activity.state is GameState.ACTIVE_ROUND
+        return generation == store.generation and store.capturing and not playing
+
+    async def _heard(
+        self, heard: str, position: int, arrived: float | None, ticket: Ticket
+    ) -> TurnOutcome:
+        if self._stale.is_stale(ticket):  # a newer request came while this one waited
+            self._logger.log("turn_dropped_stale", {"why": "superseded", "deciding": False})
+            return TurnOutcome("", silent_decision(), stale=True)
+        before = self._store.last_heard
+        said = self._store.new_speech(heard, position)
+        text = without_prompt_echo(said, self._ears_prompt, self._ears_words)
+        if text != " ".join(said.split()):
+            self._logger.log("ears_prompt_echo", {"heard": said, "kept": text})
+        outcome = await self._handle(text, arrived, ticket)
+        if outcome.stale:  # never decided: the newer request must cover this speech again
+            self._store.last_heard = before
+        return outcome
+
+    async def _handle(
+        self, text: str, arrived: float | None = None, ticket: Ticket | None = None
+    ) -> TurnOutcome:
         if not text or not self._store.capturing:
             self._logger.log("turn_ignored_not_capturing", {"text_len": len(text)})
             return TurnOutcome("", silent_decision())
@@ -159,7 +239,11 @@ class TurnPipeline:
         )
         self._logger.log("turn", {"segment_id": turn.segment_id, "text": text})
         generation = self._store.generation
-        decision = await self._decide(turn)
+        decision = await self._decide_unless_stale(turn, ticket)
+        if decision is None:
+            why = ticket.why if ticket else None
+            self._logger.log("turn_dropped_stale", {"segment_id": turn.segment_id, "why": why})
+            return TurnOutcome("", silent_decision(), turn.segment_id, stale=True)
         async with self._commit:  # Stop, Reset and round changes wait until this turn is done
             return await self._commit_turn(turn, decision, generation, arrived)
 
@@ -223,12 +307,25 @@ class TurnPipeline:
         playing = self._store.activity.state is GameState.ACTIVE_ROUND
         return playing and decision.decision is not DecisionKind.SPEAK
 
-    async def _decide(self, turn: Turn) -> Decision:
+    async def _decide_unless_stale(self, turn: Turn, ticket: Ticket | None) -> Decision | None:
+        """The decision, or None when Agora gave up on this turn while it was being decided."""
+        if ticket is None:
+            return await self._decide(turn)
+        return await self._stale.decide(ticket, self._decide(turn, ticket.outlet))
+
+    def _deciding(self, turn: Turn, outlet: SpokenOutlet | None) -> Awaitable[Decision]:
+        """`decide`, or with MOCHI_STREAM_REPLY and no round on, the one that may stream."""
+        context = self.build_context()
+        playing = self._store.activity.state is GameState.ACTIVE_ROUND
+        if outlet is None or self._streamer is None or playing:
+            return self._intelligence.decide(turn, context)
+        outlet.segment_id = turn.segment_id
+        return self._streamer.decide_streaming(turn, context, outlet)
+
+    async def _decide(self, turn: Turn, outlet: SpokenOutlet | None = None) -> Decision:
         started = self._clock.now()
         try:
-            decision = await asyncio.wait_for(
-                self._intelligence.decide(turn, self.build_context()), self._timeout
-            )
+            decision = await asyncio.wait_for(self._deciding(turn, outlet), self._timeout)
         except TimeoutError:
             self._logger.log("decide_failed", {"segment_id": turn.segment_id, "error": "timeout"})
             return silent_decision()

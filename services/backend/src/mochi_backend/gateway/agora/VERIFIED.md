@@ -95,7 +95,12 @@ So ARES takes no `credential_mode` (that field, not the project, caused D-18's r
 `"turn_detection": {..., "language": "en-US,pt-PT"}`: one comma-separated string, in both places. `join_body()`
 now builds exactly this. With it, a live session through this backend transcribed
 `Como se diz fila em inglês?` as `Como se desfila em inglês.` (the same near-miss the stand-in gets on that
-synthetic clip) and an English sentence correctly. ARES has no Brazilian Portuguese: `pt-PT` is its Portuguese.
+synthetic clip) and an English sentence correctly. ~~ARES has no Brazilian Portuguese: `pt-PT` is its Portuguese.~~
+**Corrected 2026-11-21:** a live `/join` probe with `"asr": {"vendor": "ares", "language": "en-US,pt-BR", "keywords":
+[24 words]}` and **no** `credential_mode` was ACCEPTED (HTTP 200), and so was `pt-BR,en-US`. The earlier
+`en-US,pt-BR` failure (table above) also sent `credential_mode: managed`, which is what Agora rejected, so pt-BR
+was never really refused. Accepted does not mean recognised: how well ARES writes `adiar` / `guarda-chuva` with
+pt-BR is still **unmeasured** (docs/LATENCY_TEST_PLAN.md, `config/presets/ares.env`).
 `properties.asr.keywords` is documented for ARES (join page, up to 128).
 
 Those calls used token authentication (`Authorization: agora token=<token>`, a token for RTC and RTM built by
@@ -213,3 +218,18 @@ end_at, metadata: {playback_duration_ms}}, metrics: {e2e_latency_ms, segmented_l
 A /speak turn has only `tts_ttfb` (= e2e): MiniMax speech-2.8-turbo managed 44100 about 323 to 358 ms, 16000 about
 300 to 336, speech-2.6-turbo 302 to 352, Cartesia managed sonic-3.6 (16000) 66 to 72. No page_size is sent (default page).
 `MOCHI_END_OF_SPEECH_SILENCE_MS` now defaults to 600, the value the numbers above were measured with.
+
+## Cartesia voice through Agora (probe 2026-11-21, `/speak` only)
+
+`"tts": {"vendor": "cartesia", "credential_mode": "managed", "params": {"model_id": "sonic-3.6", "voice": {"mode":
+"id", "id": "<voice id>"}, "output_format": {"container": "raw", "sample_rate": 44100}, "language": "en"}}` works
+with no Cartesia key of ours. Time to first sound (`tts_ttfb`) about **90 ms** at 44100 Hz (the earlier 16000 Hz
+probe above: 66 to 72 ms), against about **330 ms** for MiniMax speech-2.8-turbo on the same `/speak` path.
+- Voice ids that worked: Jacqueline `9626c31c-bec5-4cca-baa8-f8ba9e84c8bc`, Larissa
+  `8d826d43-20ad-4c56-8d37-1048eccca1bf`. Luana failed.
+- **A wrong voice id fails silently:** `/join` answers HTTP 200 and the agent simply says nothing.
+- The `language` is fixed for the whole session. Cartesia says mixed-language lines mostly sound accented, so
+  `You can say: guarda-chuva.` is not fixed by this.
+- Not measured: the LLM-reply path (only `/speak`), pronunciation (nobody listened yet), and billing: Cartesia
+  is not on Agora's list of vendors included with the managed key (`config/prices.json` marks it unverified).
+- Preset: `config/presets/cartesia.env`.

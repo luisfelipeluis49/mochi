@@ -23,3 +23,26 @@ docker_env_file() {
   # literally, so MOCHI_ASR_PARAMS='{"a":1}' would reach the app as '{"a":1}' and fail to parse.
   sed -E "s/^([A-Za-z_][A-Za-z0-9_]*)='(.*)'\$/\\1=\\2/; s/^([A-Za-z_][A-Za-z0-9_]*)=\"(.*)\"\$/\\1=\\2/" "$1" > "$2"
 }
+
+PRESET_DIR="$ROOT/config/presets"
+
+load_preset() {
+  # load_preset NAME -> exports ./.env (secrets), then prod.env (today's production), then NAME.env
+  # (only what that test arm changes). Later files win. See config/presets/README.md.
+  local name="${1%.env}"
+  if [ -z "$name" ] || [ ! -f "$PRESET_DIR/$name.env" ]; then
+    echo "unknown preset '$name'; expected one of: $(cd "$PRESET_DIR" && ls -- *.env | sed 's/\.env$//' | tr '\n' ' ')" >&2
+    exit 2
+  fi
+  set -a
+  if [ -f "$ROOT/.env" ]; then . "$ROOT/.env"; fi
+  . "$PRESET_DIR/prod.env"
+  if [ "$name" != prod ]; then . "$PRESET_DIR/$name.env"; fi
+  set +a
+  export MOCHI_PRESET="$name"
+}
+
+random_key() {
+  # 32 random bytes as hex; never echoed by the scripts that call it.
+  od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
+}

@@ -191,6 +191,11 @@ only English is recognised (seen in a live session).
 Portuguese ARES made far fewer mistakes than Deepgram `nova-3` `multi` in the hardware owner's tests.
 **Not verified:** that ARES is accepted on the Render project (expected, same request); the Deepgram settings
 are kept as a comment in `.env.example`. Not a contract change (AGENTS 6 does not cover vendor settings).
+**Update 2026-11-21:** pt-PT was chosen because "ARES has no Brazilian Portuguese", which was never really tested.
+The earlier `en-US,pt-BR` attempt also sent `credential_mode: managed`, and that caused the 400. A live probe
+without `credential_mode` and with 24 keywords was ACCEPTED (HTTP 200) for both `en-US,pt-BR` and `pt-BR,en-US`.
+Recognition quality is still unmeasured, and the default stays `en-US,pt-PT` until the ARES arm of
+`docs/LATENCY_TEST_PLAN.md` passes.
 
 ## D-23: Mochi's character lives in the backend; a device channel for its body (2026-11-20)
 
@@ -589,3 +594,52 @@ word was saved for Ana.
 - **Also:** Agora ended the agent by itself 99 seconds into that session (no reason given, the backend
   had not asked); the Pi now ends the session when the agent leaves instead of staying awake.
 
+
+## D-37: latency levers, each behind its own flag (2026-11-21)
+
+Asked for as "D-32"; that number (and D-33 to D-36) was already taken, so this is D-37. Measured
+before (Agora Turns data): a spoken reply takes about 3.0-3.2 s at the median: `asr_ttlw` ~1.17 s,
+our `llm_ttft` ~1.3-1.6 s (decide() ~1.08 s median, ~0.2 s transit, plus lock queueing), `tts_ttfb`
+~0.32 s; `llm_ftfs` of 3-9 ms shows the reply leaves in one chunk. **Every default below is the
+behaviour before the lever existed**, so merging changes nothing; the test arms set the flags.
+
+| Flag (default) | What it does | Expected saving (confidence) |
+|---|---|---|
+| `model_usage` log line (always on) | One line per model call that answered: `model`, `kind` (`hint`/`character`), `prompt_tokens`, `completion_tokens`, `cached_tokens` (0 when absent), `latency_ms`. Never text. | none; it prices the other levers |
+| `MOCHI_CANCEL_STALE_TURNS` (false) | A newer Agora request cancels the decide() and model calls of an older one still deciding; one still waiting for the lock is skipped; with the flag the route also watches the ASGI `http.disconnect` and cancels on hang-up. Only deciding is cancelled (nothing is applied or published before the commit); the cancelled turn answers empty, and `last_heard` is restored so the newer request's cumulative text covers it. A turn that has already said words is never cancelled. Log: `turn_dropped_stale` (`why`: superseded / disconnected). | p95 only, 0.4-1.0 s (golden turn 4 waited ~400 ms behind abandoned turns) |
+| `MOCHI_CHARACTER_HEDGE_SECONDS` (0 = off) | After that long without an answer, Mochi's reply request is sent a second time (`intelligence/hedged.first_answer`, as the hint model does); first answer wins, the other is cancelled. Log: `character_hedge_used`. **Costs more:** every call slower than the value is paid twice. Not applied to the streamed path. | p95 ~0.5-1.0 s |
+| `MOCHI_STREAM_REPLY` (false) | Mochi's free-chat line (wake phrase, no lexicon or asked-for word, no round) goes to Agora in several SSE deltas as the model writes it; every other turn is one chunk as before. | 0.15-0.3 s likely (one estimate says up to 0.4-1 s) |
+
+How the stream stays safe (`gateway/spoken_release.py`, `intelligence/streamed_line.py`):
+- The turn runs in a task the pipeline owns (holding the turn lock as before); the route only reads
+  pieces from a queue, so Agora hanging up never cuts a commit in half.
+- Nothing inside an unfinished `[` is released and every bracket is removed with `split_commands`,
+  so commands never reach the voice; the first piece waits for `. , ? !` or six words.
+- `[quiet]` anywhere stops passing text on (the line is then not remembered); `[play]` holds the
+  rest, and the commit says it after `_with_round` and the secret check (the prompt puts `[play]`
+  first, so in practice nothing streams). A Stop, Reset or round starting ends the release.
+- `[listen]`/`[chat]`, `_remember`, learning events, device commands, `agent.speak.requested` and the
+  `reply` log run on the full text at the commit, exactly as before; the commit's reply minus what
+  was already said is sent last. A mid-stream failure ends with stop + `[DONE]`, never another line.
+- Off with `MOCHI_SILENCE_STRATEGY=mute_speaker` (the speaker is unmuted only at the commit).
+- The model is asked with `stream: true` and `stream_options.include_usage` (for `model_usage`).
+- Reading the numbers: with streaming on, `decision.latency_ms` and `arrived_to_decided_ms` cover
+  the whole streamed line, so they grow; the gain shows in `reply_first_byte` and Agora's `llm_ttft`.
+
+**Proposal (contract-adjacent, internal):** `gateway/intelligence_port.py` gains `StreamingDecider`
+(`decide_streaming(turn, context, sink)`, returning the same `Decision`), implemented by
+`Intelligence`; the sink type is `platform/text_sink.TextSink`. AGENTS 6.5 and `packages/contracts`
+are unchanged.
+
+**Not covered / open for a human:**
+- After "Oi Mochi" wakes it, most later sentences go through `_watching`/`_follow_up`, not
+  `_answer_mochi`; as specified, only wake-phrase turns stream. Extending it to follow-ups is a
+  small change in `decision_flow._follow_up` if the arm shows a gain.
+- Not verified with Agora: that it speaks several content deltas as one reply (the custom-LLM page
+  describes OpenAI SSE chunks, VERIFIED.md), and that it closes the connection of a request it
+  abandons (if it does not, only the newer-request path cancels).
+- If `[play]` were written after words (against the prompt), words said before it cannot be
+  unsaid when the drawn word happens to be among them.
+- A cancelled or timed-out decide can leave Mochi's own talk history updated (as the existing
+  timeout already can).
+- `HttpxClient.post_lines` is not covered by a test (it needs a network or an injected transport).

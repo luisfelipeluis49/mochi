@@ -1,7 +1,8 @@
 """The only way the gateway reaches intelligence (AGENTS 6.5). Kauê's side implements it."""
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
+from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     ActivityCommand,
     ActivityResult,
@@ -47,4 +48,16 @@ class IntelligencePort(Protocol):
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
     ) -> None:
         """What the device reports about itself (speaker level, temperature, voices it knows)."""
+        ...
+
+
+@runtime_checkable
+class StreamingDecider(Protocol):
+    """PROPOSAL (DECISIONS D-37), internal and behind MOCHI_STREAM_REPLY: `decide` that may pass
+    Mochi's free-chat line to `sink` while it is written. The returned Decision is unchanged."""
+
+    async def decide_streaming(
+        self, turn: Turn, context: SessionContext, sink: TextSink
+    ) -> Decision:
+        """Decide one turn, streaming a free-chat line into `sink`."""
         ...

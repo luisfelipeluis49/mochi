@@ -1,6 +1,7 @@
 """The language-model port that writes what Mochi says, in character, when it is spoken to."""
 
-from typing import Literal, Protocol
+from collections.abc import AsyncGenerator
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -41,6 +42,23 @@ class CharacterModel(Protocol):
 
     async def reply(self, request: CharacterRequest) -> str | None:
         """The reply as the model wrote it (silent commands in square brackets included)."""
+        ...
+
+
+class CharacterStreamError(Exception):
+    """The streamed reply broke off: what was already said stays said, nothing more follows."""
+
+
+@runtime_checkable
+class StreamingCharacterModel(Protocol):
+    """A character model that can also hand over its reply while writing it (D-37)."""
+
+    async def reply(self, request: CharacterRequest) -> str | None:
+        """The whole reply, as `CharacterModel.reply`."""
+        ...
+
+    def stream_reply(self, request: CharacterRequest) -> AsyncGenerator[str]:
+        """The reply in pieces as written; raises `CharacterStreamError` when it breaks off."""
         ...
 
 

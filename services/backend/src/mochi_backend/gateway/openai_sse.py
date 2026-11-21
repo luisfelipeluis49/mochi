@@ -48,7 +48,22 @@ def sse_events(text: str, created: int = 0) -> Iterator[str]:
     `created` is the Unix time in seconds (the route passes the injected clock's).
     Example: `"".join(sse_events(""))` is a valid empty reply.
     """
-    yield _chunk({"role": "assistant", "content": text}, None, created)
+    yield content_chunk(text, created, first=True)
+    yield from closing_lines(created)
+
+
+def content_chunk(text: str, created: int, *, first: bool) -> str:
+    """One content delta. Only the first of a reply names the role, as OpenAI streams do.
+
+    A streamed reply (MOCHI_STREAM_REPLY) is several of these, then `closing_lines`.
+    Example: `content_chunk("Hi, ", 0, first=True)`.
+    """
+    delta = {"role": "assistant", "content": text} if first else {"content": text}
+    return _chunk(delta, None, created)
+
+
+def closing_lines(created: int) -> Iterator[str]:
+    """The stop chunk and [DONE] that end every reply (agora/VERIFIED.md)."""
     yield _chunk({}, "stop", created)
     yield DONE_LINE
 

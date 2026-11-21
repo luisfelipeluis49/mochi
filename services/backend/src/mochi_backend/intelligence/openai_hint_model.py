@@ -1,10 +1,12 @@
 """HintModel over any OpenAI-compatible chat-completions API. Never raises; returns None instead."""
 
 import json
+import time
 
 from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
+from mochi_backend.intelligence.model_usage import ModelUsage, log_usage
 from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_contracts import Reason
@@ -156,6 +158,7 @@ class _Choice(BaseModel):
 
 class _ChatReply(BaseModel):
     choices: list[_Choice]
+    usage: ModelUsage | None = None
 
 
 class OpenAiHintModel:
@@ -225,6 +228,7 @@ class OpenAiHintModel:
     async def suggest(self, request: ModelRequest) -> ModelSuggestion | None:
         """Ask the model; None on transport error, non-200, or output that is not strict JSON."""
         headers = {"Authorization": f"Bearer {self._api_key}"}
+        started = time.monotonic()
         try:
             reply = await self._http.post_json(
                 self._url, headers, self._payload(request), self._timeout
@@ -232,7 +236,9 @@ class OpenAiHintModel:
             if reply.status != HTTP_OK:
                 self._failed(f"HTTP {reply.status}")
                 return None
-            content = _ChatReply.model_validate_json(reply.body).choices[0].message.content
+            answer = _ChatReply.model_validate_json(reply.body)
+            log_usage(self._logger, self._model_name, "hint", answer.usage, started)
+            content = answer.choices[0].message.content
             return _suggestion(content, asked=bool(request.asked_about))
         except (HttpTransportError, ValidationError, IndexError, ValueError) as error:
             self._failed(type(error).__name__)  # the class only: a message may quote the sentence
