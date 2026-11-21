@@ -16,3 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f services/backend/Dockerfile -t mochi-backend .
+  apps:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [glasses, web]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # apps/web has no package-lock.json yet; switch it to `npm ci` when the web fix branch adds one.
+      - run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+      - run: npm test
+      - if: matrix.app == 'web'
+        run: npx tsc --noEmit
