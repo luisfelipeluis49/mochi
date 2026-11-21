@@ -141,8 +141,12 @@ Mochi can learn a voice by being asked, in either language, during a session:
 From then on the Pi recognises who is talking about 0.8 s into each turn (`mochi_device/speakers.py`:
 3D-Speaker CAM++ embeddings through sherpa-onnx, about 50 ms per check), shows the name on the
 screen and tells the agent, which then knows whether it is talking to Ana or Ben. An unknown voice
-stays unknown. Voiceprints never leave the Pi: they are in `data/voices.json` (delete it to forget
-everyone), and anything else that has a recording, such as a phone app later, can enrol through
+stays unknown. The Pi keeps its voiceprints in `data/voices.json`, and with `kind = "mochi_backend"` it also
+sends each one to the backend's database (`PUT .../voices/{name}/voiceprint`, device key required) after
+learning it. At the start of each session it adds the voices the backend has and it lacks, so a replaced
+or reflashed Pi gets its voices back, and sends the ones the backend lacks. It only ever adds: a failed or
+empty answer never deletes anything here. To forget someone for good, ask Mochi ("forget my voice"): that
+deletes both copies; deleting `data/voices.json` alone only forgets them until the next session. Anything else that has a recording, such as a phone app later, can enrol through
 the same `Voices.learn(name, audio)`. Tolerances are under `[voices]` in the config.
 
 Limits: a turn with less than half a second of speech is not attributed, nor is someone talking over

@@ -92,7 +92,7 @@ def default_adapters(settings: Settings) -> Adapters:
         rest = AgoraRestClient(http, settings.agora_app_id, *creds, ids)
         agora = rest.hide_secrets((*secrets, *creds))
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
-    storage = storage_for(settings.database_url, logger, DEMO_USERS)
+    storage = storage_for(settings.database_url, logger, DEMO_USERS, settings.mochi_local_data)
     brain = _brain_for(settings, (clock, ids, logger), storage)
     name = "rules+model" if settings.model_configured else "rules"
     name += "+character" if settings.character_configured else ""
@@ -281,9 +281,10 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
         activity=ActivityService(core, pipeline, adapters.agora),
         devices=_devices(core, adapters, config),
         device_link=DeviceLink(core, adapters.agora),
-        connections=ConnectionService(core.hub, core.store, core.live_hint),
+        connections=ConnectionService(core.hub, core.store, core.live_hint, adapters.intelligence),
         demo_reset=DemoReset(core),
         voices=voices,
         intelligence_name=adapters.intelligence_name,
         storage_name=start.name,
+        storage_unsaved=start.storage.unsaved_writes,
     )

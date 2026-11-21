@@ -14,9 +14,8 @@ from mochi_contracts import Language
 router = APIRouter()
 NAME_LIMIT = 40
 VOICES_LIMIT = 8
-PersonName = Annotated[
-    str, StringConstraints(pattern=r"^[\p{L} '\-]{1,40}$", max_length=NAME_LIMIT)
-]
+NAME_PATTERN = r"^[ '\-]*\p{L}[\p{L} '\-]*$"  # at least one letter
+PersonName = Annotated[str, StringConstraints(pattern=NAME_PATTERN, max_length=NAME_LIMIT)]
 BoundedText = Annotated[str, StringConstraints(max_length=NAME_LIMIT)]
 
 

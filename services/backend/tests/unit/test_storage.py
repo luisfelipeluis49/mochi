@@ -11,7 +11,7 @@ from mochi_backend.gateway.voice_directory import (
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.settings import SettingsError, load_settings
 from mochi_backend.storage.event_log import StorageEventSink
-from mochi_backend.storage.factory import storage_for
+from mochi_backend.storage.factory import Opener, storage_for
 from mochi_backend.storage.port import NullStorage, voice_key
 from mochi_backend.storage.postgres import PostgresStorage
 from mochi_backend.storage.postgres import _event as _event_row
@@ -23,6 +23,7 @@ from mochi_contracts import (
     Reason,
     StateChange,
     VoiceprintUpload,
+    VoiceProfile,
 )
 from tests.fakes.fake_postgres import ReadFailsPostgres
 from tests.fakes.fake_sender import FakeEventLogger
@@ -86,8 +87,11 @@ def test_a_failed_write_is_logged_and_never_raised() -> None:
     behind.save_event(_event("a"))
     behind.flush()
     assert logger.lines == [
-        ("storage_write_failed", {"what": "save_event", "error": "ConnectionError"})
+        ("storage_write_failed", {"what": "event:a", "error": "ConnectionError"})
     ]
+
+
+NO_WAIT = Opener(attempts=3, pause=lambda _seconds: None)
 
 
 def test_without_a_database_url_storage_is_memory_only() -> None:
@@ -99,9 +103,9 @@ def test_without_a_database_url_storage_is_memory_only() -> None:
 
 def test_an_unreachable_database_falls_back_to_memory_and_says_so() -> None:
     logger = FakeEventLogger()
-    start = storage_for("postgresql://u:p@127.0.0.1:1/none", logger, DEMO_USERS)
+    start = storage_for("postgresql://u:p@127.0.0.1:1/none", logger, DEMO_USERS, "", NO_WAIT)
     assert isinstance(start.storage, NullStorage) and start.name == "memory"
-    assert logger.names() == ["storage_unavailable"]
+    assert logger.names() == ["storage_unavailable"] * 3 + ["storage_fallback"]
     assert "127.0.0.1" not in repr(logger.lines) and "p@" not in repr(logger.lines)
 
 
@@ -168,5 +172,57 @@ def test_stored_rows_that_no_longer_fit_the_contract_are_skipped_not_fatal() -> 
 
 def test_a_database_that_fails_while_loading_does_not_stop_startup() -> None:
     logger = FakeEventLogger()
-    start = storage_for("postgresql://unused", logger, DEMO_USERS, ReadFailsPostgres)
-    assert start.name == "memory" and logger.names() == ["storage_unavailable"]
+    start = storage_for("postgresql://unused", logger, DEMO_USERS, "", Opener(ReadFailsPostgres, 1))
+    assert start.name == "memory"
+    assert logger.names() == ["storage_unavailable", "storage_fallback"]
+
+
+def test_startup_waits_between_attempts_for_a_database_that_is_waking_up() -> None:
+    pauses: list[float] = []
+    opener = Opener(ReadFailsPostgres, attempts=3, pause=pauses.append, seconds_between=2.0)
+    storage_for("postgresql://unused", FakeEventLogger(), DEMO_USERS, "", opener)
+    assert pauses == [2.0, 2.0]
+
+
+def _voice(name: str) -> VoiceProfile:
+    return VoiceProfile(name=name, user_id="ana", language="pt", voiceprint=[0.1], saved=None)
+
+
+def test_a_failed_write_is_tried_again_before_the_next_one() -> None:
+    inner = FakeStorage()
+    behind = WriteBehindStorage(inner, FakeEventLogger())
+    inner.broken = True
+    behind.save_event(_event("a"))
+    behind.flush()
+    assert behind.unsaved_writes() == 1 and inner.events == {}
+    inner.broken = False
+    behind.save_event(_event("b"))
+    behind.flush()
+    assert list(inner.events) == ["a", "b"] and behind.unsaved_writes() == 0
+
+
+def test_a_retried_save_never_brings_back_a_voice_that_was_forgotten() -> None:
+    inner = FakeStorage()
+    behind = WriteBehindStorage(inner, FakeEventLogger())
+    inner.broken = True
+    behind.save_voice(_voice("Ana"))
+    behind.delete_voice("ana")  # the newer write for the same voice replaces the failed save
+    behind.flush()
+    inner.broken = False
+    behind.save_voice(_voice("Ben"))
+    behind.flush()
+    assert list(inner.voices) == ["ben"]
+
+
+def test_a_failed_reset_is_retried_in_order_with_the_saves_around_it() -> None:
+    inner = FakeStorage()
+    behind = WriteBehindStorage(inner, FakeEventLogger())
+    behind.save_event(_event("old"))
+    behind.flush()
+    inner.broken = True
+    behind.clear_events()
+    behind.flush()
+    inner.broken = False
+    behind.save_event(_event("new"))
+    behind.flush()
+    assert list(inner.events) == ["new"]

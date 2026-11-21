@@ -18,6 +18,7 @@ import asyncio
 import json
 import os
 import re
+import urllib.parse
 import urllib.request
 import warnings
 from dataclasses import dataclass
@@ -218,8 +219,8 @@ class TestAgentBackend:
         except Exception as e:
             print(f"[mochi] could not update the agent: {e!r}"[:300], flush=True)
 
-    async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
-        """Say out loud that a voice was learned (or that it did not work)."""
+    async def voice_enrolled(self, name: str, lang: str, learned: bool, voiceprint: dict | None = None) -> None:
+        """Say out loud that a voice was learned (or that it did not work). `voiceprint` is for the backend."""
         lines = {(True, "pt"): "Pronto, {name}! Agora eu conheço a sua voz.",
                  (True, "en"): "Got it, {name}! I know your voice now.",
                  (False, "pt"): "Desculpa, {name}, não ouvi o bastante. Pede de novo e fala um pouquinho mais.",
@@ -383,13 +384,15 @@ class MochiBackend:
         self._voices: tuple[list[str], str | None] = ([], None)
         self._told = None  # the last status the backend was given
         self._status_failing = False
+        self._local_voices = None
+        self._sync_task: asyncio.Task | None = None
 
     def __repr__(self) -> str:
         return f"MochiBackend({self.base!r}, {self.device_id!r})"  # no device key
 
     def _req(self, method: str, path: str, timeout: float = 10, body: dict | None = None,
              auth: bool = False) -> dict:
-        payload = json.dumps(body or {}).encode() if method == "POST" else None
+        payload = json.dumps(body or {}).encode() if method in ("POST", "PUT") else None
         headers = {"Content-Type": "application/json"}
         if auth and self.device_key:
             headers["Authorization"] = f"Bearer {self.device_key}"
@@ -412,6 +415,7 @@ class MochiBackend:
             if state.get("capturing") and state.get("agora"):
                 a = state["agora"]
                 self._poller = asyncio.create_task(self._poll())
+                self._sync_task = asyncio.create_task(self.sync_voices())  # the backend is awake now
                 return JoinInfo(a["app_id"], a["channel"], int(a["uid"]), a.get("token"))
             await asyncio.sleep(0.2)
         raise RuntimeError("backend did not report capturing=true with agora join info")
@@ -421,13 +425,51 @@ class MochiBackend:
         """Called whenever the Pi recognises a (different) speaker or learns / forgets a voice."""
         self._voices = (list(known), speaker)
 
-    async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
-        """Learning a voice ended; the backend has Mochi say so."""
-        body = {"name": name, "language": "pt" if lang == "pt" else "en", "learned": learned}
+    async def voice_enrolled(self, name: str, lang: str, learned: bool, voiceprint: dict | None = None) -> None:
+        """Learning a voice ended; the backend has Mochi say so, and keeps the voiceprint (a replaced
+        Pi gets its voices back from there)."""
+        language = "pt" if lang == "pt" else "en"
+        body = {"name": name, "language": language, "learned": learned}
         try:
             await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/voices", 5, body, True)
         except Exception as e:
             print(f"[mochi] backend voices: {e!r}"[:300], flush=True)
+            return
+        if learned and voiceprint:
+            await self._send_voiceprint(name, language, voiceprint)
+
+    def use_voices(self, local) -> None:
+        """`local()` gives this Pi's voices as {name: {"voiceprint", "saved"}} (see wakeword.voiceprints)."""
+        self._local_voices = local
+
+    async def _send_voiceprint(self, name: str, language: str, voice: dict) -> None:
+        body = {"language": language, "voiceprint": voice["voiceprint"], "saved": voice.get("saved")}
+        try:
+            await asyncio.to_thread(self._req, "PUT", f"/api/devices/{self.device_id}/voices/"
+                                    f"{urllib.parse.quote(name)}/voiceprint", 5, body, True)
+        except Exception as e:  # sent again at the next session start (sync_voices)
+            print(f"[mochi] backend voiceprint for {name}: {e!r}"[:300], flush=True)
+
+    async def sync_voices(self) -> None:
+        """Put this Pi and the backend's database in step, only ever adding: voices the backend has
+        and this Pi lacks come here (a replaced or reflashed Pi); voices this Pi has and the backend
+        lacks go there. An empty or unreachable backend never removes anything here."""
+        if not self._local_voices:
+            return
+        try:
+            remote = await asyncio.to_thread(self._req, "GET", f"/api/devices/{self.device_id}/voices", 5, None, True)
+        except Exception as e:
+            print(f"[mochi] backend voices list: {e!r}"[:300], flush=True)
+            return
+        theirs = {str(v.get("name", "")).lower(): v for v in remote if isinstance(v, dict)}
+        here = self._local_voices()
+        lacking = [v for k, v in theirs.items() if v.get("voiceprint") and k not in {n.lower() for n in here}]
+        if lacking:
+            self.on_event("voices", lacking)
+        for name, voice in here.items():
+            other = theirs.get(name.lower()) or {}
+            if not other.get("voiceprint"):
+                await self._send_voiceprint(name, other.get("language") or "en", voice)
 
     async def _report(self) -> None:
         """Tell the backend the volume, temperature and voices, if any of them changed."""
@@ -581,9 +623,12 @@ class WithFallback:
         self.backend.set_voices(known, speaker)
         self.own_agent.set_voices(known, speaker)
 
-    async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
+    async def voice_enrolled(self, name: str, lang: str, learned: bool, voiceprint: dict | None = None) -> None:
         if self.active:
-            await self.active.voice_enrolled(name, lang, learned)
+            await self.active.voice_enrolled(name, lang, learned, voiceprint)
+
+    def use_voices(self, local) -> None:
+        self.backend.use_voices(local)
 
 
 def make_backend(cfg: dict, on_event=None):

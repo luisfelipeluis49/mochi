@@ -122,7 +122,12 @@ async def test_snapshot_on_connect_respects_visibility() -> None:
     harness = await _started()
     await harness.say(ADIAR)
     ana, ben, audience = await harness.connect_all(ANA, BEN, AUDIENCE)
-    assert ana.types() == ["session.state.changed", "activity.state.changed", "hint.created"]
+    assert ana.types() == [
+        "session.state.changed",
+        "activity.state.changed",
+        "hint.created",
+        "learning_event.created",  # her saved word, replayed (words survive a restart)
+    ]
     assert ben.types() == ["session.state.changed", "activity.state.changed"]
     assert audience.types()[-1] == "hint.created"
 

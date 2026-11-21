@@ -72,7 +72,7 @@ never receives any message containing a protected secret word until the round re
 ## Why exactly one worker
 
 Session state, the game and the live hint are in this process's memory. Saved words, users and voices are also
-kept in Postgres when `DATABASE_URL` is set (D-32): they are loaded into memory at startup and written behind.
+kept in Postgres when `DATABASE_URL` is set (D-32), or in a local JSON file in fake mode (`MOCHI_LOCAL_DATA`, D-33): they are loaded into memory at startup and written behind.
 A second worker or instance would have its own copy of the session, so a phone could connect to a process that never
 saw the turns. Run `--workers 1` and `numInstances: 1`. Timers (hint expiry) and the single global event
 `sequence` also assume one process.
