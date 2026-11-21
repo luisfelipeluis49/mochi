@@ -20,6 +20,7 @@ import { HomeView } from "./views/HomeView.tsx";
 import { InsightsView } from "./views/InsightsView.tsx";         // Mochi's own little screen
 import { MobileView } from "./views/MobileView.tsx";
 import { StartPage } from "./views/StartPage.tsx";
+import { TabBar } from "./views/TabBar.tsx";                  // the Analytics / Conversations bar on phone pages
 import { peopleFromUrl, rememberUser } from "./lib/people.ts";     // a person's phone screen
 import "./styles.css";                                  // all the colors and sizes (CSS)
 
@@ -53,6 +54,8 @@ function App({ who }: { who: Who }) {
       {who.kind === "user" && !insights && (
         <MobileView user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />
       )}
+      {/* Phone pages: the Analytics / Conversations bar at the bottom */}
+      {who.kind === "user" && <TabBar current={insights ? "conversations" : "analytics"} search={window.location.search} lang={lang} />}
       {who.kind === "audience" && <AudienceView state={state} now={now} lang={lang} />}
       {rejected && <p className="fatal" role="alert">Connection refused by the backend: {rejected}</p>}
       {debug && <DebugPanel log={state.log} connected={connected} />}
