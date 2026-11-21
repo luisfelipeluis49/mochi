@@ -139,9 +139,14 @@ test('the glasses reconnect by themselves and pick up the live hint', async () =
 
 test('stop() ends reconnecting for good', async () => {
   const statuses = [];
-  // Nothing listens on this port.
+  // A port that was just free and is closed again: the connection is refused at once, on any machine.
+  const { createServer } = await import('node:net');
+  const probe = createServer();
+  await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const { port } = probe.address();
+  await new Promise((resolve) => probe.close(resolve));
   const connection = createConnection({
-    url: 'ws://127.0.0.1:9/ws?user=ana',
+    url: `ws://127.0.0.1:${port}/ws?user=ana`,
     onStatus: (status) => statuses.push(status),
     onMessage: () => assert.fail('no message expected'),
   });
