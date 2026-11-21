@@ -1,0 +1,20 @@
+{
+  "name": "mochi-glasses",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mochi AR: Fluency Helper for Rokid Glasses",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "test": "node --test",
+    "check": "aix check .",
+    "preview": "aix preview . --dev",
+    "pack": "aix pack . -o mochi-glasses.aix",
+    "glasses": "aix install . && aix launch-page .",
+    "mock-backend": "node tools/mock-backend.mjs"
+  },
+  "devDependencies": {
+    "@yodaos-pkg/aix-cli": "0.13.0",
+    "ws": "^8.18.0"
+  }
+}

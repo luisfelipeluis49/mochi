@@ -1,0 +1,4 @@
+node_modules/
+.aix/
+*.aix
+.DS_Store
