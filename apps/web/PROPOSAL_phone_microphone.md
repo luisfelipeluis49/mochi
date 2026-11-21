@@ -1,47 +1,29 @@
-# Proposal: the phone as Mochi's microphone (owner of the idea: Tasnim; backend draft for Luís)
+# The phone as Mochi's microphone (owner: Tasnim, `apps/web` only)
 
-**Status:** PROPOSED. AGENTS.md section 8 lists "the phone as a microphone" as out of scope *unless a
-human asks*. Tasnim asks for it here; Luís (gateway) and Matheus (contracts) decide.
+**No backend change.** AGENTS.md section 8 lists "the phone as a microphone" as out of scope unless a
+human asks; Tasnim asks. Use case: practising on the street, with no Pi nearby.
 
-## What it should do
-
-Two kinds of session, kept apart:
-
-| Started on | Who listens | Live hints show on | The phone during the session |
+| Started on | Who listens | Live hints | The phone during the session |
 |---|---|---|---|
-| **the phone** (Start on `/m`) | the phone's mic | that phone (and the Home/Audience views over WebSocket) | live hint and cards, as today |
-| **the Pi** ("Oi, Mochi!") | the Pi's M1A | the Pi | nothing live; the analytics appear after Stop |
+| **the phone** (Iniciar on `/m`) | the phone's mic | on that phone | live hint and cards |
+| **the Pi** ("Oi, Mochi!") | the Pi's M1A | on the Pi | nothing live; the analytics appear after Stop |
 
-Use case: practising on the street, with no Pi nearby.
+## How (only routes that exist today)
 
-## Contract additions (all additive; nothing in 6.1–6.6 changes)
+1. Iniciar → `POST /api/sessions/demo/start` (no body, exactly as today).
+2. `GET /api/devices/home_pi_01/state` → its `agora` block `{ app_id, channel, uid, token }`.
+3. The phone joins that Agora channel with its mic (Agora Web SDK `AgoraRTC_N-4.24.8.js` from
+   `download.agora.io`, loaded only then: no new npm dependency) and plays Mochi's voice.
+4. Parar → leaves the channel, then `POST /api/sessions/demo/stop`.
 
-```text
-POST /api/sessions/demo/start   body gains an optional "source": "device" | "phone"  (default "device")
-                                 { "source": "phone" }  -> a phone session
-                                 no body / { "woken_by": "oi mochi" } -> a device session, exactly as today
-                                 any other source -> 422
-GET  /api/sessions/demo/phone-audio
-     -> { "app_id", "channel", "uid", "token" }   while a phone session runs (same shape as the device's "agora")
-     -> 409                                        otherwise
-GET  /api/devices/home_pi_01/state
-     while a phone session runs: { "capturing": false, "agora": null, "speaker_muted": false }
-     so the Pi bridge stays out (it joins nothing and gets no commands, hints included)
-```
+The Mobile view remembers locally (`sessionStorage`) whether *it* started the session, only to hide live
+words during a session started on the Pi.
 
-- The phone joins with the **Pi's uid** (`MOCHI_PI_UID`): the Agora agent listens to exactly one remote
-  uid, so it needs no change. This is safe only because the Pi is kept out during a phone session
-  (two clients with one uid in a channel would kick each other).
-- A second Start while a session runs keeps the running session's source. Stop resets it to "device".
-- The session/WebSocket events do not change. The Mobile view remembers locally (`sessionStorage`) whether
-  *it* started the session, only to hide live words during a Pi session; who gets which event is still
-  decided in the gateway.
+## Limits (each needs a backend change to remove — Luís decides)
 
-## Known limits
-
-- One phone session at a time (there is one session, `demo`).
-- No speaker identification on a phone: hints go by the whose-word rule (AGENTS.md 7.3), like on the Pi.
-- The phone's token is the same token the Pi gets; the route is open like `/start` (no sign-in in the MVP).
-- iPhone/Android need **https** for the microphone (the Vercel link, not `http://<laptop-ip>:5173`).
-- The web app loads the Agora Web SDK (`AgoraRTC_N-4.24.8.js`) from `download.agora.io` when the mic
-  starts: no new npm dependency.
+- **The Pi must be off during a phone session.** The phone joins with the Pi's uid because Mochi's agent
+  listens to that one uid. If the Pi is on, it sees `capturing: true`, joins with the same uid, the two
+  kick each other out, and the Pi also shows the hints. Fix: a start that says it came from a phone and a
+  device state that keeps the Pi out.
+- One session at a time (`demo`). No speaker identification on a phone (AGENTS.md 7.3 decides).
+- iPhone/Android need **https** for the mic (the Vercel link, not `http://<laptop-ip>:5173`).

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from mochi_backend.gateway.agora.client_port import RtcTokenIssuer
 from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, DeviceCommand
-from mochi_backend.gateway.errors import ConflictError, NotFoundError
+from mochi_backend.gateway.errors import NotFoundError
 from mochi_backend.gateway.roster import HOME_DEVICE_ID
 from mochi_backend.gateway.session_service import SessionConfig
 from mochi_backend.gateway.session_store import SessionStore
@@ -84,9 +84,7 @@ class DeviceService:
         """
         if device_id != HOME_DEVICE_ID:
             raise NotFoundError(f"unknown device {device_id!r}; expected {HOME_DEVICE_ID!r}")
-        if not self._store.capturing or self._store.source == "phone":
-            # A phone started this session: its microphone stands in for the Pi, which stays out
-            # (no join, no hints, no round on its screen). Two clients cannot share one uid.
+        if not self._store.capturing:
             return DeviceState(capturing=False, agora=None, speaker_muted=False)
         return DeviceState(
             capturing=True,
@@ -94,17 +92,6 @@ class DeviceService:
             speaker_muted=self._silence.speaker_muted(),
             commands=[*self._store.fresh_commands(self._clock.now()), *self._round(trusted)],
         )
-
-    def phone_join(self) -> AgoraJoinInfo:
-        """Where the phone that started the session joins the channel with its microphone.
-
-        It takes the Pi's uid, which the agent listens to (one remote uid per agent), so the agent
-        needs no change; the Pi stays out of a phone session. 409 unless a phone session is live.
-        Example: after `start(source="phone")`, `phone_join().uid` is the Pi's uid.
-        """
-        if not self._store.capturing or self._store.source != "phone":
-            raise ConflictError("no phone session is running; start one with source=phone")
-        return self._join_info()
 
     def _round(self, trusted: bool) -> list[DeviceCommand]:
         """The round as a command, on every poll while there is one (a round outlasts the 30 s

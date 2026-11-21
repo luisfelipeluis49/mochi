@@ -13,9 +13,9 @@
 //   4. "Sessions": minutes per session, as bars
 //   5. "My words": one card per saved word, with its path (Hint shown → Used with help → ...)
 // It does NOT filter anything: the backend only sends Ana's words and summaries to Ana's phone.
-// THE PHONE AS MICROPHONE (PROPOSED, PROPOSAL_phone_microphone.md): Start on this phone starts a
-// "phone" session: this phone's mic listens and the Pi stays out. While a session started on the Pi
-// runs, this phone shows no live hint or new cards; they appear when the session ends.
+// THE PHONE AS MICROPHONE (PROPOSAL_phone_microphone.md): Start on this phone also turns on this
+// phone's mic (no backend change). While a session started on the Pi runs, this phone shows no live
+// hint or new cards; they appear when the session ends.
 // =============================================================================
 
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -122,11 +122,11 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
   // Leaving the page: turn the mic off (the session itself keeps running until Stop).
   useEffect(() => () => { void micStop.current?.(); }, []);
 
-  // Start on this phone: a phone session, then this phone's mic joins Mochi's channel.
+  // Start on this phone: the usual Start, then this phone's mic joins Mochi's channel.
   const startHere = async (b: Backend) => {
     markStartedHere(true);
     setHere(true);
-    await b.start("phone");
+    await b.start();
     const join = await b.phoneAudio(); // null in the mock: no mic
     if (!join) return;
     try {

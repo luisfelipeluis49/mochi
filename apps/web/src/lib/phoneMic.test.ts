@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startBody } from "./backend.ts";
+import { joinFrom } from "./backend.ts";
 import { AGORA_SDK_URL, markStartedHere, showLive, startedHere } from "./phoneMic.ts";
 
 /** A tiny in-memory sessionStorage. */
@@ -29,10 +29,11 @@ test("live things hide only while a session started on the Pi runs", () => {
   assert.equal(showLive(false, false), true); // after the session: analytics
 });
 
-test("Start from a phone sends source=phone; a plain start keeps the old empty body", () => {
-  assert.deepEqual(startBody("phone"), { source: "phone" });
-  assert.equal(startBody("device"), undefined);
-  assert.equal(startBody(), undefined);
+test("the phone takes the device state's join block; none when no session runs", () => {
+  const agora = { app_id: "a", channel: "mochi_demo", uid: 1001, token: "t" };
+  assert.deepEqual(joinFrom({ agora }), agora);
+  assert.equal(joinFrom({ agora: null }), null);
+  assert.equal(joinFrom({}), null);
 });
 
 test("the Agora SDK is a pinned https URL", () => {

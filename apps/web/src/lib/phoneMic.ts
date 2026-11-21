@@ -2,16 +2,18 @@
 // phoneMic.ts  —  LANGUAGE: TypeScript
 // -----------------------------------------------------------------------------
 // THE PHONE AS MOCHI'S MICROPHONE (proposal: apps/web/PROPOSAL_phone_microphone.md).
-// Two kinds of session, kept apart:
-//   - Started on the PHONE: this phone's mic listens, hints show here, the Pi stays out.
+//   - Started on the PHONE: this phone's mic listens and the hints show here.
 //   - Started on the PI:    the Pi listens; this phone shows no live words, only analytics afterwards.
+// NO BACKEND CHANGE: the phone reads the same join block the Pi polls (GET /api/devices/home_pi_01/state)
+// and joins with the Pi's uid, because Mochi's agent listens to that one uid. So the Pi must be OFF
+// (e.g. on the street): if it is on, it joins too, the two kick each other out, and it shows the hints.
 // This file: (1) remembers whether THIS phone started the session, (2) joins the Agora channel with
 // the phone's mic. The Agora Web SDK is loaded from Agora's CDN only when the mic starts, so the app
 // has no new npm dependency and pages that never use the mic never download it.
 // The mic needs HTTPS (the Vercel link); on plain http:// over Wi-Fi the browser refuses it.
 // =============================================================================
 
-/** Where the backend says to join: GET /api/sessions/demo/phone-audio. */
+/** Where to join: the "agora" block of GET /api/devices/home_pi_01/state. */
 export interface AgoraJoin {
   app_id: string;
   channel: string;

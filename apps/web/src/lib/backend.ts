@@ -16,17 +16,13 @@ import { type Who, wsQuery } from "./who.ts";
 
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
-  start(source?: SessionSource): Promise<void>;       // POST /api/sessions/demo/start ({"source":"phone"} from a phone)
-  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/sessions/demo/phone-audio (null in the mock: no mic)
+  start(): Promise<void>;                              // POST /api/sessions/demo/start
+  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/devices/home_pi_01/state → its "agora" (null in the mock: no mic)
   stop(): Promise<void>;                               // POST /api/sessions/demo/stop
   activityStart(): Promise<void>;                      // POST /api/sessions/demo/activity/start
   activityResult(result: RoundResult): Promise<void>;  // POST /api/sessions/demo/activity/result
   close(): void;                                       // close the connection (when the page goes away)
 }
-
-/** Who listens in a session: Mochi's own mic ("device", the default) or the phone that started it.
- *  PROPOSED, see apps/web/PROPOSAL_phone_microphone.md. */
-export type SessionSource = "device" | "phone";
 
 /** What to do when something arrives. Given by useMochi.ts. */
 export interface BackendHandlers {
@@ -80,9 +76,9 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** The body of POST /start: nothing for a device session (as before), { source: "phone" } for a phone one. */
-export function startBody(source: SessionSource = "device"): { source: "phone" } | undefined {
-  return source === "phone" ? { source: "phone" } : undefined;
+/** The device state's join block, or null when no session runs (the same answer the Pi bridge polls). */
+export function joinFrom(state: { agora?: AgoraJoin | null }): AgoraJoin | null {
+  return state.agora ?? null;
 }
 
 /** Connect to the REAL backend. */
@@ -115,8 +111,9 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   // The commands: each one is a POST to the address from AGENTS.md §6.4.
   const s = "/api/sessions/demo";
   return {
-    start: (source) => post(`${s}/start`, startBody(source)),
-    phoneAudio: () => getJson<AgoraJoin>(`${s}/phone-audio`),
+    start: () => post(`${s}/start`),
+    // No new backend route: the phone joins with the same block the Pi gets (see phoneMic.ts).
+    phoneAudio: async () => joinFrom(await getJson<{ agora?: AgoraJoin | null }>("/api/devices/home_pi_01/state")),
     stop: () => post(`${s}/stop`),
     activityStart: () => post(`${s}/activity/start`),
     activityResult: (result) => post(`${s}/activity/result`, { result }), // body: { "result": "guessed" }
