@@ -13,6 +13,9 @@
 //   4. "Sessions": minutes per session, as bars
 //   5. "My words": one card per saved word, with its path (Hint shown → Used with help → ...)
 // It does NOT filter anything: the backend only sends Ana's words and summaries to Ana's phone.
+// THE PHONE AS MICROPHONE (PROPOSAL_phone_microphone.md): Start on this phone also turns on this
+// phone's mic (no backend change). While a session started on the Pi runs, this phone shows no live
+// hint or new cards; they appear when the session ends.
 // =============================================================================
 
 import { type RefObject, useState } from "react";
@@ -20,6 +23,8 @@ import { LEARNING_STATE_ORDER, type Language, type LearningEvent, type SessionSu
 import { barPercent, lastSession, progress, sessionHistory } from "../lib/analytics.ts";
 import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
+import { showLive } from "../lib/phoneMic.ts";
+import { usePhoneMic } from "../lib/usePhoneMic.ts";
 import { type ClientState, hintOptions, liveHint, wordsNewestFirst } from "../lib/store.ts";
 
 // The inputs this screen receives from main.tsx.
@@ -94,7 +99,9 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
   const [busy, setBusy] = useState(false);              // true while a button request is on its way (buttons are disabled)
   const [error, setError] = useState<string | null>(null); // error message if the backend could not be reached
   const capturing = state.session?.capturing ?? false;  // is Mochi listening right now?
-  const hint = liveHint(state, now);                    // the hint for this person, while it is on screen
+  const { here, startHere, stopHere } = usePhoneMic(capturing, () => setError(t.micFailed)); // this phone's mic
+  const live = showLive(capturing, here);               // false while a session started on the Pi runs
+  const hint = live ? liveHint(state, now) : null;      // the hint for this person, while it is on screen
   const words = wordsNewestFirst(state);                // saved words, newest first
   const p = progress(state);                            // the numbers for "Your progress"
   const last = lastSession(state);                      // the newest session summary, or null
@@ -137,9 +144,9 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
           {capturing && state.session && <span className="mode-pill">{t.mode}: {t.modeName[state.session.mode]}</span>}
         </p>
         {capturing ? (
-          <button className="btn stop" disabled={busy} onClick={() => run((b) => b.stop())}>{t.stop}</button>
+          <button className="btn stop" disabled={busy} onClick={() => run(stopHere)}>{t.stop}</button>
         ) : (
-          <button className="btn start" disabled={busy} onClick={() => run((b) => b.start())}>{t.start}</button>
+          <button className="btn start" disabled={busy} onClick={() => run(startHere)}>{t.start}</button>
         )}
         {/* Start a Describe & Guess round (the Operator's phone). Shown while Mochi listens and no round is
             running. Until the backend can start a round by voice ("Bora jogar!"), this is the only way in the UI. */}
@@ -159,8 +166,8 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
         </section>
       )}
 
-      {/* 2. Your progress: four numbers */}
-      <section>
+      {/* 2. Your progress: four numbers (hidden while a session started on the Pi runs) */}
+      {live && <section>
         <h2>{t.progressTitle}</h2>
         <div className="stats">
           {tiles.map(([n, label]) => (
@@ -170,7 +177,7 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
       {/* 3. Your last session: the summary, or a short message until a session ends */}
       <section>
@@ -194,13 +201,13 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
         </section>
       )}
 
-      {/* 5. My words: a message if empty, otherwise one card per word */}
-      <section>
+      {/* 5. My words: a message if empty, otherwise one card per word (hidden like the numbers) */}
+      {live && <section>
         <h2>{t.myWords}</h2>
         {words.length === 0 ? <p className="empty">{t.noWords}</p> : (
           <ul className="cards">{words.map((w) => <WordCard key={w.learning_event_id} w={w} lang={lang} />)}</ul>
         )}
-      </section>
+      </section>}
     </main>
   );
 }

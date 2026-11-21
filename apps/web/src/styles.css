@@ -193,6 +193,8 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .record-status { font-size: 20px; font-weight: 800; color: var(--berry); display: flex; align-items: center; gap: 8px; }
 .rec-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--berry); display: inline-block; }
 .record-hint { font-size: 13px; color: var(--muted); }
+.record-notice { font-size: 14px; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: #fff; }
+.record-notice a { font-weight: 700; color: inherit; }
 
 /* Conversation history entries are buttons that open the conversation */
 .conv-open { all: unset; display: grid; gap: 4px; width: 100%; cursor: pointer; }

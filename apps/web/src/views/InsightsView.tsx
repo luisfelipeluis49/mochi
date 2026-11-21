@@ -5,6 +5,7 @@
 //
 // How it is used:
 //   1. Press "Record a conversation" when a conversation starts (with Matheus, a client, anyone).
+//      It records with THIS phone's microphone (usePhoneMic.ts); the Pi must be off.
 //   2. Press "Stop and save" when it ends. That recording becomes ONE entry in the history.
 //      An hour later, another recording with someone else becomes ANOTHER entry.
 //   3. Tap an entry to see ONLY WHAT YOU SAID: your sentences, the better version when there was
@@ -21,6 +22,7 @@ import { type RefObject, useEffect, useState } from "react";
 import type { ConversationReport, Language } from "../contracts.ts";
 import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
+import { usePhoneMic } from "../lib/usePhoneMic.ts";
 import {
   conversations, improvementPercent, mistakeCount, mistakesPer10Min, practiceNext, topMistakes, totals,
   trendBarPercent, wordsNeeded,
@@ -64,6 +66,8 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
   const [startedAt, setStartedAt] = useState<number | null>(null); // when this phone saw the recording start
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Record uses THIS phone's microphone, not the Pi's (see usePhoneMic.ts).
+  const { startHere, stopHere } = usePhoneMic(recording, () => setError(t.micFailed));
 
   // Start the timer when the recording starts (from this phone or from the device), clear it when it stops.
   useEffect(() => {
@@ -89,11 +93,15 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
         <>
           <div className="record-status"><span className="rec-dot" /> {t.recording} · {stopwatch(startedAt ? now - startedAt : 0)}</div>
           <p className="record-hint">{t.onlyYou}</p>
-          <button className="btn stop" disabled={busy} onClick={() => send((b) => b.stop())}>{t.stopRecording}</button>
+          {/* Notice: the numbers of this session show on the analytics page (/m), same person and options */}
+          <p className="record-notice">
+            {t.analyticsNotice} <a href={`/m${window.location.search}`}>{t.openAnalytics}</a>
+          </p>
+          <button className="btn stop" disabled={busy} onClick={() => send(stopHere)}>{t.stopRecording}</button>
         </>
       ) : (
         <>
-          <button className="btn record-btn" disabled={busy} onClick={() => send((b) => b.start())}>● {t.recordTitle}</button>
+          <button className="btn record-btn" disabled={busy} onClick={() => send(startHere)}>● {t.recordTitle}</button>
           <p className="record-hint">{t.recordHint}</p>
         </>
       )}

@@ -10,12 +10,14 @@
 
 import type { MochiEvent, RoundResult } from "../contracts.ts";
 import { MockGateway } from "../mock/demoScript.ts";
+import type { AgoraJoin } from "./phoneMic.ts";
 import { parseEvent } from "./store.ts";
 import { type Who, wsQuery } from "./who.ts";
 
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
   start(): Promise<void>;                              // POST /api/sessions/demo/start
+  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/devices/home_pi_01/state → its "agora" (null in the mock: no mic)
   stop(): Promise<void>;                               // POST /api/sessions/demo/stop
   activityStart(): Promise<void>;                      // POST /api/sessions/demo/activity/start
   activityResult(result: RoundResult): Promise<void>;  // POST /api/sessions/demo/activity/result
@@ -67,6 +69,18 @@ async function post(path: string, body?: unknown): Promise<void> {
   if (!res.ok) throw new HttpError(path, res.status);
 }
 
+/** Send one GET request and read the JSON answer. */
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${baseUrl()}${path}`);
+  if (!res.ok) throw new HttpError(path, res.status);
+  return (await res.json()) as T;
+}
+
+/** The device state's join block, or null when no session runs (the same answer the Pi bridge polls). */
+export function joinFrom(state: { agora?: AgoraJoin | null }): AgoraJoin | null {
+  return state.agora ?? null;
+}
+
 /** Connect to the REAL backend. */
 export function connectReal(who: Who, h: BackendHandlers): Backend {
   let ws: WebSocket | null = null;
@@ -98,6 +112,8 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   const s = "/api/sessions/demo";
   return {
     start: () => post(`${s}/start`),
+    // No new backend route: the phone joins with the same block the Pi gets (see phoneMic.ts).
+    phoneAudio: async () => joinFrom(await getJson<{ agora?: AgoraJoin | null }>("/api/devices/home_pi_01/state")),
     stop: () => post(`${s}/stop`),
     activityStart: () => post(`${s}/activity/start`),
     activityResult: (result) => post(`${s}/activity/result`, { result }), // body: { "result": "guessed" }
@@ -118,6 +134,7 @@ export function connectMock(who: Who, h: BackendHandlers, speed: number, people?
   gw.connect(scenario === "demo"); // the demo plays by itself; the /me page waits for "Record"
   return {
     start: async () => gw.start(),
+    phoneAudio: async () => null, // the mock has no Agora: the phone just plays the fake demo
     stop: async () => gw.stop(),
     activityStart: async () => gw.activityStart(),
     activityResult: async (r) => gw.activityResult(r),
