@@ -32,13 +32,23 @@ _WANTS_TO_HEAR = re.compile(
     r"\b(?:fala|falar|diz|dizer|repete|repetir)\b[^?.!]{0,30}"
     r"\b(?:para|pra) (?:mim|n[o\u00f3]s|a gente)\s*(?:de novo|novamente|outra vez)?\s*[?.!]*\s*$"
 )
+# Telling someone that one asked is not asking. Seen live: "eu perguntei explicitamente como se
+# pronuncia", said to the partner half a minute after a hint, made Mochi say that hint aloud.
+_REPORTED = re.compile(
+    r"\b(?:i|we|she|he|they) (?:just |already |explicitly )*(?:asked|said|told|wanted)\b|"
+    r"\b(?:perguntei|perguntou|perguntamos|pedi|pediu|pedimos|falei|disse)\b"
+)
 # A word the recogniser put in quotes: "Você pode falar 'reunião' para mim?"
 _QUOTED = re.compile(r"[\"“]([^\"”]{2,40})[\"”]|(?<!\w)['‘]([^'’]{2,40})['’](?!\w)")
 
 
 def wants_to_hear(text: str) -> bool:
-    """True when the turn asks how a word sounds. Example: "Can you pronounce it?" -> True."""
-    return _WANTS_TO_HEAR.search(lowered(text)) is not None
+    """True when the turn asks how a word sounds. Example: "Can you pronounce it?" -> True.
+
+    Not when it tells about having asked: "I asked how it is pronounced" -> False.
+    """
+    said = lowered(text)
+    return _WANTS_TO_HEAR.search(said) is not None and _REPORTED.search(said) is None
 
 
 def _quoted(text: str) -> str | None:

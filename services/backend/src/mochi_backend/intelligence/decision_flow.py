@@ -197,7 +197,7 @@ class DecisionFlow:
         there), and not while Mochi is part of the talk: then it answers in its own words.
         """
         asked = wants_to_hear(turn.text) and not addressed_partner(turn.text, context)
-        return asked and context.activity is None and not self._talk.attentive
+        return asked and not round_is_active(context) and not self._talk.attentive
 
     def _said_aloud(self, turn: Turn, context: SessionContext) -> Decision | None:
         """ "Can you pronounce it?" about a word just shown: Mochi says it, and shows it again.
@@ -412,7 +412,7 @@ class DecisionFlow:
         A word the rules found is shown either way, and Mochi is told to teach that one.
         """
         maybe_for_mochi = self._talk.listening() or says_mochi(turn.text)
-        if context.activity is not None or not maybe_for_mochi:
+        if round_is_active(context) or not maybe_for_mochi:
             return None  # during a round only the wake phrase makes Mochi speak
         return await self._line(turn, match, named=False)
 

@@ -6,6 +6,8 @@
 // (The vision slides: "Sem celular. Só conversa." Hints and the game live on Mochi itself.)
 // Shows, from top to bottom:
 //   1. Start / Stop (the Operator uses these) + the current mode + "Start a game"
+//   1b. The LIVE HINT, when this person gets stuck (word, meaning, example). The backend sends it only
+//       to the phone of the person it is for (AGENTS.md 6.2 / 9.4); it goes away with the hint on Mochi.
 //   2. "Your progress": new words, used with help, recalled in a game, minutes practiced
 //   3. "Your last session": the summary card (PROPOSED v0.5)
 //   4. "Sessions": minutes per session, as bars
@@ -18,12 +20,13 @@ import { LEARNING_STATE_ORDER, type Language, type LearningEvent, type SessionSu
 import { barPercent, lastSession, progress, sessionHistory } from "../lib/analytics.ts";
 import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
-import { type ClientState, wordsNewestFirst } from "../lib/store.ts";
+import { type ClientState, hintOptions, liveHint, wordsNewestFirst } from "../lib/store.ts";
 
 // The inputs this screen receives from main.tsx.
 interface Props {
   user: string;                        // "ana" or "ben" (the backend roster)
   state: ClientState;                  // all data received from the backend
+  now: number;                         // current time (the live hint disappears on time)
   lang: Language;                      // "en" or "pt-BR"
   connected: boolean;                  // is the connection to the backend open?
   backend: RefObject<Backend | null>;  // used to send Start / Stop
@@ -86,11 +89,12 @@ function SummaryCard({ s, lang }: { s: SessionSummary; lang: Language }) {
 }
 
 // --- The whole phone page ------------------------------------------------------
-export function MobileView({ user, state, lang, connected, backend }: Props) {
+export function MobileView({ user, state, now, lang, connected, backend }: Props) {
   const t = copyFor(lang);
   const [busy, setBusy] = useState(false);              // true while a button request is on its way (buttons are disabled)
   const [error, setError] = useState<string | null>(null); // error message if the backend could not be reached
   const capturing = state.session?.capturing ?? false;  // is Mochi listening right now?
+  const hint = liveHint(state, now);                    // the hint for this person, while it is on screen
   const words = wordsNewestFirst(state);                // saved words, newest first
   const p = progress(state);                            // the numbers for "Your progress"
   const last = lastSession(state);                      // the newest session summary, or null
@@ -144,6 +148,16 @@ export function MobileView({ user, state, lang, connected, backend }: Props) {
         )}
         {error && <p className="error">{error}</p>}
       </section>
+
+      {/* 1b. Live hint: only while there is one (the backend sends this phone only its owner's hints) */}
+      {hint && (
+        <section className="live-hint" aria-live="polite">
+          <div className="tag">{t.liveHint}</div>
+          {hintOptions(hint.expression).map((o) => <div key={o} className="expr">{o}</div>)}
+          {hint.meaning && <div className="meaning">{hint.meaning}</div>}
+          {hint.example && <div className="example">“{hint.example}”</div>}
+        </section>
+      )}
 
       {/* 2. Your progress: four numbers */}
       <section>

@@ -15,7 +15,14 @@ from mochi_backend.gateway.agora.client_port import (
 )
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.errors import UpstreamError
-from mochi_contracts import EventType, GameState, SessionMode, SessionState, SessionStatus
+from mochi_contracts import (
+    EventType,
+    GameState,
+    Language,
+    SessionMode,
+    SessionState,
+    SessionStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -51,6 +58,17 @@ def greeting_for(woken_by: str | None, config: SessionConfig) -> str:
     return config.greeting_pt if words[0] in PORTUGUESE_CUES else config.greeting_en
 
 
+def language_of_call(woken_by: str | None) -> Language | None:
+    """The language Mochi was called in; None when nobody called it.
+
+    Example: `language_of_call("oi mochi")` is `Language.PT_BR`; `"hey mochi"` is `Language.EN`.
+    """
+    words = (woken_by or "").lower().split()
+    if not words:
+        return None
+    return Language.PT_BR if words[0] in PORTUGUESE_CUES else Language.EN
+
+
 class SessionService:
     """`POST /api/sessions/demo/start` and `.../stop`."""
 
@@ -82,7 +100,7 @@ class SessionService:
         """
         async with self._start_lock:
             if self._store.capturing:
-                return self._already_running(bool(woken_by))
+                return self._already_running(woken_by)
             generation = self._store.generation
             agent_id = await self._start_agent(greeting_for(woken_by, self._config))
             if generation != self._store.generation:
@@ -90,12 +108,12 @@ class SessionService:
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
             self._begin(agent_id)
-            self._intelligence.session_started(bool(woken_by))
+            self._intelligence.session_started(bool(woken_by), language_of_call(woken_by))
             return await self._publish_state()
 
-    def _already_running(self, woken: bool) -> SessionState:
-        if woken:  # called on the device while a session runs: Mochi listens to that person now
-            self._intelligence.session_started(woken)
+    def _already_running(self, woken_by: str | None) -> SessionState:
+        if woken_by:  # called on the device while a session runs: Mochi listens to that person now
+            self._intelligence.session_started(True, language_of_call(woken_by))
         return self._store.session_state()
 
     async def stop(self) -> SessionState:

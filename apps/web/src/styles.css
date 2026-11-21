@@ -119,6 +119,12 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .btn.stop { background: #fff; color: var(--night); border: 2px solid var(--night); }
 .btn.secondary { background: var(--pink); color: var(--night); font-size: 17px; padding: 12px; }
 .error { color: var(--berry); font-size: 14px; }
+/* The live hint on the phone (dark card, like Mochi's word screens) */
+.live-hint { background: var(--night); color: var(--cream); border-radius: 16px; padding: 16px 18px; display: grid; gap: 4px; }
+.live-hint .tag { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--pink); }
+.live-hint .expr { font-size: 30px; font-weight: 800; line-height: 1.1; }
+.live-hint .meaning { font-size: 17px; opacity: .9; }
+.live-hint .example { font-size: 15px; font-style: italic; opacity: .85; }
 .empty { color: var(--muted); font-size: 15px; }
 
 /* "Your session" summary, like the phone on the Mochi Mobile slide */

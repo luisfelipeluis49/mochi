@@ -279,6 +279,11 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 ```
 
 - Command kinds: `mood`, `show`, `volume`, `temp`, `enroll`, `forget`, `bye`, and `hint` (value is a JSON card: `word`, `language`, `meaning`, `example`). A device does each `command_id` once. The gateway drops a command after 30 seconds.
+- **Proposed 2026-11-21 (DECISIONS D-31), on the `hardware` branch only:**
+  - Command kind `round`: the Describe & Guess round for Mochi's own screen. Value is a JSON card in the Activity names: `round_id`, `state`, `describer_user_id`, `guesser_user_id`, `result`, `revealed_word`, plus `secret_word` and `language`. It is in the state on every poll while there is a round (`command_id` is `<round_id>:<state>`), not queued. `secret_word` is null unless `GET /state` was sent with `Authorization: Bearer <MOCHI_DEVICE_KEY>`; the route stays open.
+  - Command kind `used` (value `{ "word", "language" }`: someone said a word they were given) has been sent since d2594e6 and was missing from this list.
+  - `session_started(woken, language)`: the intelligence port's method takes the language Mochi was called in as an optional second argument.
+  - Mochi's silent command `[play]` (like `[listen]` and `[chat]`, never sent to the device) starts a round from a spoken turn; `POST /activity/start` still does the same. After `POST /activity/result` Mochi says the result aloud (`Speak.reason` is `activity_host`).
 - The intelligence port has seven methods: the four in 6.5 plus the ones that carry Mochi's character, the heard sentence, device status and "say aloud" (`gateway/intelligence_port.py` is the source).
 - The Pi starts a session itself when it hears the wake phrase; the Operator's Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
@@ -341,7 +346,8 @@ Mochi's screen takes touch, but it is a basic panel: **the only control is a tap
 | `ROUND_RESULT` | the word + "Ana got it!" for a few seconds, then back to the face | — |
 
 - The Audience view shows who describes and who guesses, and the word only in `ROUND_RESULT`.
-- Roles swap: after a round, the next round's describer is the previous guesser (the deck: "Correct! Sophie, your turn to describe."). Language of the round follows the describer's target language. *Not built yet; the backend currently takes the round language from the session.*
+- Roles swap: after a round, the next round's describer is the previous guesser (the deck: "Correct! Sophie, your turn to describe."). Language of the round follows the describer's target language. *The swap is built (proposed, D-31); the round language still comes from the session.*
+- On Mochi's own screen a tap on the result starts another round. The round is started by voice ("let's play": Mochi writes `[play]`) or by `POST /activity/start`. *Proposed, D-31.*
 - Whether the word is currently revealed is local state of the Home view; the server only needs the second tap.
 - Word choice: first a stock list of tangible words (umbrella, suitcase, corkscrew). From M4, the newest **describable** word in the guesser's learning events; the partner describes it and the learner guesses.
 

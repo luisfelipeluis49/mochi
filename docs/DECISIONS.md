@@ -513,3 +513,51 @@ apps really use what the database holds. **Touches `hardware/pi-bridge` (Matheus
   (contract change, schema regenerated).
 - **Reset** still keeps users and voices (so a reset does not make Mochi forget who is who).
 
+## D-34: the Pi tells who is talking, and which language it was called in, in time (2026-11-21)
+
+Two things seen on the Pi. "Oi Mochi" was answered in English; and Mochi showed a learned name on its
+screen while saying it did not recognise the voice.
+- **Greeting language** (`mochi_device/phrases.py`): the phone recogniser writes a Brazilian "oi" as "uei"
+  or "uai", the sounds of "hey" and "hi" behind a rounded vowel. On the test clips 48% of the Portuguese
+  greetings that woke Mochi were reported as an English phrase. "oi" and "olá" now have those
+  pronunciations, and an h-less "hey"/"hi" right after "u"/"o" costs what a glued consonant costs: 10%
+  wrong (most of the rest are English voices reading "Oy"), English unchanged at 1%, the same detection
+  and false-wake numbers as before.
+- **Who is talking** (`mochi_device/speakers.py`, `main.py`, `backends.py`): every new sentence began as
+  "unknown", and so did every moment Mochi's own voice reached the microphone. The name came back 0.8 s
+  into a sentence at the earliest and otherwise at the pause, which the Pi notices 0.2 to 0.4 s late
+  (measured), while Agora starts the reply after 0.48 s: the agent answered with the old "unknown". Now the
+  speaker stays until someone else is recognised or a stranger has spoken for 1.5 s; whoever says the wake
+  phrase is recognised from it; guesses repeat at 0.8, 1.5 and 2.5 s; updates to the stand-in agent go out
+  one at a time; the backend is told on the next poll, not within a second; a report that failed is sent
+  again; forgetting a voice is reported at once; and the scores are logged. The price, accepted: a few
+  words from someone unknown, or an answer that follows within a second, keep the last name.
+  The model itself is fine: with one known voice and room noise, 1.5 s of speech is never missed at 0.35
+  and a stranger passes 3.5% of the time (30 speakers of the test corpus).
+
+## D-35: sentences nobody said: Mochi's own voice and a recogniser primed with the lexicon (2026-11-21)
+
+Seen in the first conversation of two people with the three modes (Mateus and Tasnim): Mochi taught
+"postpone" and "key" several times although nobody had said "adiar" or "chave". The backend log has them
+as the first sentence of a turn, right after Mochi spoke: "Where is my chave?" arrived 4.6 s after the
+session started, while the greeting was still playing; "I need to adiar the meeting. Posso praticar com
+você?" had only its second sentence said by a person.
+- **Two causes together.** The recogniser (`gpt-4o-transcribe`) is given the lexicon as "words that may
+  come up" (`composition.vocabulary`), and it writes unclear audio as those words. And unclear audio is
+  what it gets while Mochi speaks: a clip played on the M1A comes back in its own microphone (loudness
+  envelope match 0.59 at the expected delay, 0.29 at the 95th percentile elsewhere), at about the level of
+  the room.
+- **Built (Pi, `hardware/pi-bridge`):** while Mochi's voice is playing, and for 0.6 s after, silence is sent
+  on instead of the microphone (`[audio] hear_while_speaking = false`, the default). The price: Mochi
+  cannot be interrupted by talking over it; "tchau Mochi" is still heard, on the Pi itself.
+- **Not solved, for Luís and Kauê:** background speech does the same. In a noisy room, with nobody talking
+  to Mochi, the recogniser produced "My chave atrasar." and the lexicon rule answered with "key". Options:
+  give the recogniser only "Mochi" (and measure what that costs "adiar" and "guarda-chuva", AGENTS 12.2,
+  with the code-switch clips of the test kit), or have a lexicon word in an otherwise odd sentence
+  confirmed by the hint model before it is shown.
+- **Also from that conversation:** "eu perguntei explicitamente como se pronuncia", said to the partner,
+  made Mochi say the last hint aloud; telling someone that one asked no longer counts as asking
+  (`intelligence/aloud.py`). In listen mode "Como você diz coffee?" shows the word and says nothing, as
+  designed (D-30); the two people expected to hear it. **For the team:** say the word once when someone
+  asks outright, and keep unasked hints silent?
+

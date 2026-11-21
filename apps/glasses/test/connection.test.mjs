@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConnection, STATUS } from '../lib/connection.js';
-import { createMockSource } from '../lib/mock-source.js';
+import { createMockSource, SCRIPT } from '../lib/mock-source.js';
 import { initialState, resetForNewConnection, parseEvent, reduce, socketUrl } from '../lib/protocol.js';
 import { createMockBackend } from '../tools/mock-backend.mjs';
 
@@ -157,6 +157,21 @@ test('stop() ends reconnecting for good', async () => {
   const seen = statuses.length;
   await new Promise((resolve) => setTimeout(resolve, 1300)); // longer than the first retry wait
   assert.equal(statuses.length, seen);
+});
+
+test('demo mode shows every one of its hints, whoever wears the glasses', () => {
+  // The glasses drop a hint aimed at someone else; the demo once aimed its second hint at "ben",
+  // so the default wearer ("ana") saw nothing for half of each loop.
+  const hints = SCRIPT.filter((step) => step.type === 'hint.created');
+  assert.equal(hints.length, 3);
+  for (const wearer of ['ana', 'ben']) {
+    for (const [index, step] of hints.entries()) {
+      const event = { schema_version: '0.4', event_id: `evt_${index}`, type: step.type, session_id: 'demo',
+        emitted_at: '2026-11-21T00:00:00.000Z', sequence: index + 1, payload: step.payload };
+      const state = reduce(initialState(wearer), parseEvent(JSON.stringify(event)), Date.now());
+      assert.equal(state.hint && state.hint.hintId, step.payload.hint_id, `${wearer} sees ${step.payload.hint_id}`);
+    }
+  }
 });
 
 test('demo mode (the replay source, no backend) produces contract events the protocol accepts', async () => {

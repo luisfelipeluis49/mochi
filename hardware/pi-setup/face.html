@@ -18,8 +18,18 @@
     note   a second, smaller line under the word: its language and what it means ("English · garfo")
     pop    {what: "volume" | "temp", value, n}   a short badge; n changes for every new one
     who    name of the person Mochi recognises talking ("" = nobody)
+    temp   Mochi's own temperature in degrees Celsius (null = not known): always shown while it sleeps
+    hot    true while that is too warm: the temperature turns orange and shows whatever Mochi is doing
+    online false while Mochi has no connection: a full "No connection" card while it sleeps or is
+           waking, a small sign in the corner at other times
+    round  a Describe & Guess round in front of the face (AGENTS.md 7.5), or null:
+           {tone: "ask" | "secret" | "result", big: the large line, small: the line under it}
+
+  The only input is a touch anywhere: the page tells the supervisor "tap" or "long" (held 0.6 s or
+  more) with GET /tap?kind=..., and the supervisor decides what it means.
 
   Try it without the supervisor:  face.html?demo=1   or   face.html#mode=speaking&mood=love&word=umbrella
+                                  face.html#mode=awake&round={"tone":"secret","big":"umbrella","small":"tap when Ana gets it"}
   Another supervisor address:     face.html?events=http://host:8765/events
 -->
 <style>
@@ -100,6 +110,30 @@
     border: 3px solid var(--accent); border-radius: 20px; padding: 2px 14px 4px; opacity: 0; transform: translateY(-50px);
     transition: opacity .3s, transform .3s; }
   #who.on { opacity: 1; transform: none; }
+  /* Describe & Guess: a still, full-screen card with very large text, in front of the face */
+  #round { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 0 16px; text-align: center; font-family: system-ui, sans-serif; color: #fff; background: var(--accent); }
+  #round.on { display: flex; }
+  #round.secret { background: #2b2540; }
+  #round.result { background: #23855a; }
+  #round b { font-weight: 800; font-size: 76px; line-height: 1.05; max-width: 100%; overflow-wrap: anywhere; }
+  #round small { font-weight: 700; font-size: 27px; line-height: 1.25; white-space: pre-line; }
+  /* no connection: a still card while Mochi sleeps or wakes, a small sign otherwise */
+  #offline { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; text-align: center; font-family: system-ui, sans-serif; color: #fff; background: #3b2f4a; }
+  #offline svg { width: 96px; height: 96px; }
+  #offline b { font-weight: 800; font-size: 46px; line-height: 1.1; }
+  #offline small { font-weight: 700; font-size: 25px; opacity: .9; }
+  .offline.mode-sleeping #offline, .offline.mode-waking #offline, .offline.mode-bye #offline { display: flex; }
+  #nolink { position: absolute; left: 12px; bottom: 10px; display: none; background: #e2504c; border-radius: 16px; padding: 4px 9px 1px; }
+  #nolink svg { width: 30px; height: 30px; }
+  .offline:not(.mode-sleeping):not(.mode-waking):not(.mode-bye) #nolink { display: block; }
+  /* Mochi's temperature, small in the corner, always there while it sleeps */
+  #temp { position: absolute; right: 12px; bottom: 8px; display: none; align-items: center; gap: 3px;
+    font: 700 22px system-ui, sans-serif; color: #cfc8ff; opacity: .8; }
+  #temp svg { width: 22px; height: 22px; }
+  .mode-sleeping #temp.on, #temp.on.hot { display: flex; }   /* too warm: shown whatever Mochi is doing */
+  #temp.hot { color: #ff7a3d; opacity: 1; }
   #badge svg { width: 34px; height: 34px; }
   #badge .bar { fill: rgba(255, 255, 255, .35); } #badge .bar.lit { fill: #fff; }
 </style>
@@ -152,14 +186,21 @@
 <div id="word"><span><b></b><small></small></span></div>
 <div id="badge"></div>
 <div id="who"></div>
+<div id="round"><b></b><small></small></div>
+<div id="offline">
+  <svg viewBox="0 0 48 48" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"><path d="M6 19a26 26 0 0 1 36 0M13 26a16 16 0 0 1 22 0M19.5 32.5a7 7 0 0 1 9 0"/><circle cx="24" cy="38" r="1.6" fill="#fff"/><path d="M9 7l30 36" stroke="#ff8a85"/></svg>
+  <b>No connection</b><small>Sem conexão · Wi-Fi?</small>
+</div>
+<div id="nolink"><svg viewBox="0 0 48 48" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"><path d="M6 19a26 26 0 0 1 36 0M13 26a16 16 0 0 1 22 0M19.5 32.5a7 7 0 0 1 9 0"/><circle cx="24" cy="38" r="1.6" fill="#fff"/><path d="M9 7l30 36"/></svg></div>
+<div id="temp"><svg viewBox="0 0 34 34"><path d="M14 4a4 4 0 0 1 8 0v14a8 8 0 1 1-8 0z" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="18" cy="25" r="4.5" fill="currentColor"/><path d="M18 24V12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><span></span></div>
 </div>
 
 <script>
 const body = document.body, floats = document.getElementById('floats');
 const talk = document.getElementById('talk'), tongue = document.getElementById('talk-tongue');
 const wordBox = document.getElementById('word'), badge = document.getElementById('badge');
-const state = { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', pop: null, who: '' };
-const whoBox = document.getElementById('who');
+const state = { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', pop: null, who: '', round: null, temp: null, hot: false, online: true };
+const whoBox = document.getElementById('who'), roundBox = document.getElementById('round'), tempBox = document.getElementById('temp');
 let popSeen = 0, mouthNow = 0, lastMode = '';
 
 // Which eyes and mouth each mood wears. A mood only shows while Mochi is awake.
@@ -195,6 +236,17 @@ function draw() {
   if (state.word) { wordBox.querySelector('b').textContent = state.word; wordBox.querySelector('small').textContent = state.note || ''; }
   whoBox.classList.toggle('on', !!state.who); if (state.who) whoBox.textContent = state.who;
   if (state.pop && state.pop.n !== popSeen) { popSeen = state.pop.n; showBadge(state.pop); }
+  body.classList.toggle('offline', state.online === false);
+  const warm = Number.isFinite(state.temp);
+  tempBox.classList.toggle('on', warm); tempBox.classList.toggle('hot', warm && !!state.hot);
+  if (warm) tempBox.querySelector('span').textContent = Math.round(state.temp) + '\u00b0C';
+  const round = state.round;
+  roundBox.className = round ? 'on ' + round.tone : '';
+  if (round) {
+    const big = roundBox.querySelector('b');
+    big.textContent = round.big; big.style.fontSize = round.big.length > 13 ? '44px' : round.big.length > 8 ? '52px' : '';
+    roundBox.querySelector('small').textContent = round.small;
+  }
 }
 
 // --- mouth: follows the loudness of Mochi's voice, eased so it does not flicker
@@ -262,13 +314,23 @@ function showBadge(pop) {
   badge.classList.add('on'); clearTimeout(badgeTimer); badgeTimer = setTimeout(() => badge.classList.remove('on'), 4500);
 }
 
-// --- a tap on the screen: Mochi notices
+// --- a touch on the screen: Mochi notices, and the supervisor is told (a tap, or held: "long")
+let downAt = 0, tapUrl = '';
 document.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  downAt = performance.now();
   body.classList.remove('boop'); void body.offsetWidth; body.classList.add('boop');
   if (state.mode !== 'sleeping') burst('heart', 2);
   setTimeout(() => body.classList.remove('boop'), 460);
 });
+function released() {
+  if (!downAt) return;
+  const kind = performance.now() - downAt >= 600 ? 'long' : 'tap';
+  downAt = 0;
+  if (tapUrl) fetch(tapUrl + '?kind=' + kind, { mode: 'no-cors' }).catch(() => {});
+}
+document.addEventListener('pointerup', released);
+document.addEventListener('pointercancel', released);
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // --- fit the visible part of the window (see #screen in the styles)
@@ -279,7 +341,7 @@ fit(); addEventListener('resize', fit);
 const q = new URLSearchParams(location.search);
 function fromHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  for (const [k, v] of h) state[k] = k === 'level' ? +v : k === 'pop' ? { what: v.split(':')[0], value: +v.split(':')[1], n: Date.now() } : v;
+  for (const [k, v] of h) state[k] = k === 'level' || k === 'temp' ? +v : k === 'online' ? v !== 'false' : k === 'hot' ? v === 'true' : k === 'round' ? JSON.parse(v) : k === 'pop' ? { what: v.split(':')[0], value: +v.split(':')[1], n: Date.now() } : v;
   draw();
 }
 if (q.has('demo')) {   // walk through everything, for a look without the supervisor
@@ -297,11 +359,12 @@ if (q.has('demo')) {   // walk through everything, for a look without the superv
   if (state.mode === 'speaking') setInterval(() => { state.level = 15 + Math.random() * 70; }, 110);
 } else {
   const url = q.get('events') || 'http://127.0.0.1:8765/events';
+  tapUrl = url.replace(/\/events.*$/, '/tap');
   const connect = () => {
     const es = new EventSource(url);
     es.onmessage = (m) => { Object.assign(state, JSON.parse(m.data)); draw(); };
     es.onerror = () => {   // supervisor gone: sleep, and keep trying
-      es.close(); Object.assign(state, { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', who: '' }); draw(); setTimeout(connect, 2000);
+      es.close(); Object.assign(state, { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', who: '', round: null, temp: null, online: true }); draw(); setTimeout(connect, 2000);
     };
   };
   connect();

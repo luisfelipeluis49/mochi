@@ -263,6 +263,13 @@ def _devices(core: GatewayCore, adapters: Adapters, config: SessionConfig) -> De
     )
 
 
+def _game(core: GatewayCore, pipeline: TurnPipeline, agora: AgoraAgentClient) -> ActivityService:
+    """Describe & Guess; the pipeline can start a round when Mochi writes `[play]` in a turn."""
+    activity = ActivityService(core, pipeline, agora)
+    pipeline.play_with(activity.start_in_turn)
+    return activity
+
+
 def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
     """Wire the gateway from settings and adapters.
 
@@ -278,7 +285,7 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
         core=core,
         pipeline=pipeline,
         sessions=SessionService(core, adapters.agora, adapters.tokens, config),
-        activity=ActivityService(core, pipeline, adapters.agora),
+        activity=_game(core, pipeline, adapters.agora),
         devices=_devices(core, adapters, config),
         device_link=DeviceLink(core, adapters.agora),
         connections=ConnectionService(core.hub, core.store, core.live_hint, adapters.intelligence),

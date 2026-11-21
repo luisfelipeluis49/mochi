@@ -19,6 +19,16 @@ PersonName = Annotated[str, StringConstraints(pattern=NAME_PATTERN, max_length=N
 BoundedText = Annotated[str, StringConstraints(max_length=NAME_LIMIT)]
 
 
+def has_device_key(container: ContainerDep, authorization: str | None) -> bool:
+    """True when `authorization` is `Bearer <MOCHI_DEVICE_KEY>`.
+
+    Example: `has_device_key(container, "Bearer dev-device-key")` is True in fake mode.
+    """
+    scheme, _, given = (authorization or "").partition(" ")
+    wanted = container.settings.mochi_device_key.encode()
+    return scheme.lower() == "bearer" and hmac.compare_digest(given.encode(), wanted)
+
+
 def require_device_key(
     container: ContainerDep, authorization: Annotated[str | None, Header()] = None
 ) -> None:
@@ -26,11 +36,10 @@ def require_device_key(
 
     Example: `Authorization: Bearer dev-device-key` passes in fake mode.
     """
-    scheme, _, given = (authorization or "").partition(" ")
-    wanted = container.settings.mochi_device_key.encode()
-    if scheme.lower() == "bearer" and hmac.compare_digest(given.encode(), wanted):
-        return
-    raise HTTPException(status_code=401, detail="missing or wrong device key; send Bearer <key>")
+    if not has_device_key(container, authorization):
+        raise HTTPException(
+            status_code=401, detail="missing or wrong device key; send Bearer <key>"
+        )
 
 
 DeviceKey = Depends(require_device_key)
@@ -54,9 +63,14 @@ class VoiceResult(BaseModel):
 
 
 @router.get("/api/devices/{device_id}/state")
-async def device_state(device_id: str, container: ContainerDep) -> DeviceState:
-    """Example: `/api/devices/home_pi_01/state` -> `{capturing, agora, speaker_muted}`."""
-    return container.devices.state(device_id)
+async def device_state(
+    device_id: str, container: ContainerDep, authorization: Annotated[str | None, Header()] = None
+) -> DeviceState:
+    """Example: `/api/devices/home_pi_01/state` -> `{capturing, agora, speaker_muted}`.
+
+    Open to anyone, as in AGENTS 6.4. With the device key, a round also carries its secret word.
+    """
+    return container.devices.state(device_id, has_device_key(container, authorization))
 
 
 @router.post("/api/devices/{device_id}/status", status_code=204, dependencies=[DeviceKey])

@@ -2,7 +2,7 @@
 import unittest
 
 from mochi_device.backends import TAG, _moved
-from mochi_device.device import Device
+from mochi_device.device import Device, reachable
 
 
 class FakeMixer(Device):
@@ -102,6 +102,29 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(cfg["backend"], {"kind": "mochi_backend", "device_id": "home_pi_01"})
             self.assertEqual(cfg["face"], {"enabled": False})
             self.assertEqual(config.load(shared)["backend"]["kind"], "test_agent")  # the file itself
+
+
+class ConnectionTest(unittest.TestCase):
+    """Does Mochi have a connection? A look opens a connection to a well-known address and closes it."""
+
+    def test_one_address_that_answers_is_enough(self):
+        tried, closed = [], []
+
+        def connect(address, timeout):
+            tried.append(address)
+            if address[0] == "1.1.1.1":
+                raise OSError("network is unreachable")
+            return type("Opened", (), {"close": lambda self: closed.append(address)})()
+        self.assertTrue(reachable(("1.1.1.1:443", "8.8.8.8:53"), 1, connect))
+        self.assertEqual(tried, [("1.1.1.1", 443), ("8.8.8.8", 53)])
+        self.assertEqual(closed, [("8.8.8.8", 53)])            # opened and closed: nothing is sent
+
+    def test_no_address_answers_or_none_is_given(self):
+        def nothing(address, timeout):
+            raise OSError("timed out")
+        self.assertFalse(reachable(("1.1.1.1:443", "8.8.8.8:53"), 1, nothing))
+        self.assertFalse(reachable(("not an address",), 1, nothing))
+        self.assertFalse(reachable((), 1, nothing))
 
 
 if __name__ == "__main__":

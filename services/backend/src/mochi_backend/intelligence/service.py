@@ -19,6 +19,7 @@ from mochi_contracts import (
     ActivityCommand,
     ActivityResult,
     Decision,
+    Language,
     LearningEvent,
     SessionContext,
     Turn,
@@ -81,10 +82,15 @@ class Intelligence:
         """
         self._talk.use(character)
 
-    def session_started(self, woken: bool) -> None:
+    def session_started(self, woken: bool, language: Language | None = None) -> None:
         """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
-        to it, so the next sentence is for it. Otherwise Mochi waits for its name."""
-        self._talk.begin(woken)
+        to it, so the next sentence is for it. Otherwise Mochi waits for its name.
+
+        `language`: the one Mochi was called and greeted in; a short answer that could be either
+        language ("Play.", "Ok.") is then answered in it.
+        Example: `session_started(True, Language.PT_BR)`.
+        """
+        self._talk.begin(woken, language)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None

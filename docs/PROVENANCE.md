@@ -19,4 +19,5 @@ section 5.5) and mark it `pre-existing` or `during hackathon`.
 | `apps/web` (Home, Mobile, Audience views) | Tasnim | 2026-11-21 | during hackathon | React + TypeScript (Vite); merged on top of the backend |
 | `apps/glasses` (Mochi AR, Rokid Fluency Helper) | Suhuai | 2026-11-21 | during hackathon | out of the hackathon MVP (AGENTS section 1); proposed `surface=ar` in AGENTS 6.6 |
 | `hardware/pi-bridge` | Matheus (commits by Suhuai's account) | 2026-11-20 | **to confirm with the owners** | Agora IoT SDK audio bridge and device scripts; first commit 2026-11-20, merged in PR #1; the status (`pre-existing` or `during hackathon`) is the owners' to state |
+| `hardware/pi-bridge/sounds/*.wav` (six sentences Mochi says without a connection) | Suhuai, generated | 2026-11-21 | during hackathon | synthesised with Piper voices: English `en_US-libritts_r-medium` speaker 250 (dataset LibriTTS-R, CC BY 4.0), Portuguese `pt_BR-faber-medium` (CC0); texts in `hardware/pi-bridge/README.md` |
 | `scripts/test-client/`, `scripts/test-client.sh`, `docs/REAL_TURN_RUNBOOK.md` | Luis, built here | 2026-11-20 | pre-existing | real-turn test client and runbook |
