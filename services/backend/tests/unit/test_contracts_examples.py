@@ -21,6 +21,9 @@ from mochi_contracts import (
     SessionState,
     Speak,
     Turn,
+    User,
+    VoiceprintUpload,
+    VoiceProfile,
 )
 
 EXAMPLES = Path(__file__).resolve().parents[4] / "packages" / "contracts" / "examples"
@@ -37,6 +40,9 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "decision": Decision,
     "activity_command": ActivityCommand,
     "activity_result": ActivityResult,
+    "user": User,
+    "voice_profile": VoiceProfile,
+    "voiceprint_upload": VoiceprintUpload,
 }
 
 

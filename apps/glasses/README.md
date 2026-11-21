@@ -16,7 +16,7 @@ Mochi Home hears the conversation and the backend decides. The glasses only show
 
 ### With the backend as it is today
 
-The glasses connect to `GET /ws?user=<id>&surface=ar`. The backend in `services/backend` ignores the extra `surface` and treats the glasses as that person's Mobile view, so a `hint.created` for the wearer shows as one phrase with its meaning. Checked with this app's own connection code against the backend in fake-Agora mode: a typed "I need to adiar my meeting tomorrow" put `postpone` / `adiar` in Ana's view and nothing in Ben's.
+The glasses connect to `GET /ws?user=<id>&surface=ar`. The backend (root `AGENTS.md` 6.6, proposed) gives this connection only `session.state.changed` and the `hint.created` / `hint.cleared` events aimed at the wearer or at nobody; it never receives learning events, the private prompt or other people's hints. An unknown `surface` or user is closed with code 4400 and the reason, and the app shows `REJECTED`. A hint without `candidates` shows its `expression` (up to three options separated by ` · `) and `meaning`.
 
 ### What this asks of the team contract (draft v0.4)
 
@@ -28,7 +28,7 @@ The vision asks for more than the contract's Hint (root `AGENTS.md`, section 6) 
 | `context`: the words just before the speaker stopped | Hint payload of `hint.created` | The line above the suggestions |
 | `&surface=ar` | `GET /ws?user=<id>&surface=ar` | Lets the gateway send predictive suggestions to glasses only (AR-exclusive) |
 
-A hint without `candidates` shows its single `expression` and `meaning`. A gateway that ignores `surface` treats the glasses as that person's Mobile view.
+A hint without `candidates` shows its single `expression` and `meaning`. A gateway that ignores `surface` (an older backend) treats the glasses as that person's Mobile view.
 
 ```json
 { "hint_id": "hint_101", "target_user_id": "ana", "target_language": "en",

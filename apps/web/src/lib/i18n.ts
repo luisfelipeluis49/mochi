@@ -7,7 +7,7 @@
 // Choose the language with ?lang=en or ?lang=pt-BR in the URL.
 // =============================================================================
 
-import type { Language, LearningState, SessionMode } from "../contracts.ts";
+import type { ConversationContext, Language, LearningState, MistakeKind, SessionMode } from "../contracts.ts";
 
 // ---- ENGLISH texts. Things like (d: string) => `...` are small functions that put a name in the sentence.
 const en = {
@@ -67,6 +67,31 @@ const en = {
   nextStepTitle: "Next step",
   noSummary: "When the session ends, your summary shows up here.",
   languageName: { en: "English", "pt-BR": "Portuguese" } as Record<Language, string>,
+  // ---- "My conversations" page (/me): Mochi's analysis of real conversations ----
+  insightsTitle: "My conversations",
+  insightsSubtitle: "What Mochi noticed while you talked",
+  statConversations: "conversations",
+  statSpeaking: "minutes speaking",
+  statUnknown: "words you needed",
+  statMistakes: "mistakes noticed",
+  trendTitle: "Mistakes per 10 minutes",
+  improved: (p: number) => `${p}% fewer mistakes than in your first conversation`,
+  worse: (p: number) => `${p}% more mistakes than in your first conversation`,
+  commonMistakes: "Your most common mistakes",
+  timesIn: (n: number, c: number) => `${n}× in ${c} ${c === 1 ? "conversation" : "conversations"}`,
+  kindName: { grammar: "Grammar", word_choice: "Word choice", false_friend: "False friend" } as Record<MistakeKind, string>,
+  youSaid: "You said",
+  better: "Better",
+  wordsTitle: "Words you didn't know",
+  saidInstead: (x: string) => `you said “${x}”`,
+  timesNeeded: (n: number) => `needed ${n}×`,
+  conversationsTitle: "Conversations",
+  contextName: { meeting: "Meeting", conversation: "Conversation", practice: "Practice" } as Record<ConversationContext, string>,
+  convLine: (min: number, m: number, w: number) => `${min} min · ${m} ${m === 1 ? "mistake" : "mistakes"} · ${w} new ${w === 1 ? "word" : "words"}`,
+  practiceTitle: "Practice next",
+  strengthsTitle: "Going well",
+  noReports: "When Mochi listens to a conversation, its report shows up here.",
+  consentNote: "Mochi only listens between Start and Stop. In meetings, let the others know it is listening.",
 };
 
 // "Copy" = the shape of the English texts. Portuguese must have exactly the same keys,
@@ -127,6 +152,30 @@ const ptBR: Copy = {
   nextStepTitle: "Próximo passo",
   noSummary: "Quando a sessão terminar, seu resumo aparece aqui.",
   languageName: { en: "Inglês", "pt-BR": "Português" },
+  insightsTitle: "Minhas conversas",
+  insightsSubtitle: "O que o Mochi percebeu enquanto você falava",
+  statConversations: "conversas",
+  statSpeaking: "minutos falando",
+  statUnknown: "palavras que faltaram",
+  statMistakes: "erros percebidos",
+  trendTitle: "Erros a cada 10 minutos",
+  improved: (p) => `${p}% menos erros que na sua primeira conversa`,
+  worse: (p) => `${p}% mais erros que na sua primeira conversa`,
+  commonMistakes: "Seus erros mais comuns",
+  timesIn: (n, c) => `${n}× em ${c} ${c === 1 ? "conversa" : "conversas"}`,
+  kindName: { grammar: "Gramática", word_choice: "Escolha de palavra", false_friend: "Falso cognato" },
+  youSaid: "Você disse",
+  better: "Melhor",
+  wordsTitle: "Palavras que você não sabia",
+  saidInstead: (x) => `você disse “${x}”`,
+  timesNeeded: (n) => `precisou ${n}×`,
+  conversationsTitle: "Conversas",
+  contextName: { meeting: "Reunião", conversation: "Conversa", practice: "Prática" },
+  convLine: (min, m, w) => `${min} min · ${m} ${m === 1 ? "erro" : "erros"} · ${w} ${w === 1 ? "palavra nova" : "palavras novas"}`,
+  practiceTitle: "Para praticar agora",
+  strengthsTitle: "Indo bem",
+  noReports: "Quando o Mochi ouvir uma conversa, o relatório aparece aqui.",
+  consentNote: "O Mochi só ouve entre Iniciar e Parar. Em reuniões, avise as outras pessoas que ele está ouvindo.",
 };
 
 /** Choose the language: ?lang= in the URL wins; otherwise the browser language (pt → Portuguese). */

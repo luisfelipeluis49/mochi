@@ -9,7 +9,7 @@
 // remembers and shows what the backend sent.
 // =============================================================================
 
-import type { Activity, Hint, LearningEvent, MochiEvent, PrivatePrompt, Session, SessionSummary, Speak } from "../contracts.ts";
+import type { Activity, ConversationReport, Hint, LearningEvent, MochiEvent, PrivatePrompt, Session, SessionSummary, Speak } from "../contracts.ts";
 
 // How many events the ?debug=1 list keeps.
 export const DEBUG_LOG_SIZE = 10;
@@ -27,6 +27,7 @@ export interface ClientState {
   words: Record<string, LearningEvent>; // saved words, by their id
   speaking: { speak: Speak; receivedAt: number } | null; // Mochi talking out loud
   summaries: Record<string, SessionSummary>; // every session summary received, by id (phone only; PROPOSED v0.5)
+  reports: Record<string, ConversationReport>; // every conversation report, by id (the /me page; PROPOSED v0.5)
   /** last events received, newest first, at most DEBUG_LOG_SIZE (for ?debug=1) */
   log: MochiEvent[];
 }
@@ -42,6 +43,7 @@ export const initialState: ClientState = {
   words: {},
   speaking: null,
   summaries: {},
+  reports: {},
   log: [],
 };
 
@@ -90,6 +92,9 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
       break;
     case "session.summary.created": // one session summary for this person (PROPOSED v0.5)
       next.summaries = { ...state.summaries, [event.payload.summary_id]: event.payload };
+      break;
+    case "conversation.report.created": // one analysed conversation for this person (PROPOSED v0.5)
+      next.reports = { ...state.reports, [event.payload.report_id]: event.payload };
       break;
   }
   return next;

@@ -47,6 +47,27 @@ O resumo do slide "Mochi Mobile". Enviado **só para o celular daquela pessoa**,
 - Os números do progresso (palavras novas, usadas com ajuda, lembradas no jogo, minutos) são **contados na tela** a partir das palavras e dos resumos. Não precisam de campo novo.
 - **Quem gera:** sugestão: Kauê (intelligence), a partir das frases e das palavras salvas; Luís publica.
 
+## 3b. Um evento novo: `conversation.report.created` (página "Minhas conversas")
+
+A análise de **uma conversa real** de **uma pessoa** (reunião de trabalho, ligação, conversa com amigo). Mostrada na página `/me?user=…`. Enviada **só para aquela pessoa**, quando a sessão para.
+
+```json
+{ "report_id": "rep_001", "user_id": "tasnim", "target_language": "en",
+  "title": "Weekly sync with the team", "context": "meeting",
+  "started_at": "2026-11-20T13:00:00.000Z", "speaking_minutes": 20,
+  "mistakes": [ { "kind": "grammar", "topic": "Past tense",
+                  "said": "I finish the slides yesterday.", "better": "I finished the slides yesterday.", "count": 1 } ],
+  "unknown_words": [ { "expression": "deadline", "meaning": "prazo", "said_instead": "prazo", "times": 1 } ],
+  "strengths": ["Explaining your work"],
+  "focus_next": ["Past tense: sent, received, finished"] }
+```
+
+- `kind`: `grammar`, `word_choice` ou `false_friend`. `context`: `meeting`, `conversation` ou `practice`.
+- **Quem gera:** a parte de inteligência (Kauê). Isso **inclui correção de gramática**, que o AGENTS.md v0.4 deixa fora do MVP (seção 8): é uma decisão do time.
+- **Precisa saber quem falou:** só as frases **daquela pessoa** entram no relatório dela. Depende da decisão de "quem disse o quê".
+- **Reenviar ao conectar:** a página só mostra progresso se o backend reenviar todos os relatórios antigos daquela pessoa quando ela abre a página.
+- **Privacidade:** em reuniões há outras pessoas. O Mochi só ouve entre Iniciar e Parar, e a página lembra de avisar os outros.
+
 ## 4. Dica com até 3 opções, sem mudar campo
 
 O slide do modo Companhia mostra "me queimei · tomei muito sol". Proposta: **convenção, sem campo novo.** `expression` pode ter até 3 opções separadas por ` · ` (espaço, ponto do meio, espaço). As telas mostram uma por linha.

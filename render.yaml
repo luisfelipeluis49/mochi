@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./services/backend/Dockerfile
     dockerContext: .
     plan: free
-    numInstances: 1 # all state is in memory: exactly one instance, one worker
+    numInstances: 1 # the session is in memory (words are in Postgres): exactly one instance, one worker
     healthCheckPath: /healthz
     envVars:
       - key: MOCHI_AGORA_MODE
@@ -21,6 +21,8 @@ services:
         value: "false" # flip to "true" only if you need /dev/... during the demo
       - key: MOCHI_PUBLIC_URL
         sync: false # set to this service's https URL after the first deploy
+      - key: DATABASE_URL
+        sync: false # the INTERNAL URL of mochi-db (Render dashboard > mochi-db > Connections). Free: expires 2026-12-21
       - key: MOCHI_TURN_KEY
         sync: false
       - key: MOCHI_DEVICE_KEY

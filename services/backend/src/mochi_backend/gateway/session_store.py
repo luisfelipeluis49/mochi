@@ -1,4 +1,4 @@
-"""The one session's in-memory state (no database, AGENTS 8)."""
+"""The one session's in-memory state. Saved words and voices live in storage (D-32), not here."""
 
 from datetime import datetime
 

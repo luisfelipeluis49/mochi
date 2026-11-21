@@ -1,7 +1,7 @@
 """Composition root: builds every dependency from `Settings`. Nothing else constructs adapters."""
 
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.agora.client_port import AgoraAgentClient, RtcTokenIssuer, SpeechTuning
@@ -17,11 +17,14 @@ from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
+from mochi_backend.gateway.roster import DEMO_USERS
 from mochi_backend.gateway.session_service import SessionConfig, SessionService
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
+from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.intelligence.lexicon import Lexicon
+from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.model_port import HintModel, NullHintModel
 from mochi_backend.intelligence.openai_character_model import (
     CharacterModelConfig,
@@ -36,6 +39,8 @@ from mochi_backend.platform.ids import IdGenerator, UuidIdGenerator
 from mochi_backend.platform.json_logging import EventLogger, configure_json_logging
 from mochi_backend.platform.scheduler import AsyncioScheduler, Scheduler
 from mochi_backend.settings import Settings
+from mochi_backend.storage.event_log import StorageEventSink
+from mochi_backend.storage.factory import StorageStart, storage_for
 from mochi_contracts import Language
 
 LLM_PATH = "/agora/llm/demo/chat/completions"
@@ -54,6 +59,7 @@ class Adapters:
     tokens: RtcTokenIssuer
     intelligence: IntelligencePort
     intelligence_name: str
+    storage: StorageStart = field(default_factory=StorageStart)
 
 
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
@@ -86,15 +92,19 @@ def default_adapters(settings: Settings) -> Adapters:
         rest = AgoraRestClient(http, settings.agora_app_id, *creds, ids)
         agora = rest.hide_secrets((*secrets, *creds))
         tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
-    brain = _brain_for(settings, clock, ids, logger)
+    storage = storage_for(settings.database_url, logger, DEMO_USERS)
+    brain = _brain_for(settings, (clock, ids, logger), storage)
     name = "rules+model" if settings.model_configured else "rules"
     name += "+character" if settings.character_configured else ""
-    return Adapters(clock, ids, AsyncioScheduler(logger), logger, agora, tokens, brain, name)
+    scheduler = AsyncioScheduler(logger)
+    return Adapters(clock, ids, scheduler, logger, agora, tokens, brain, name, storage)
 
 
 def _brain_for(
-    settings: Settings, clock: Clock, ids: IdGenerator, logger: EventLogger
+    settings: Settings, plumbing: tuple[Clock, IdGenerator, EventLogger], start: StorageStart
 ) -> Intelligence:
+    """Mochi's brain, with the words saved before a restart and a sink that keeps new ones."""
+    clock, ids, logger = plumbing
     tuning = IntelligenceSettings(
         hint_ttl_seconds=settings.mochi_hint_ttl_seconds,
         model_timeout_seconds=settings.mochi_decide_timeout_seconds,
@@ -102,7 +112,13 @@ def _brain_for(
         follow_up_seconds=settings.mochi_follow_up_seconds,
         hint_cooldown=settings.mochi_hint_cooldown,
     )
-    brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
+    brain = Intelligence(
+        clock=clock,
+        ids=ids,
+        model=_model_for(settings, logger),
+        settings=tuning,
+    )
+    brain.keep_words_in(MemoryStore(start.events, StorageEventSink(start.storage)))
     if settings.character_configured:
         brain.speak_as(OpenAiCharacterModel(HttpxClient(), _character_model(settings), logger))
     return brain
@@ -217,7 +233,7 @@ def _core(settings: Settings, adapters: Adapters) -> GatewayCore:
     )
 
 
-def _pipeline(settings: Settings, core: GatewayCore) -> TurnPipeline:
+def _pipeline(settings: Settings, core: GatewayCore, voices: VoiceDirectory) -> TurnPipeline:
     return TurnPipeline(
         PipelineDeps(
             store=core.store,
@@ -232,6 +248,7 @@ def _pipeline(settings: Settings, core: GatewayCore) -> TurnPipeline:
             commit_lock=core.commit,
             ears_prompt=settings.mochi_asr_prompt + " Words that may come up:",
             ears_words=vocabulary(settings),
+            voices=voices,
         )
     )
 
@@ -253,7 +270,9 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
     """
     core = _core(settings, adapters)
     config = _session_config(settings)
-    pipeline = _pipeline(settings, core)
+    start = adapters.storage
+    voices = VoiceDirectory(start.storage, start.voices, start.users or DEMO_USERS)
+    pipeline = _pipeline(settings, core, voices)
     return AppContainer(
         settings=settings,
         core=core,
@@ -264,5 +283,7 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
         device_link=DeviceLink(core, adapters.agora),
         connections=ConnectionService(core.hub, core.store, core.live_hint),
         demo_reset=DemoReset(core),
+        voices=voices,
         intelligence_name=adapters.intelligence_name,
+        storage_name=start.name,
     )

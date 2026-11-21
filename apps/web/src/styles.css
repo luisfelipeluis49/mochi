@@ -147,6 +147,31 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .path li.current { background: var(--night); color: var(--cream); font-weight: 700; }
 .next { font-size: 14px; color: var(--muted); }
 
+/* ---------- "My conversations" page (/me) ---------- */
+.insights .subtitle { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.insights header { align-items: flex-start; }
+.trend-note { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.trend-note.good { color: #3f6b3a; }
+.trend-note.bad { color: var(--berry); }
+.practice { background: var(--night); color: var(--cream); border-radius: 16px; padding: 16px 18px; }
+.practice h2 { color: var(--pink); }
+.practice ol { padding-left: 20px; display: grid; gap: 6px; font-size: 16px; font-weight: 600; }
+.going-well { margin-top: 10px; font-size: 14px; color: var(--muted-dark); }
+.going-well b { color: var(--cream); }
+.kind-pill { justify-self: start; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--cream); color: var(--berry); }
+.mistake .said, .mistake .better { font-size: 15px; line-height: 1.35; }
+.mistake .said span, .mistake .better span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.mistake .said s { color: var(--berry); text-decoration-thickness: 1px; }
+.mistake .better { font-weight: 700; }
+.mistake .better span { color: #3f6b3a; }
+.word-needed .label { color: var(--berry); }
+.conv-list { list-style: none; display: grid; gap: 8px; }
+.conv-list li { background: #fff; border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; }
+.conv-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.conv-title { font-weight: 700; font-size: 16px; }
+.conv-meta { font-size: 13px; color: var(--muted); }
+.consent { font-size: 12px; color: var(--muted); text-align: center; padding-top: 8px; }
+
 /* Projector: Ana's phone page on the laptop for the "Remember" part of the demo (/m?user=ana&projector=1) */
 body.projector .mobile { zoom: 1.6; max-width: 640px; }
 

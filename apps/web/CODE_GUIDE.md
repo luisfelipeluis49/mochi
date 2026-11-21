@@ -29,6 +29,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 | `src/views/HomeView.tsx` | Mochi's 3.5-inch screen: face, the mode question, hints, what Mochi says, the game. Turns touches into tap / long press |
 | `src/views/MobileView.tsx` | The phone ("Mochi Mobile"), the analytics page: Start/Stop, progress numbers, last session, sessions bars, "My words" cards |
 | `src/views/AudienceView.tsx` | The projector. Never shows the secret word during a round |
+| `src/views/InsightsView.tsx` | "My conversations" (`/me?user=`): the analytics of a person's real conversations |
 | `src/views/DebugPanel.tsx` | The `?debug=1` list of the last 10 events |
 
 ## 2. TypeScript (`.ts`): the logic, with no screen
@@ -37,6 +38,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 |---|---|
 | `src/lib/store.ts` | The page's memory: applies each event from the backend |
 | `src/lib/analytics.ts` | Counts the numbers for the phone: words by step, minutes, sessions in order, bar sizes |
+| `src/lib/insights.ts` | Counts and groups the conversation reports: totals, mistakes per 10 min, improvement, top mistakes, words needed |
 | `src/lib/home.ts` | The rules of Mochi's screen and the game (which screen, what a tap does) |
 | `src/lib/backend.ts` | The **only** file that talks to the backend (WebSocket + POST requests) |
 | `src/lib/useMochi.ts` | React hook: connects once, keeps the data, ticks the clock |
@@ -52,6 +54,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 |---|---|
 | `src/lib/store.test.ts` | duplicates ignored, hints expire, word order, debug list |
 | `src/lib/analytics.test.ts` | the progress numbers, session order, bar sizes |
+| `src/lib/insights.test.ts` | the "My conversations" numbers |
 | `src/lib/home.test.ts` | the mode question, hint options, Mochi speaking, every game step, text size |
 | `src/mock/demoScript.test.ts` | the secret word only reaches Mochi's screen; words and summaries only reach their owner; the story runs in order |
 

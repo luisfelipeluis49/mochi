@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "description": "A voice Mochi has learned, as the device-key-protected voices endpoints return it.\n\nHTTP only: it carries a biometric voiceprint, so it is never sent as a WebSocket event.",
+  "properties": {
+    "language": {
+      "enum": [
+        "en",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "saved": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Saved"
+    },
+    "user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "User Id"
+    },
+    "voiceprint": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Voiceprint"
+    }
+  },
+  "required": [
+    "name",
+    "user_id",
+    "language",
+    "voiceprint",
+    "saved"
+  ],
+  "title": "VoiceProfile",
+  "type": "object"
+}

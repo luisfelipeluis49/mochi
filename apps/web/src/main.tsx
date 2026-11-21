@@ -16,7 +16,8 @@ import { useMochi } from "./lib/useMochi.ts";        // connects to the backend 
 import { type Who, indexLinks, whoFromUrl } from "./lib/who.ts"; // turns the URL into "which page am I?"
 import { AudienceView } from "./views/AudienceView.tsx"; // projector screen
 import { DebugPanel } from "./views/DebugPanel.tsx";     // the ?debug=1 event list
-import { HomeView } from "./views/HomeView.tsx";         // Mochi's own little screen
+import { HomeView } from "./views/HomeView.tsx";
+import { InsightsView } from "./views/InsightsView.tsx";         // Mochi's own little screen
 import { MobileView } from "./views/MobileView.tsx";     // a person's phone screen
 import "./styles.css";                                  // all the colors and sizes (CSS)
 
@@ -27,6 +28,7 @@ const lang = pickLanguage(window.location.search, navigator.language); // "en" o
 const debug = q.get("debug") === "1";                            // show the event list?
 const mock = q.get("mock") === "1";                              // use fake data instead of the backend?
 const mockSpeed = Number(q.get("speed") ?? "1") || 1;            // make the fake demo run faster (e.g. 4 = 4x)
+const insights = window.location.pathname.startsWith("/me");      // the "My conversations" page
 
 // --- App: the page shown when the URL is one of our 3 screens -----------------
 // "who" says which connection this is: the Mochi device, a user (ana/sophie), or the projector.
@@ -43,7 +45,9 @@ function App({ who }: { who: Who }) {
   return (
     <>
       {who.kind === "device" && <HomeView state={state} now={now} lang={lang} backend={backend} />}
-      {who.kind === "user" && (
+      {/* /me?user=... → "My conversations" (the person's analytics); /m?user=... → the phone page */}
+      {who.kind === "user" && insights && <InsightsView user={who.user} state={state} lang={lang} connected={connected} />}
+      {who.kind === "user" && !insights && (
         <MobileView user={who.user} state={state} lang={lang} connected={connected} backend={backend} />
       )}
       {who.kind === "audience" && <AudienceView state={state} now={now} lang={lang} />}

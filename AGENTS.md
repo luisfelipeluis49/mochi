@@ -282,6 +282,7 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 - The intelligence port has seven methods: the four in 6.5 plus the ones that carry Mochi's character, the heard sentence, device status and "say aloud" (`gateway/intelligence_port.py` is the source).
 - The Pi starts a session itself when it hears the wake phrase; the Operator's Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
+- `GET /ws?user=ana&surface=ar` (proposed, owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody, never cards, the private prompt or other users' hints; an unknown `surface` closes 4400.
 
 ## 7. Behavior rules
 
@@ -355,7 +356,7 @@ Every milestone after M0 is a complete demo. All four owners build the same mile
 | **Tasnim** `apps/web/` | Home and Mobile views each show one real `hint.created` | Start/Stop on Mobile; listening face and expiring hint on Home | "My words" page, updating live | Game states on Home with tap and long press; Audience view | State path on each card; projector layout |
 | **Seen working when** | A sentence spoken into the M1A puts a word on Mochi's screen and a phone | Start, say both demo sentences, see both hints; ordinary talk shows nothing; Stop, and the Pi sends nothing | Both hints appear as cards on Ana's phone and not on Ben's | A round runs on Mochi's screen from tap to result | The game brings back "umbrella" and its card reads "Recalled in a game" |
 
-Build the simplest thing that satisfies the row. Not in scope unless a human asks: sign-in, access tokens, a database (keep state in memory), reconnect and replay, pause and resume, multiple sessions, the phone as a microphone, smart glasses, solo practice, grammar correction, fluency scores.
+Build the simplest thing that satisfies the row. Not in scope unless a human asks: sign-in, access tokens, a database beyond the Postgres storage of saved words, users and voices (docs/DECISIONS.md D-32; the session, game and hints stay in memory), reconnect and replay, pause and resume, multiple sessions, the phone as a microphone, smart glasses, solo practice, grammar correction, fluency scores.
 
 ## 9. Starting guides, one per owner
 

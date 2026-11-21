@@ -90,7 +90,7 @@ docker run --rm -p 8000:8000 -e MOCHI_AGORA_MODE=fake -e MOCHI_ENABLE_DEV_ROUTES
 ```
 
 `scripts/deploy.sh` does the build, runs the container with `.env`, and checks `/readyz`. The build context
-is the repo root. The image runs **one worker** (all state is in memory).
+is the repo root. The image runs **one worker** (the session is in memory; saved words, users and voices are in Postgres when `DATABASE_URL` is set).
 
 ## Render
 
