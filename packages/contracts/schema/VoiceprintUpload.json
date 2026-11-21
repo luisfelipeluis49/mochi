@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "description": "Body of `PUT /api/devices/{id}/voices/{name}/voiceprint` (device key required).",
+  "properties": {
+    "language": {
+      "enum": [
+        "en",
+        "pt"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "saved": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Saved"
+    },
+    "voiceprint": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Voiceprint",
+      "type": "array"
+    }
+  },
+  "required": [
+    "language",
+    "voiceprint",
+    "saved"
+  ],
+  "title": "VoiceprintUpload",
+  "type": "object"
+}

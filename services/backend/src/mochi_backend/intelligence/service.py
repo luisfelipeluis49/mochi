@@ -67,6 +67,13 @@ class Intelligence:
         """One person's saved words, newest first."""
         return self._memory.words_for(user_id)
 
+    def keep_words_in(self, memory: MemoryStore) -> None:
+        """Use this store for saved words (one that holds the words kept before a restart).
+
+        Example: `brain.keep_words_in(MemoryStore(kept_events, sink))`.
+        """
+        self._memory = memory
+
     def speak_as(self, character: CharacterModel) -> None:
         """Give Mochi the model that writes its lines (without one it keeps its fixed lines).
 

@@ -27,6 +27,9 @@ EXPORTED: list[type[BaseModel]] = [
     models.Decision,
     models.ActivityCommand,
     models.ActivityResult,
+    models.User,
+    models.VoiceProfile,
+    models.VoiceprintUpload,
 ]
 
 

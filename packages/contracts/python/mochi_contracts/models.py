@@ -164,3 +164,36 @@ class ActivityResult(ContractModel):
     private_prompt: PrivatePrompt | None
     speak: Speak | None
     learning_events: list[LearningEvent]
+
+
+class User(ContractModel):
+    """One person Mochi knows. Proposed in v0.5 (stored in the database; see DECISIONS D-32)."""
+
+    user_id: str
+    display_name: str
+    comfortable_languages: list[Language]
+    target_language: Language
+
+
+VoiceLanguage = Literal["en", "pt"]  # the same two codes as `POST /api/devices/*/voices`
+
+
+class VoiceProfile(ContractModel):
+    """A voice Mochi has learned, as the device-key-protected voices endpoints return it.
+
+    HTTP only: it carries a biometric voiceprint, so it is never sent as a WebSocket event.
+    """
+
+    name: str
+    user_id: str | None
+    language: VoiceLanguage
+    voiceprint: list[float] | None
+    saved: str | None
+
+
+class VoiceprintUpload(ContractModel):
+    """Body of `PUT /api/devices/{id}/voices/{name}/voiceprint` (device key required)."""
+
+    language: VoiceLanguage
+    voiceprint: list[float]
+    saved: str | None

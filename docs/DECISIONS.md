@@ -421,3 +421,33 @@ From the same conversation:
 Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
 nothing, because that hint was still on the screen (`while_shown`).
 
+
+## D-32: durable storage in Postgres (2026-11-21)
+
+Words were lost on every deploy, restart and (on Render's free plan) every idle spin-down. Luís now owns
+storage and chose Render Postgres (free plan). **Proposal for the team** (AGENTS 8 listed a database as out of
+scope; Kauê's `memory_store.py` and Matheus's contracts are touched, additively).
+- **Stored:** `users` (seeded with ana and ben from `gateway/roster.py`, never overwritten), `learning_events`
+  (the whole `LearningEvent` as `jsonb`, plus id, user, word and state columns; first-saved order kept) and
+  `voices` (name, user, language and the voiceprint vector). **Not stored:** turns and transcripts (privacy),
+  session, game, live hint, device commands, tokens (all re-derived or short-lived), `agent_id`.
+- **Shape:** `storage/` holds a `Storage` port, `PostgresStorage` (psycopg 3, one short connection per call,
+  `CREATE TABLE IF NOT EXISTS`, no migration tool) and `WriteBehindStorage`. Reads happen once at startup and
+  are served from memory; writes go to one worker thread, so a slow or broken database never delays a turn.
+  A failed write is logged (`storage_write_failed`, no values) and dropped.
+- **Intelligence stays socket-free:** `MemoryStore` takes the restored events and an `EventSink` protocol;
+  `composition.py` connects it to storage (`Intelligence.keep_words_in`).
+- **No `DATABASE_URL`, or the database does not answer at startup:** memory only, as before, with
+  `storage_memory_only` / `storage_unavailable` logged. `/readyz` shows `storage: postgres|memory`.
+- **Voiceprints are biometric.** Only device-key routes read or write them (`GET /api/devices/home_pi_01/voices`,
+  `PUT .../voices/{name}/voiceprint`, `DELETE .../voices/{name}`); they never appear in an event, a log line or
+  a non-device response. The Pi keeps its own copy; **the Pi must call DELETE when it forgets someone** (not
+  done: hardware is out of this change), otherwise the server copy stays. `POST .../voices` with
+  `learned: true` links the name to a user; `learned: false` stores nothing.
+- **Reset** (`/api/demo/reset`) clears learning events only; users and voices survive.
+- **Speaker-based word ownership is not changed** (AGENTS 7.3): the Pi's `speaker` is not used yet.
+- **Free Render Postgres expires 30 days after creation** (created 2026-11-21, expires ~2026-12-21, deleted
+  ~14 days later): upgrade it to a paid plan before then. After expiry Mochi starts from memory and logs
+  `storage_unavailable`.
+- **Contracts (additive):** `User`, `VoiceProfile`, `VoiceprintUpload` with examples and schema.
+- Test helper `make_harness` takes one more switch (`storage`), hence a `noqa: PLR0913` on it.

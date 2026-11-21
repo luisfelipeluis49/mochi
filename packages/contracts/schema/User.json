@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One person Mochi knows. Proposed in v0.5 (stored in the database; see DECISIONS D-32).",
+  "properties": {
+    "comfortable_languages": {
+      "items": {
+        "$ref": "#/$defs/Language"
+      },
+      "title": "Comfortable Languages",
+      "type": "array"
+    },
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "target_language": {
+      "$ref": "#/$defs/Language"
+    },
+    "user_id": {
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "display_name",
+    "comfortable_languages",
+    "target_language"
+  ],
+  "title": "User",
+  "type": "object"
+}

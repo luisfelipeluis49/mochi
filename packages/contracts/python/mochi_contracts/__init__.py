@@ -29,6 +29,10 @@ from mochi_contracts.models import (
     Speak,
     StateChange,
     Turn,
+    User,
+    VoiceLanguage,
+    VoiceprintUpload,
+    VoiceProfile,
 )
 
 __all__ = [
@@ -59,5 +63,9 @@ __all__ = [
     "SpeakReason",
     "StateChange",
     "Turn",
+    "User",
+    "VoiceLanguage",
+    "VoiceProfile",
+    "VoiceprintUpload",
     "WordSource",
 ]

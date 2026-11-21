@@ -12,6 +12,7 @@ from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.session_service import SessionService
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
+from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.settings import Settings
 
 
@@ -28,7 +29,9 @@ class AppContainer:
     device_link: DeviceLink
     connections: ConnectionService
     demo_reset: DemoReset
+    voices: VoiceDirectory
     intelligence_name: str
+    storage_name: str = "memory"
 
 
 def get_container(connection: HTTPConnection) -> AppContainer:

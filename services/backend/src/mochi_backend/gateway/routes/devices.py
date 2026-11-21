@@ -78,4 +78,6 @@ async def device_voice(device_id: str, body: VoiceResult, container: ContainerDe
     """
     require_device(device_id)
     language = Language.PT_BR if body.language == "pt" else Language.EN
+    if body.learned:
+        container.voices.link(body.name, body.language)
     await container.device_link.voice_learned(body.name, language, body.learned)

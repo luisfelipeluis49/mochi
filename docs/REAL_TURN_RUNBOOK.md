@@ -72,3 +72,18 @@ The walkthrough in AGENTS section 2 is English only. For two languages, a propos
 
 Questions for the team: are these the right sentences? Is round 2 in scope (it needs the round language to
 alternate, which the backend does not do yet)? Who says what in the real demo?
+
+## Database (Postgres on Render)
+
+- **Database:** `mochi-db`, free plan, Oregon, Postgres 17, workspace `mochi`. Created **2026-11-21**; a free
+  database **expires 2026-12-21** and Render deletes it about 14 days later (2027-01-04) unless upgraded.
+  Upgrade it in the Render dashboard (mochi-db > Settings > Instance type) before 2026-12-21.
+- **Connect the service:** set `DATABASE_URL` on `mochi-backend` to the database's **Internal Database URL**
+  (dashboard > mochi-db > Connections). This redeploys the service and empties its memory once. Check
+  `GET /readyz`: `"storage": "postgres"`. Logs: `storage_ready` at start; `storage_unavailable` means it fell back
+  to memory (expired, wrong URL, or Postgres down); `storage_write_failed` is one lost write.
+- **Look at the data:** `psql "<External Database URL>"` needs your IP in the database's allow list. Tables:
+  `users`, `learning_events`, `voices` (voiceprints are biometric: do not paste them anywhere).
+- **Reset:** `POST /api/demo/reset` clears learning events only. Users and voices stay.
+- **Moving to a new database** (after expiry): `pg_dump` the old one before it is deleted, or start empty;
+  tables and the two demo users are created on the first start.

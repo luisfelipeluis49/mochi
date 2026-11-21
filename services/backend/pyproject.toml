@@ -11,6 +11,7 @@ dependencies = [
   "pydantic>=2.8,<3",
   "pydantic-settings>=2.4",
   "agora-token-builder>=1.0.0",
+  "psycopg[binary]>=3.2",
 ]
 
 [dependency-groups]
