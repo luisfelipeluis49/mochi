@@ -12,15 +12,16 @@ import type { MochiEvent, RoundResult } from "../contracts.ts";
 import { MockGateway } from "../mock/demoScript.ts";
 import type { AgoraJoin } from "./phoneMic.ts";
 import { parseEvent } from "./store.ts";
+import { PI_SESSION, sessionFor } from "./phoneSession.ts";
 import { type Who, wsQuery } from "./who.ts";
 
 /** The commands a page can send. Same shape for the real backend and the mock. */
 export interface Backend {
-  start(): Promise<void>;                              // POST /api/sessions/demo/start
-  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/devices/home_pi_01/state → its "agora" (null in the mock: no mic)
-  stop(): Promise<void>;                               // POST /api/sessions/demo/stop
-  activityStart(): Promise<void>;                      // POST /api/sessions/demo/activity/start
-  activityResult(result: RoundResult): Promise<void>;  // POST /api/sessions/demo/activity/result
+  start(): Promise<void>;                              // POST /api/sessions/<this phone's session>/start
+  phoneAudio(): Promise<AgoraJoin | null>;             // GET /api/sessions/<session>/agora (null in the mock, and for the Pi's session: no mic)
+  stop(): Promise<void>;                               // POST /api/sessions/<session>/stop
+  activityStart(): Promise<void>;                      // POST /api/sessions/<session>/activity/start
+  activityResult(result: RoundResult): Promise<void>;  // POST /api/sessions/<session>/activity/result
   close(): void;                                       // close the connection (when the page goes away)
 }
 
@@ -38,10 +39,16 @@ function baseUrl(): string {
   return (env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
 }
 
-/** Build the WebSocket address, e.g. ws://localhost:5173/ws?user=ana */
-function wsUrl(who: Who): string {
+/** The session a page follows (D-37): a phone has its own; Mochi's screen and the projector the Pi's. */
+export function sessionOf(who: Who): string {
+  return who.kind === "user" ? sessionFor(who.session) : PI_SESSION;
+}
+
+/** Build the WebSocket address, e.g. ws://localhost:5173/ws?user=ana&session=p-3f9c1a2b */
+function wsUrl(who: Who, session: string): string {
   const base = baseUrl() || window.location.origin;
-  return `${base.replace(/^http/, "ws")}/ws?${wsQuery(who)}`; // http → ws, https → wss
+  const follow = who.kind === "device" || session === PI_SESSION ? "" : `&session=${session}`;
+  return `${base.replace(/^http/, "ws")}/ws?${wsQuery(who)}${follow}`; // http → ws, https → wss
 }
 
 /** A failed POST, with the HTTP status (HomeView needs to tell 409 from the rest). */
@@ -83,6 +90,7 @@ export function joinFrom(state: { agora?: AgoraJoin | null }): AgoraJoin | null 
 
 /** Connect to the REAL backend. */
 export function connectReal(who: Who, h: BackendHandlers): Backend {
+  const session = sessionOf(who);
   let ws: WebSocket | null = null;
   let closed = false;                                  // true once the page closed it on purpose
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -90,7 +98,7 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   // Open the WebSocket. If it drops (e.g. Luís restarts the backend), try again after 2 seconds.
   // On every new connection the server re-sends the current state.
   const open = () => {
-    ws = new WebSocket(wsUrl(who));
+    ws = new WebSocket(wsUrl(who, session));
     ws.onopen = () => h.onConnected(true);
     ws.onmessage = (m) => {                            // a message arrived
       const e = parseEvent(String(m.data));            // text → event (or null if broken)
@@ -109,11 +117,11 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   open();
 
   // The commands: each one is a POST to the address from AGENTS.md §6.4.
-  const s = "/api/sessions/demo";
+  const s = `/api/sessions/${session}`;
   return {
     start: () => post(`${s}/start`),
-    // No new backend route: the phone joins with the same block the Pi gets (see phoneMic.ts).
-    phoneAudio: async () => joinFrom(await getJson<{ agora?: AgoraJoin | null }>("/api/devices/home_pi_01/state")),
+    // The phone's own channel (never the Pi's). In the Pi's session the Pi listens: no phone mic.
+    phoneAudio: async () => (session === PI_SESSION ? null : await getJson<AgoraJoin>(`${s}/agora`)),
     stop: () => post(`${s}/stop`),
     activityStart: () => post(`${s}/activity/start`),
     activityResult: (result) => post(`${s}/activity/result`, { result }), // body: { "result": "guessed" }
