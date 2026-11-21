@@ -56,16 +56,20 @@ class Adapters:
     intelligence_name: str
 
 
-def _model_for(settings: Settings) -> HintModel:
+def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
     if not settings.model_configured:
         return NullHintModel()
-    return OpenAiHintModel(
-        HttpxClient(),
-        settings.mochi_model_base_url,
-        settings.mochi_model_name,
-        settings.model_api_key,
-        settings.mochi_decide_timeout_seconds,
-    ).thinking(settings.mochi_model_reasoning_effort)
+    return (
+        OpenAiHintModel(
+            HttpxClient(),
+            settings.mochi_model_base_url,
+            settings.mochi_model_name,
+            settings.model_api_key,
+            settings.mochi_decide_timeout_seconds,
+        )
+        .thinking(settings.mochi_model_reasoning_effort)
+        .logging(logger)
+    )
 
 
 def default_adapters(settings: Settings) -> Adapters:
@@ -98,7 +102,7 @@ def _brain_for(
         follow_up_seconds=settings.mochi_follow_up_seconds,
         hint_cooldown=settings.mochi_hint_cooldown,
     )
-    brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings), settings=tuning)
+    brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
     if settings.character_configured:
         brain.speak_as(OpenAiCharacterModel(HttpxClient(), _character_model(settings), logger))
     return brain
