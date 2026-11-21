@@ -32,7 +32,8 @@ class SpeechTuning:
     tts_vendor: str = "minimax"
     tts_params: VendorParams = field(default_factory=dict)
     tts_credential_mode: str = ""
-    end_of_speech_silence_ms: int = 900
+    # Below 600 ms risks splitting "trails off... um" turns in two.
+    end_of_speech_silence_ms: int = 600
 
 
 @dataclass(frozen=True)

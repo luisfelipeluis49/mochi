@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     mochi_turn_key: str = ""
     mochi_device_key: str = ""
     model_api_key: str = ""
+    typesafe_api_key: str = ""  # TypeSafe JEV, only used with MOCHI_JEV_VETO
     database_url: str = ""  # Postgres; empty = memory only (lost on restart). See D-32
     mochi_local_data: str = ""  # a JSON file for saved words and voices; fake mode only. See D-33
     mochi_public_url: str = "http://localhost:8000"
@@ -53,6 +54,7 @@ class Settings(BaseSettings):
     mochi_model_base_url: str = "https://api.openai.com/v1"
     mochi_model_name: str = "gpt-4o-mini"
     mochi_model_reasoning_effort: str = ""  # "none" for the gpt-5 family; empty for the rest
+    mochi_jev_veto: bool = False  # JEV may block a hint, never make one
     mochi_hint_cooldown: Literal["two_turns", "while_shown"] = "two_turns"  # DECISIONS D-29
     # Mochi's own voice: with a model key it answers in character when spoken to (DECISIONS D-23)
     mochi_character_enabled: bool = True
@@ -84,7 +86,8 @@ class Settings(BaseSettings):
     mochi_tts_vendor: str = "minimax"
     mochi_tts_params: VendorParams = {}
     mochi_tts_credential_mode: str = ""
-    mochi_end_of_speech_silence_ms: int = 900
+    # Below 600 ms risks splitting "trails off... um" turns in two.
+    mochi_end_of_speech_silence_ms: int = 600
     mochi_agent_idle_timeout_seconds: int = 60
     mochi_speak_base_seconds: float = 0.6
     mochi_speak_seconds_per_word: float = 0.45

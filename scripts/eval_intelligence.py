@@ -6,6 +6,8 @@ import sys
 
 from tests.fixture_support import DecisionFixture, decide_fixture, load_fixtures, matches
 
+from mochi_backend.intelligence.jev_client import HttpJevClient
+from mochi_backend.intelligence.jev_veto_model import JevVetoHintModel
 from mochi_backend.intelligence.model_port import HintModel
 from mochi_backend.intelligence.openai_hint_model import OpenAiHintModel
 from mochi_backend.platform.http_client import HttpxClient
@@ -21,7 +23,13 @@ def real_model() -> HintModel:
     base = os.environ.get("MOCHI_MODEL_BASE_URL", "https://api.openai.com/v1")
     name = os.environ.get("MOCHI_MODEL_NAME", "gpt-4o-mini")
     effort = os.environ.get("MOCHI_MODEL_REASONING_EFFORT", "")  # "none" for the gpt-5 family
-    return OpenAiHintModel(HttpxClient(), base, name, key, MODEL_TIMEOUT_SECONDS).thinking(effort)
+    model = OpenAiHintModel(HttpxClient(), base, name, key, MODEL_TIMEOUT_SECONDS).thinking(effort)
+    if os.environ.get("MOCHI_JEV_VETO", "").lower() not in ("1", "true", "yes"):
+        return model
+    jev_key = os.environ.get("TYPESAFE_API_KEY", "")
+    if not jev_key:
+        sys.exit("MOCHI_JEV_VETO is set but TYPESAFE_API_KEY is not")
+    return JevVetoHintModel(model, HttpJevClient(HttpxClient(), jev_key))
 
 
 async def passed(fixture: DecisionFixture, model: HintModel) -> bool:

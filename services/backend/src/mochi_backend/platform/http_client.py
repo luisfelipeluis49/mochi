@@ -32,6 +32,16 @@ class HttpClient(Protocol):
         ...
 
 
+class HttpGetter(Protocol):
+    """Fetches a URL and returns the raw reply. Raises `HttpTransportError` on network failure."""
+
+    async def get(
+        self, url: str, headers: Mapping[str, str], timeout_seconds: float
+    ) -> HttpResponse:
+        """GET `url`."""
+        ...
+
+
 class HttpTransportError(Exception):
     """Connection failure or timeout. The message names the URL and the cause."""
 
@@ -66,5 +76,17 @@ class HttpxClient:
         except httpx.HTTPError as error:
             raise HttpTransportError(
                 f"POST {url} failed: {error!r}; expected an HTTP reply within {timeout_seconds}s"
+            ) from error
+        return HttpResponse(status=reply.status_code, body=reply.text)
+
+    async def get(
+        self, url: str, headers: Mapping[str, str], timeout_seconds: float
+    ) -> HttpResponse:
+        """GET, translating httpx errors into `HttpTransportError`."""
+        try:
+            reply = await self._open().get(url, headers=dict(headers), timeout=timeout_seconds)
+        except httpx.HTTPError as error:
+            raise HttpTransportError(
+                f"GET {url} failed: {error!r}; expected an HTTP reply within {timeout_seconds}s"
             ) from error
         return HttpResponse(status=reply.status_code, body=reply.text)

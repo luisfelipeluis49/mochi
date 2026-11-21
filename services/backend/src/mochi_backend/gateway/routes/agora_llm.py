@@ -1,6 +1,7 @@
 """`POST /agora/llm/demo/chat/completions`: the turn endpoint Agora's cloud calls."""
 
 import hmac
+import time
 from collections.abc import Iterator
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 
 from mochi_backend.gateway.openai_sse import completion_json, sse_events
 from mochi_backend.gateway.routes.dependencies import ContainerDep
+from mochi_backend.platform.json_logging import EventLogger
 
 router = APIRouter()
 KEY_HEADER = "x-mochi-key"  # set through llm.headers when the agent is started
@@ -76,17 +78,42 @@ async def chat_completions(
     authorization: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse | JSONResponse:
     """Reject without the shared key, run the turn, reply with text or silence."""
+    arrived = time.monotonic()
+    container.core.logger.log(
+        "turn_arrived",
+        {"arrived_monotonic": round(arrived, 3), "messages": len(body.messages)},
+    )
     expected = container.settings.mochi_turn_key.encode()
     if not hmac.compare_digest(presented_key(x_mochi_key, authorization).encode(), expected):
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
     outcome = await container.pipeline.handle_heard(
-        last_user_text(body.messages), last_user_position(body.messages)
+        last_user_text(body.messages), last_user_position(body.messages), arrived
     )
     created = int(container.core.clock.now().timestamp())
     if not body.stream:
         return JSONResponse(completion_json(outcome.reply, created))
-    return StreamingResponse(_stream(outcome.reply, created), media_type="text/event-stream")
+    stream = _stream(outcome.reply, created, container.core.logger, outcome.segment_id, arrived)
+    return StreamingResponse(stream, media_type="text/event-stream")
 
 
-def _stream(reply: str, created: int) -> Iterator[str]:
-    yield from sse_events(reply, created)
+def _stream(
+    reply: str,
+    created: int,
+    logger: EventLogger,
+    segment_id: str | None = None,
+    arrived: float | None = None,
+) -> Iterator[str]:
+    first = True
+    for chunk in sse_events(reply, created):
+        if first and arrived is not None:
+            first = False
+            millis = (time.monotonic() - arrived) * 1000
+            logger.log(
+                "reply_first_byte",
+                {
+                    "segment_id": segment_id,
+                    "arrived_monotonic": round(arrived, 3),
+                    "arrived_to_first_byte_ms": round(millis, 1),
+                },
+            )
+        yield chunk

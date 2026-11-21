@@ -186,3 +186,30 @@ queue, ... reunião, meeting. Esqueci a palavra. Limpar em inglês?`: the word l
 `gateway/prompt_echo.py` removes the prompt's sentences and any run of four or more expected words with nothing
 between them, before the turn is handled, and logs `ears_prompt_echo`. Single expected words stay.
 
+
+## Latency stamps (how to read them)
+
+Three JSON log lines per Agora turn, all on the `mochi` logger. `arrived_monotonic` (the backend's
+`time.monotonic()` at request arrival) is on all three and is the join key; `segment_id` joins the last two
+(and the `turn` / `decision` lines). No text content is logged by these lines.
+
+- `turn_arrived` (`arrived_monotonic`, `messages`): first line of the turn endpoint, before the key check.
+- `arrived_to_decided` (`arrived_to_decided_ms`, `segment_id`): arrival to a committed decision, including the
+  wait for the turn lock, the model call (compare `decision.latency_ms`) and the commit lock. Written for
+  dropped turns too.
+- `reply_first_byte` (`arrived_to_first_byte_ms`, `segment_id`): arrival to the first streamed chunk leaving
+  the endpoint, also for silent (empty) replies. What Agora does after that (TTS) is not in the backend log.
+
+`agent_started` (`agent_id` only) is logged once per session start. Agora's own view of each turn:
+
+    scripts/agora-turns.sh <agent_id>          # or: render logs | scripts/agora-turns.sh
+
+prints a markdown table of `e2e_latency` and each `segmented_latency_ms` field per turn, plus p50 and p95
+(nearest rank). It needs `AGORA_APP_ID`, `AGORA_REST_KEY`, `AGORA_REST_SECRET`; a 404 or no turns prints a
+message. Verified live 2026-11-21 (speak-only probe): `GET .../agents/{id}/turns` answers **404 `TaskNotFound` while the
+agent runs** and returns turns only after `/leave` (still readable after). Shape: `{agent_id, channel, name,
+total_turn_count, pagination, turns: [{turn_id, start: {type: "api_speak", start_at, metadata}, end: {type: "ok",
+end_at, metadata: {playback_duration_ms}}, metrics: {e2e_latency_ms, segmented_latency_ms: [{name, latency}]}}]}`.
+A /speak turn has only `tts_ttfb` (= e2e): MiniMax speech-2.8-turbo managed 44100 about 323 to 358 ms, 16000 about
+300 to 336, speech-2.6-turbo 302 to 352, Cartesia managed sonic-3.6 (16000) 66 to 72. No page_size is sent (default page).
+`MOCHI_END_OF_SPEECH_SILENCE_MS` now defaults to 600, the value the numbers above were measured with.

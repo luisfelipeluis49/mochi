@@ -23,6 +23,8 @@ from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
 from mochi_backend.gateway.voice_directory import VoiceDirectory
+from mochi_backend.intelligence.jev_client import HttpJevClient
+from mochi_backend.intelligence.jev_veto_model import JevVetoHintModel
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.model_port import HintModel, NullHintModel
@@ -65,6 +67,14 @@ class Adapters:
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
     if not settings.model_configured:
         return NullHintModel()
+    hints = _openai_hints(settings, logger)
+    if not (settings.mochi_jev_veto and settings.typesafe_api_key):
+        return hints
+    jev = HttpJevClient(HttpxClient(), settings.typesafe_api_key).logging(logger)
+    return JevVetoHintModel(hints, jev).logging(logger)
+
+
+def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
     return (
         OpenAiHintModel(
             HttpxClient(),

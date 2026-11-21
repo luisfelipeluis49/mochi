@@ -5,6 +5,7 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -41,6 +42,7 @@ class TurnOutcome:
 
     reply: str
     decision: Decision
+    segment_id: str | None = None  # the turn's id; None when no turn was run
 
 
 def hint_card(hint: Hint) -> str:
@@ -132,21 +134,23 @@ class TurnPipeline:
         async with self._lock:
             return await self._handle(text.strip())
 
-    async def handle_heard(self, heard: str, position: int) -> TurnOutcome:
+    async def handle_heard(
+        self, heard: str, position: int, arrived: float | None = None
+    ) -> TurnOutcome:
         """A turn as Agora sends it: everything said since Mochi last finished speaking.
 
         `position` is the index of that user message in the request. Only the part not handled
         before is run through the chain. Example: "A." got silence, then Agora sends "A.  B." at
-        the same position: only "B." is a new turn.
+        the same position: only "B." is a new turn. `arrived` is `time.monotonic()` at the request.
         """
         async with self._lock:
             said = self._store.new_speech(heard.strip(), position)
             text = without_prompt_echo(said, self._ears_prompt, self._ears_words)
             if text != " ".join(said.split()):
                 self._logger.log("ears_prompt_echo", {"heard": said, "kept": text})
-            return await self._handle(text)
+            return await self._handle(text, arrived)
 
-    async def _handle(self, text: str) -> TurnOutcome:
+    async def _handle(self, text: str, arrived: float | None = None) -> TurnOutcome:
         if not text or not self._store.capturing:
             self._logger.log("turn_ignored_not_capturing", {"text_len": len(text)})
             return TurnOutcome("", silent_decision())
@@ -157,9 +161,20 @@ class TurnPipeline:
         generation = self._store.generation
         decision = await self._decide(turn)
         async with self._commit:  # Stop, Reset and round changes wait until this turn is done
-            return await self._commit_turn(turn, decision, generation)
+            return await self._commit_turn(turn, decision, generation, arrived)
 
-    async def _commit_turn(self, turn: Turn, decision: Decision, generation: int) -> TurnOutcome:
+    async def _commit_turn(
+        self, turn: Turn, decision: Decision, generation: int, arrived: float | None = None
+    ) -> TurnOutcome:
+        if arrived is not None:
+            self._logger.log(
+                "arrived_to_decided",
+                {
+                    "segment_id": turn.segment_id,
+                    "arrived_monotonic": round(arrived, 3),
+                    "arrived_to_decided_ms": round((time.monotonic() - arrived) * 1000, 1),
+                },
+            )
         if self._superseded(decision, generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
@@ -167,7 +182,7 @@ class TurnPipeline:
         await self._publish_results(decision)
         reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
-        return TurnOutcome(reply, decision)
+        return TurnOutcome(reply, decision, turn.segment_id)
 
     def _without_secret(self, decision: Decision) -> Decision:
         """Silence a decision that would give the live round's secret word away."""
