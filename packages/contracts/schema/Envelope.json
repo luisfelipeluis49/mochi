@@ -129,8 +129,35 @@
     },
     "Hint": {
       "additionalProperties": false,
-      "description": "One word or short expression shown to help a stuck speaker.",
+      "description": "One word or short expression shown to help a stuck speaker.\n\nPROPOSAL (not yet signed off, see docs/DECISIONS.md): `candidates` and `context` are\nadditive and optional. They are set only for a hint with no single known word (reasons\ntrails_off, restarts, talks_around): up to three plausible completions instead of one\nguess, plus the sentence they stopped in. Every other reason leaves both `None`, and a\nclient that does not know them still shows `expression`/`meaning` as before.",
       "properties": {
+        "candidates": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/HintCandidate"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidates"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context"
+        },
         "example": {
           "anyOf": [
             {
@@ -195,6 +222,33 @@
         "expires_at"
       ],
       "title": "Hint",
+      "type": "object"
+    },
+    "HintCandidate": {
+      "additionalProperties": false,
+      "description": "One of up to three plausible words for a hint with no single known answer.",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        }
+      },
+      "required": [
+        "expression",
+        "meaning"
+      ],
+      "title": "HintCandidate",
       "type": "object"
     },
     "HintCleared": {

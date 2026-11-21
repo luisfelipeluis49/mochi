@@ -421,6 +421,37 @@ From the same conversation:
 Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
 nothing, because that hint was still on the screen (`while_shown`).
 
+## D-31: up to three candidate words, for Mochi AR (2026-11-21)
+
+Asked for by the team: when the speaker named no single word (reasons trails_off, restarts,
+talks_around; AGENTS 7.1 cases 5-6), give up to three plausible completions instead of one guess,
+so `apps/glasses` (Mochi AR, PR #3) can show real choices instead of its own mock backend's two
+scripted words. Every other reason keeps one known word — code_switch, says_unknown, asks_partner
+and asks_mochi already know which word is needed, so a second or third guess would be invented,
+not found.
+
+**Contract PROPOSAL, additive and optional (needs Matheus's sign-off):** `Hint` gains
+`candidates: [{expression, meaning}] | None` (the primary word repeated as the first entry, so a
+client that reads `candidates` never also needs the top-level `expression`) and
+`context: string | None` (the sentence the speaker stopped in). Both `None` for every other
+reason, so a client that does not know them (today's Mobile and Home views) is unaffected.
+`packages/contracts/schema` regenerated (`make contracts-schema`); the three examples that embed
+a `Hint` updated to the now-explicit `null`s. This is exactly the shape `apps/glasses/README.md`
+already proposed and tests against — no change needed on the glasses side.
+
+**Intelligence** (`model_port.CandidateSuggestion`, `openai_hint_model.SYSTEM_PROMPT`,
+`decision_flow._extra_candidates`): the model is asked for `candidates` only for the three open
+reasons; a malformed entry (not an object, no string `expression`) is dropped, never costing the
+primary hint (same defensiveness as the rest of `_suggestion`). Candidates are deduplicated
+against the primary and each other and capped at three. The lexicon-only path (the curated
+10-word list) still returns one word: there is no second translation for "umbrella" to offer.
+Fixtures: `trails_off-67`, `restarts-68`, `talks_around-69` (beyond the lexicon, scripted model).
+
+**Not done:** anything in `gateway/` — none is needed, since the gateway already forwards the
+whole `Hint` payload unchanged (`LiveHint.show`). `&surface=ar` itself arrived separately on `main`
+(AGENTS 6.6, `gateway/connections.py`): the glasses get session state and that user's hints only. **Not verified:** a real multi-word
+suggestion reaching real Rokid Glasses (only the two-word, one-hesitation mock backend has run on
+the hardware so far, per PR #3).
 
 ## D-32: durable storage in Postgres (2026-11-21)
 

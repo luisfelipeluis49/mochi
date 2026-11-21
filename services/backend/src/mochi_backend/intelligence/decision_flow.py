@@ -63,6 +63,7 @@ from mochi_backend.platform.clock import Clock, parse_iso_z
 from mochi_contracts import (
     Decision,
     DecisionKind,
+    HintCandidate,
     Language,
     Reason,
     SessionContext,
@@ -73,6 +74,30 @@ from mochi_contracts import (
 
 _SAME_THOUGHT = timedelta(seconds=20)  # a question and its second half are no further apart
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
+# PROPOSAL (docs/DECISIONS.md): reasons with no single known word, where several plausible
+# completions help (AGENTS 7.1 cases 5-6). Every other reason has one right answer.
+_OPEN_SEARCH_REASONS = frozenset({Reason.TRAILS_OFF, Reason.RESTARTS, Reason.TALKS_AROUND})
+_MAX_CANDIDATES = 3  # the primary word plus at most two more (glasses: MAX_CANDIDATES)
+
+
+def _extra_candidates(answer: ModelSuggestion) -> tuple[HintCandidate, ...]:
+    """The model's extra completions, deduplicated against the primary and each other.
+
+    Example: primary "although", candidates ["although", "unfortunately", "although"] (a
+    repeat) -> `(although, unfortunately)`. The primary is always first.
+    """
+    primary = HintCandidate(expression=answer.expression or "", meaning=answer.meaning)
+    seen = [primary.expression]
+    extra = [primary]
+    for candidate in answer.candidates:
+        word = (candidate.expression or "").strip()
+        if not word or any(same_words(word, kept) for kept in seen):
+            continue
+        seen.append(word)
+        extra.append(HintCandidate(expression=word, meaning=candidate.meaning))
+        if len(extra) == _MAX_CANDIDATES:
+            break
+    return tuple(extra)
 
 
 def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
@@ -326,8 +351,17 @@ class DecisionFlow:
         if answer is None or not answer.reason or self._rejected(text, answer, context, by_rule):
             return None
         language = language_named(answer.expression_language) if open_ask(text) else None
+        candidates, open_context = None, None
+        if answer.reason in _OPEN_SEARCH_REASONS:
+            candidates, open_context = _extra_candidates(answer), text.strip()
         return CaseMatch(
-            answer.reason, answer.expression or "", answer.meaning, answer.example, language
+            answer.reason,
+            answer.expression or "",
+            answer.meaning,
+            answer.example,
+            language,
+            candidates,
+            open_context,
         )
 
     def _rejected(

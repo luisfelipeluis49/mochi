@@ -27,6 +27,10 @@ class Expectation(BaseModel):
     reason: str | None = None
     target_user_id: str | None = None
     speak_text: str | None = None
+    # PROPOSAL (docs/DECISIONS.md): checked only when the fixture states them; every other
+    # fixture is silent on `Hint.candidates`/`context` and `matches()` skips the check.
+    candidates: list[str] | None = None
+    context: str | None = None
 
 
 class DecisionFixture(BaseModel):
@@ -71,6 +75,19 @@ async def decide_fixture(fixture: DecisionFixture, model: HintModel) -> Decision
     return await brain.decide(turn, context)
 
 
+def _hint_matches(hint: Hint, decision: Decision, expected: Expectation) -> bool:
+    """`matches()`'s checks once a hint is expected and present."""
+    got = (hint.expression, hint.reason.value, hint.target_user_id)
+    spoken = decision.speak.text if decision.speak else None
+    got_candidates = [c.expression for c in (hint.candidates or [])]
+    return (
+        got == (expected.expression, expected.reason, expected.target_user_id)
+        and spoken == expected.speak_text
+        and (expected.candidates is None or got_candidates == expected.candidates)
+        and (expected.context is None or hint.context == expected.context)
+    )
+
+
 def matches(decision: Decision, expected: Expectation) -> bool:
     """True when the decision equals the expectation (decision kind, hint fields, spoken line)."""
     if decision.decision is not expected.decision:
@@ -78,10 +95,4 @@ def matches(decision: Decision, expected: Expectation) -> bool:
     if expected.decision is DecisionKind.IGNORE:
         return decision.hint is None and decision.speak is None
     hint = decision.hint
-    if hint is None:
-        return False
-    got = (hint.expression, hint.reason.value, hint.target_user_id)
-    spoken = decision.speak.text if decision.speak else None
-    return got == (expected.expression, expected.reason, expected.target_user_id) and (
-        spoken == expected.speak_text
-    )
+    return hint is not None and _hint_matches(hint, decision, expected)
