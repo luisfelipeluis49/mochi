@@ -14,8 +14,8 @@
 // =============================================================================
 
 import { type PointerEvent, type RefObject, useRef, useState } from "react";
-import type { Backend } from "../lib/backend.ts";
-import { type HomeLocal, LONG_PRESS_MS, type Press, applyAction, homeScreen, initialHomeLocal, onPress } from "../lib/home.ts";
+import { type Backend, HttpError } from "../lib/backend.ts";
+import { type HomeLocal, LONG_PRESS_MS, type Press, afterResultFailure, applyAction, homeScreen, initialHomeLocal, onPress } from "../lib/home.ts";
 import { copyFor, displayName, fitFontSize } from "../lib/i18n.ts";
 import type { ClientState } from "../lib/store.ts";
 import type { Language } from "../contracts.ts";
@@ -62,9 +62,10 @@ export function HomeView({ state, now, lang, backend }: Props) {
     setLocal((l) => applyAction(l, action)); // remember it locally (e.g. "word revealed")
     if (action.do === "send_result") {
       // Second tap = "guessed", long press = "skipped" → tell the backend.
-      backend.current?.activityResult(action.result).catch(() => {
-        // If the request failed, show the word again so the describer can tap again.
-        setLocal((l) => ({ ...l, sentRoundId: null, revealedRoundId: action.roundId }));
+      backend.current?.activityResult(action.result).catch((err) => {
+        // 409 = the round already ended: follow the server. Other failures: show the word again to tap again.
+        const status = err instanceof HttpError ? err.status : null;
+        setLocal((l) => afterResultFailure(l, action.roundId, status));
       });
     }
   };

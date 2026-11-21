@@ -134,12 +134,22 @@ export function wordsNewestFirst(state: ClientState): LearningEvent[] {
   return Object.values(state.words).sort((a, b) => createdAt(b) - createdAt(a));
 }
 
+const SUPPORTED_SCHEMA = "0.4";
+let warnedSchema = false; // warn only once per page
+
 /** Turn the raw text from the WebSocket into an event object.
  *  Returns null for anything broken or unknown, so bad messages can't crash the page. */
 export function parseEvent(raw: string): MochiEvent | null {
   try {
     const e = JSON.parse(raw);
-    if (e && typeof e.type === "string" && typeof e.sequence === "number" && "payload" in e) return e as MochiEvent;
+    if (e && typeof e.type === "string" && typeof e.sequence === "number" && "payload" in e) {
+      // A different schema_version is not a reason to drop the event: apply it, but say so once.
+      if (e.schema_version !== SUPPORTED_SCHEMA && !warnedSchema) {
+        warnedSchema = true;
+        console.warn(`mochi: event schema_version ${String(e.schema_version)}, this app knows ${SUPPORTED_SCHEMA}; applying it anyway`);
+      }
+      return e as MochiEvent;
+    }
   } catch {
     /* not valid JSON: ignore it */
   }

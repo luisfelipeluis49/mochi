@@ -16,3 +16,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f services/backend/Dockerfile -t mochi-backend .
+  apps:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: web
+            node: 22
+          # Node 24 for the glasses: on Node 22 a refused WebSocket connect sends `error` and no `close`, which
+          # the old glasses reconnect code waited for. Fixed in the glasses PR (#8); Node 22 passes after it.
+          - app: glasses
+            node: 24
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm test
+      - if: matrix.app == 'web'
+        run: npx tsc --noEmit

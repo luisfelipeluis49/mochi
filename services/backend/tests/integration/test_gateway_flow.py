@@ -269,3 +269,34 @@ async def test_the_full_walkthrough_from_agents_section_2() -> None:
     assert [e.type.value for e in ben.events].count("hint.created") == 0
     await harness.container.sessions.stop()
     assert harness.container.devices.state("home_pi_01").capturing is False
+
+
+async def test_home_reconnecting_mid_round_gets_the_private_prompt_and_nobody_else_does() -> None:
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.container.activity.start()
+    home, audience, ana, ben = await harness.connect_all(HOME, AUDIENCE, ANA, BEN)
+    prompts = [e for e in home.events if e.type.value == "activity.private_prompt"]
+    assert len(prompts) == 1 and isinstance(prompts[0].payload, PrivatePrompt)
+    assert home.types().index("activity.private_prompt") > home.types().index(
+        "activity.state.changed"
+    )
+    secret = prompts[0].payload.secret_word
+    for watcher in (audience, ana, ben):
+        assert "activity.private_prompt" not in watcher.types()
+        assert all(secret not in text for text in watcher.texts)
+
+
+async def test_no_private_prompt_after_the_round_ends_or_the_session_stops() -> None:
+    harness = make_harness()
+    await harness.container.sessions.start()
+    await harness.container.activity.start()
+    await harness.container.activity.finish(RoundResult.GUESSED)
+    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()
+    await harness.container.activity.start()
+    await harness.container.sessions.stop()
+    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()
+    await harness.container.sessions.start()
+    await harness.container.activity.start()
+    await harness.container.demo_reset.run()
+    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { MochiEvent } from "../contracts.ts";
+import { redactPayload } from "../lib/debug.ts";
 
 export function DebugPanel({ log, connected }: { log: MochiEvent[]; connected: boolean }) {
   return (
@@ -19,7 +20,7 @@ export function DebugPanel({ log, connected }: { log: MochiEvent[]; connected: b
           // One line per event: #sequence number, type, time, then the full payload as text
           <li key={`${i}-${e.event_id}`}>
             <b>#{e.sequence}</b> {e.type} <span>{e.emitted_at.slice(11, 19)}</span>
-            <pre>{JSON.stringify(e.payload)}</pre>
+            <pre>{JSON.stringify(redactPayload(e))}</pre>
           </li>
         ))}
       </ol>

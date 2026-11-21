@@ -13,7 +13,7 @@ import { StrictMode } from "react";                    // React helper that warn
 import { createRoot } from "react-dom/client";        // connects React to the real web page
 import { pickLanguage } from "./lib/i18n.ts";        // decides English or Portuguese
 import { useMochi } from "./lib/useMochi.ts";        // connects to the backend and keeps the data
-import { type Who, whoFromUrl } from "./lib/who.ts"; // turns the URL into "which page am I?"
+import { type Who, indexLinks, whoFromUrl } from "./lib/who.ts"; // turns the URL into "which page am I?"
 import { AudienceView } from "./views/AudienceView.tsx"; // projector screen
 import { DebugPanel } from "./views/DebugPanel.tsx";     // the ?debug=1 event list
 import { HomeView } from "./views/HomeView.tsx";
@@ -38,7 +38,7 @@ function App({ who }: { who: Who }) {
   //   connected = is the connection open right now?
   //   now       = the current time, updated 4x per second (so hints disappear on time)
   //   backend   = an object with functions to send commands (start, stop, game result)
-  const { state, connected, now, backend } = useMochi(who, { mock, mockSpeed });
+  const { state, connected, now, backend, rejected } = useMochi(who, { mock, mockSpeed });
 
   // Draw ONE of the three screens depending on "who".
   // `condition && <Thing />` means "draw Thing only if condition is true".
@@ -51,6 +51,7 @@ function App({ who }: { who: Who }) {
         <MobileView user={who.user} state={state} lang={lang} connected={connected} backend={backend} />
       )}
       {who.kind === "audience" && <AudienceView state={state} now={now} lang={lang} />}
+      {rejected && <p className="fatal" role="alert">Connection refused by the backend: {rejected}</p>}
       {debug && <DebugPanel log={state.log} connected={connected} />}
     </>
   );
@@ -62,11 +63,7 @@ function Index() {
     <main className="index">
       <h1>Mochi</h1>
       <ul>
-        <li><a href="/home?device=home_pi_01">Home view (Mochi's screen)</a></li>
-        <li><a href="/m?user=ana">Mobile view: Ana</a></li>
-        <li><a href="/m?user=sophie">Mobile view: Sophie</a></li>
-        <li><a href="/me?user=tasnim&mock=1">My conversations (analytics of real conversations)</a></li>
-        <li><a href="/audience">Audience view (projector)</a></li>
+        {indexLinks().map((l) => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}
       </ul>
       <p>Add <code>?mock=1</code> to replay the demo without a backend, <code>&amp;debug=1</code> for the event list, <code>&amp;lang=pt-BR</code> for Portuguese, <code>&amp;projector=1</code> on a phone page to show it large on the projector.</p>
     </main>

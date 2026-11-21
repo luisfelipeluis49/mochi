@@ -62,14 +62,14 @@ export interface Hint {
 // activity.state.changed: the public game state (never contains the secret word during a round)
 export interface Activity {
   activity_id: string;
-  round_id: string;
+  round_id: string | null;
   state: GameState;
-  describer_user_id: string;
-  guesser_user_id: string;
-  public_instruction: string;
+  describer_user_id: string | null;
+  guesser_user_id: string | null;
+  public_instruction: string | null;
   result: RoundResult | null;
   revealed_word: string | null;
-  word_source: WordSource;
+  word_source: WordSource | null;
 }
 
 // activity.private_prompt: the SECRET word, sent only to Mochi's screen

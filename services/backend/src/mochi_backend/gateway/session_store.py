@@ -10,6 +10,7 @@ from mochi_contracts import (
     Hint,
     Language,
     LearningEvent,
+    PrivatePrompt,
     SessionContext,
     SessionMode,
     SessionState,
@@ -50,6 +51,7 @@ class SessionStore:
         self.hints: list[Hint] = []
         self.commands: list[DeviceCommand] = []  # for the device, newest last (this session's)
         self.round_secrets: tuple[str, ...] = ()  # the word (and its meaning) of the live round
+        self.private_prompt: PrivatePrompt | None = None  # re-sent to a Home that reconnects
         self.served_byes: set[str] = set()  # `bye` is handed to the device once, never replayed
         self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
@@ -96,6 +98,7 @@ class SessionStore:
         """Back to IDLE and `together` without touching history (used by Stop)."""
         self.activity = idle_activity()
         self.round_secrets = ()
+        self.private_prompt = None
         self.mode = SessionMode.TOGETHER
 
     def session_state(self) -> SessionState:
