@@ -48,14 +48,14 @@ test('parseEvent accepts a contract envelope and rejects everything else', () =>
 });
 
 test('session.state.changed turns listening on and off', () => {
-  let state = reduce(initialState(), envelope('session.state.changed', SESSION_ACTIVE, 1), T0);
+  let state = reduce(initialState('ana'), envelope('session.state.changed', SESSION_ACTIVE, 1), T0);
   assert.equal(state.capturing, true);
   state = reduce(state, envelope('session.state.changed', { ...SESSION_ACTIVE, capturing: false }, 2), T0);
   assert.equal(state.capturing, false);
 });
 
 test('a v0.4 hint shows its one word and meaning for 8 seconds', () => {
-  const state = reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0);
+  const state = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 1), T0);
   assert.deepEqual(state.hint, {
     hintId: 'hint_015', context: '',
     candidates: [{ expression: 'postpone', meaning: 'adiar' }],
@@ -66,7 +66,7 @@ test('a v0.4 hint shows its one word and meaning for 8 seconds', () => {
 });
 
 test('a hint with candidates shows up to three of them, with the context', () => {
-  const state = reduce(initialState(), envelope('hint.created', BUT, 1), T0);
+  const state = reduce(initialState('ana'), envelope('hint.created', BUT, 1), T0);
   assert.equal(state.hint.context, 'I wanted to go, but…');
   assert.deepEqual(state.hint.candidates, [
     { expression: 'although', meaning: 'embora' },
@@ -114,23 +114,23 @@ test('context: short ones get an ellipsis, long ones keep their end', () => {
 
 test('a hint with no meaning or no target is still shown', () => {
   const payload = { ...POSTPONE, meaning: null, example: null, target_user_id: null };
-  const state = reduce(initialState(), envelope('hint.created', payload, 1), T0);
+  const state = reduce(initialState('ana'), envelope('hint.created', payload, 1), T0);
   assert.deepEqual(state.hint.candidates, [{ expression: 'postpone', meaning: '' }]);
 });
 
 test('a hint without a usable word, or without an id, is not shown', () => {
   for (const expression of [undefined, null, '', '   ', 7]) {
-    const state = reduce(initialState(), envelope('hint.created', { ...POSTPONE, expression }, 1), T0);
+    const state = reduce(initialState('ana'), envelope('hint.created', { ...POSTPONE, expression }, 1), T0);
     assert.equal(state.hint, null);
   }
   for (const hint_id of [undefined, null, '', 9]) {
-    const state = reduce(initialState(), envelope('hint.created', { ...BUT, hint_id }, 1), T0);
+    const state = reduce(initialState('ana'), envelope('hint.created', { ...BUT, hint_id }, 1), T0);
     assert.equal(state.hint, null);
   }
 });
 
 test('an event whose sequence was already applied is ignored', () => {
-  const first = reduce(initialState(), envelope('hint.created', POSTPONE, 5), T0);
+  const first = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 5), T0);
   const cleared = reduce(first, envelope('hint.cleared', { hint_id: 'hint_015' }, 6), T0);
   assert.equal(cleared.hint, null);
   // The old hint.created arrives again: it must not bring the word back.
@@ -138,27 +138,27 @@ test('an event whose sequence was already applied is ignored', () => {
 });
 
 test('a new connection starts sequence tracking again', () => {
-  const state = reduce(initialState(), envelope('session.state.changed', SESSION_ACTIVE, 900), T0);
+  const state = reduce(initialState('ana'), envelope('session.state.changed', SESSION_ACTIVE, 900), T0);
   const fresh = resetForNewConnection(state);
   const next = reduce(fresh, envelope('hint.created', POSTPONE, 1), T0);
   assert.equal(next.hint.candidates[0].expression, 'postpone');
 });
 
 test('hint.cleared removes only the hint it names', () => {
-  const shown = reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0);
+  const shown = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 1), T0);
   assert.equal(reduce(shown, envelope('hint.cleared', { hint_id: 'hint_999' }, 2), T0).hint.hintId, 'hint_015');
   assert.equal(reduce(shown, envelope('hint.cleared', { hint_id: 'hint_015' }, 2), T0).hint, null);
 });
 
 test('a newer hint replaces the one on screen', () => {
-  let state = reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0);
+  let state = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 1), T0);
   state = reduce(state, envelope('hint.created', BUT, 2), T0);
   assert.equal(state.hint.hintId, 'hint_101');
   assert.equal(state.hint.candidates.length, 3);
 });
 
 test('events for other screens change nothing visible', () => {
-  const before = reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0);
+  const before = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 1), T0);
   for (const type of ['activity.state.changed', 'learning_event.created', 'agent.speak.requested', 'something.new']) {
     const after = reduce(before, envelope(type, { anything: true }, 2), T0);
     assert.deepEqual(after.hint, before.hint);
@@ -167,9 +167,9 @@ test('events for other screens change nothing visible', () => {
 });
 
 test('dismiss puts the word away and is a no-op with nothing shown', () => {
-  const shown = reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0);
+  const shown = reduce(initialState('ana'), envelope('hint.created', POSTPONE, 1), T0);
   assert.equal(dismiss(shown).hint, null);
-  const empty = initialState();
+  const empty = initialState('ana');
   assert.equal(dismiss(empty), empty);
 });
 
@@ -204,4 +204,45 @@ test('socketUrl builds one person\'s address and says these are glasses', () => 
   assert.equal(socketUrl('wss://mochi.example.com', 'ana'), 'wss://mochi.example.com/ws?user=ana&surface=ar');
   assert.equal(socketUrl('', 'ana'), '');
   assert.equal(socketUrl(undefined, 'ana'), '');
+});
+
+test('a hint for another person is ignored, one for the wearer or for nobody is shown', () => {
+  const forBen = { ...POSTPONE, hint_id: 'hint_200', target_user_id: 'ben' };
+  const forNobody = { ...POSTPONE, hint_id: 'hint_201', target_user_id: null };
+  let state = reduce(initialState('ana'), envelope('hint.created', forBen, 1), T0);
+  assert.equal(state.hint, null, "Ben's hint is not shown on Ana's glasses");
+  state = reduce(state, envelope('hint.created', forNobody, 2), T0);
+  assert.equal(state.hint.hintId, 'hint_201');
+  state = reduce(state, envelope('hint.created', { ...forBen, hint_id: 'hint_202' }, 3), T0);
+  assert.equal(state.hint.hintId, 'hint_201', "Ben's later hint does not replace what Ana sees");
+  state = reduce(initialState('ben'), envelope('hint.created', forBen, 1), T0);
+  assert.equal(state.hint.hintId, 'hint_200');
+});
+
+test('with no known wearer, only hints for nobody are shown', () => {
+  assert.equal(reduce(initialState(), envelope('hint.created', POSTPONE, 1), T0).hint, null);
+  const forNobody = { ...POSTPONE, target_user_id: null };
+  assert.notEqual(reduce(initialState(), envelope('hint.created', forNobody, 1), T0).hint, null);
+});
+
+test('expression with " · " holds up to three options, the meaning shown once', () => {
+  const payload = { ...POSTPONE, expression: 'postpone · delay · put off · reschedule', meaning: 'adiar' };
+  assert.deepEqual(candidatesOf(payload), [
+    { expression: 'postpone', meaning: 'adiar' },
+    { expression: 'delay', meaning: '' },
+    { expression: 'put off', meaning: '' },
+  ]);
+  assert.deepEqual(candidatesOf({ ...POSTPONE, expression: 'although · although' }),
+    [{ expression: 'although', meaning: 'adiar' }]);
+});
+
+test('candidates still win over a " · " expression', () => {
+  const payload = { ...BUT, expression: 'a · b' };
+  assert.deepEqual(candidatesOf(payload).map((c) => c.expression), ['although', 'unfortunately', 'instead']);
+});
+
+test('socketUrl refuses an address without a scheme, with a clear error', () => {
+  assert.throws(() => socketUrl('mochi.example.com', 'ana'), /http\(s\):\/\/ or ws\(s\):\/\//);
+  assert.throws(() => socketUrl('localhost:8787', 'ana'), /scheme/i);
+  assert.throws(() => socketUrl('ftp://mochi.example.com', 'ana'), /scheme/i);
 });

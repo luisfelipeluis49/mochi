@@ -1,7 +1,8 @@
 // A stand-in for the Mochi gateway, for developing the glasses app without the
 // real backend (services/backend). It is NOT the backend: it knows two words and one
 // hesitation, and nothing else. It follows the team contract (draft v0.4,
-// section 6) for the parts the glasses touch, plus the two things the glasses
+// section 6) for the parts the glasses touch (snapshot on connect: session and
+// activity state; hint.cleared on replace and expiry; 4400 for an unknown user), plus the two things the glasses
 // PROPOSE for the Fluency Helper: `&surface=ar` on the connection, and
 // `candidates` / `context` on the Hint.
 //
@@ -20,6 +21,7 @@ import { pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 const HINT_MS = 8000;
+const USERS = ['ana', 'ben']; // the real roster; anyone else is accepted, then closed with 4400
 
 // The M0 "one-rule decide()", plus the second demo sentence.
 const WORDS = [
@@ -41,7 +43,7 @@ const HESITATIONS = [
   },
 ];
 
-export function createMockBackend() {
+export function createMockBackend({ hintMs = HINT_MS } = {}) {
   const clients = new Set(); // { socket, kind: 'user' | 'home' | 'audience', userId, surface }
   let sequence = 0;
   let hintCount = 0;
@@ -85,6 +87,25 @@ export function createMockBackend() {
     }
   }
 
+  const IDLE_ACTIVITY = {
+    activity_id: 'describe_and_guess', round_id: null, state: 'IDLE', describer_user_id: null,
+    guesser_user_id: null, public_instruction: null, result: null, revealed_word: null, word_source: null,
+  };
+  let expiryTimer = null;
+
+  // Like the real gateway: a hint ends with hint.cleared, whether a newer hint
+  // replaced it or its time ran out. The clear goes to whoever got the hint.
+  function clearLiveHint() {
+    if (expiryTimer !== null) {
+      clearTimeout(expiryTimer);
+      expiryTimer = null;
+    }
+    if (!liveHint) return;
+    const { payload, accepts } = liveHint;
+    liveHint = null;
+    publish('hint.cleared', { hint_id: payload.hint_id }, (client) => accepts(client, payload));
+  }
+
   function publishSession() {
     publish('session.state.changed', session);
   }
@@ -95,7 +116,8 @@ export function createMockBackend() {
     const hesitation = word ? null : HESITATIONS.find((entry) => lower.includes(entry.heard));
     if (!word && !hesitation) return { decision: 'IGNORE' };
     hintCount += 1;
-    const expiresMs = Date.now() + HINT_MS;
+    clearLiveHint();
+    const expiresMs = Date.now() + hintMs;
     const first = word || hesitation.candidates[0];
     const payload = {
       hint_id: `hint_${String(hintCount).padStart(3, '0')}`,
@@ -113,6 +135,11 @@ export function createMockBackend() {
     }
     const accepts = hesitation ? suggestionGoesTo : hintGoesTo;
     liveHint = { payload, expiresMs, accepts };
+    expiryTimer = setTimeout(() => {
+      expiryTimer = null;
+      clearLiveHint();
+    }, hintMs);
+    expiryTimer.unref();
     publish('hint.created', payload, (client) => accepts(client, payload));
     return { decision: 'SHOW_HINT', hint: payload };
   }
@@ -148,7 +175,7 @@ export function createMockBackend() {
     }
     if (pathname === '/api/demo/reset') {
       session = newSession();
-      liveHint = null;
+      clearLiveHint();
       publishSession();
       return reply(response, 200, session);
     }
@@ -181,7 +208,13 @@ export function createMockBackend() {
       ws.on('close', () => clients.delete(client));
       ws.on('error', () => clients.delete(client));
       // On connect: the current session state and any live hint.
+      if (client.kind === 'user' && !USERS.includes(client.userId)) {
+        // The real backend accepts, then closes: 4400 with a reason.
+        ws.close(4400, `unknown user: ${client.userId}`);
+        return;
+      }
       ws.send(envelope('session.state.changed', session));
+      ws.send(envelope('activity.state.changed', IDLE_ACTIVITY));
       if (liveHint && Date.now() < liveHint.expiresMs && liveHint.accepts(client, liveHint.payload)) {
         ws.send(envelope('hint.created', liveHint.payload));
       }
@@ -197,6 +230,7 @@ export function createMockBackend() {
       for (const client of clients) client.socket.terminate();
     },
     close() {
+      if (expiryTimer !== null) clearTimeout(expiryTimer);
       for (const client of clients) client.socket.terminate();
       sockets.close();
       return new Promise((resolve) => server.close(resolve));

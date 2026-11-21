@@ -7,6 +7,9 @@ const STRINGS = {
     micOff: 'NOT LISTENING',
     connecting: 'CONNECTING',
     reconnecting: 'RECONNECTING',
+    wakingUp: 'WAKING UP',
+    rejected: 'REJECTED',
+    badUrl: 'CHECK SERVER ADDRESS',
     demo: 'DEMO',
   },
   'pt-BR': {
@@ -14,6 +17,9 @@ const STRINGS = {
     micOff: 'SEM OUVIR',
     connecting: 'CONECTANDO',
     reconnecting: 'RECONECTANDO',
+    wakingUp: 'ACORDANDO',
+    rejected: 'RECUSADO',
+    badUrl: 'CONFIRA O ENDERECO',
     demo: 'DEMO',
   },
 };
