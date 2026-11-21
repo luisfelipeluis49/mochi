@@ -282,6 +282,7 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 - The intelligence port has seven methods: the four in 6.5 plus the ones that carry Mochi's character, the heard sentence, device status and "say aloud" (`gateway/intelligence_port.py` is the source).
 - The Pi starts a session itself when it hears the wake phrase; the Operator's Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
+- `GET /ws?user=ana&surface=ar` (proposed, owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody, never cards, the private prompt or other users' hints; an unknown `surface` closes 4400.
 
 ## 7. Behavior rules
 

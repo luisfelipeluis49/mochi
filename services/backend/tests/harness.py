@@ -21,6 +21,8 @@ from tests.fakes.gated_intelligence import GatedIntelligence
 
 ANA = ConnectionTarget("mobile", user_id="ana")
 BEN = ConnectionTarget("mobile", user_id="ben")
+ANA_AR = ConnectionTarget("glasses", user_id="ana")
+BEN_AR = ConnectionTarget("glasses", user_id="ben")
 HOME = ConnectionTarget("home", device_id="home_pi_01")
 AUDIENCE = ConnectionTarget("audience")
 

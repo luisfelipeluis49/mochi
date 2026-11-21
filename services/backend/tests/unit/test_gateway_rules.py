@@ -50,7 +50,7 @@ from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_http_client import FakeHttpClient
 from tests.fakes.fake_scheduler import FakeScheduler
 from tests.fakes.fake_sender import FakeEventLogger, FakeSender
-from tests.harness import ANA, AUDIENCE, BEN, HOME
+from tests.harness import ANA, ANA_AR, AUDIENCE, BEN, BEN_AR, HOME
 
 SESSION = SessionState(
     status=SessionStatus.ACTIVE,
@@ -97,21 +97,43 @@ def _activity(state: GameState, revealed: str | None = None, text: str = "go") -
 
 HINT_FOR_ANA = make_hint(0)
 HINT_FOR_ALL = HINT_FOR_ANA.model_copy(update={"target_user_id": None})
-TARGETS = {"ana": ANA, "ben": BEN, "home": HOME, "audience": AUDIENCE}
+TARGETS = {
+    "ana": ANA,
+    "ben": BEN,
+    "home": HOME,
+    "audience": AUDIENCE,
+    "ana_ar": ANA_AR,
+    "ben_ar": BEN_AR,
+}
 
 
 @pytest.mark.parametrize(
     ("event", "payload", "hint_user", "expected"),
     [
-        (EventType.SESSION_STATE_CHANGED, SESSION, None, {"ana", "ben", "home", "audience"}),
-        (EventType.HINT_CREATED, HINT_FOR_ANA, "ana", {"ana", "home", "audience"}),
-        (EventType.HINT_CREATED, HINT_FOR_ALL, None, {"ana", "ben", "home", "audience"}),
-        (EventType.HINT_CLEARED, HintCleared(hint_id="h"), "ana", {"ana", "home", "audience"}),
+        (
+            EventType.SESSION_STATE_CHANGED,
+            SESSION,
+            None,
+            {"ana", "ben", "home", "audience", "ana_ar", "ben_ar"},
+        ),
+        (EventType.HINT_CREATED, HINT_FOR_ANA, "ana", {"ana", "home", "audience", "ana_ar"}),
+        (
+            EventType.HINT_CREATED,
+            HINT_FOR_ALL,
+            None,
+            {"ana", "ben", "home", "audience", "ana_ar", "ben_ar"},
+        ),
+        (
+            EventType.HINT_CLEARED,
+            HintCleared(hint_id="h"),
+            "ana",
+            {"ana", "home", "audience", "ana_ar"},
+        ),
         (
             EventType.ACTIVITY_STATE_CHANGED,
             _activity(GameState.IDLE),
             None,
-            {"ana", "ben", "home", "audience"},
+            {"ana", "ben", "home", "audience"},  # glasses: hints only
         ),
         (EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT, None, {"home"}),
         (EventType.LEARNING_EVENT_CREATED, _card("ana"), None, {"ana"}),
@@ -247,6 +269,29 @@ def test_parse_target_accepts_the_three_shapes_and_explains_the_rest() -> None:
     assert parse_target({"view": "audience"}) == AUDIENCE
     with pytest.raises(ValueError, match=r"unknown connection query .*'zed'.*user=ana\|ben"):
         parse_target({"user": "zed"})
+
+
+def test_parse_target_surface_ar_makes_a_glasses_target() -> None:
+    assert parse_target({"user": "ana", "surface": "ar"}) == ANA_AR
+    with pytest.raises(ValueError, match=r"unknown surface 'vr'"):
+        parse_target({"user": "ana", "surface": "vr"})
+    with pytest.raises(ValueError, match=r"unknown surface ''"):
+        parse_target({"user": "ana", "surface": ""})
+    with pytest.raises(ValueError, match=r"unknown connection query"):
+        parse_target({"user": "zed", "surface": "ar"})
+    with pytest.raises(ValueError, match=r"unknown connection query"):
+        parse_target({"device": "home_pi_01", "surface": "ar"})
+
+
+def test_glasses_never_get_cards_prompts_game_or_speech() -> None:
+    for event, payload in [
+        (EventType.LEARNING_EVENT_CREATED, _card("ana")),
+        (EventType.LEARNING_EVENT_UPDATED, _card("ana")),
+        (EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT),
+        (EventType.ACTIVITY_STATE_CHANGED, _activity(GameState.ACTIVE_ROUND)),
+        (EventType.AGENT_SPEAK_REQUESTED, SPEAK),
+    ]:
+        assert not is_recipient(event, payload, ANA_AR, None)
 
 
 def test_settings_fake_mode_gets_a_dev_key() -> None:

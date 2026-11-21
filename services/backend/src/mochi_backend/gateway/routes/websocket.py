@@ -8,6 +8,10 @@ from mochi_backend.gateway.routes.dependencies import ContainerDep
 router = APIRouter()
 BAD_QUERY_CLOSE_CODE = 4400
 GONE_CLOSE_CODE = 1011
+MAX_CLOSE_REASON_BYTES = 123  # RFC 6455: control frame payload 125 bytes, 2 taken by the code
+FALLBACK_REASON = (
+    "unknown query; expected one of user=ana|ben[&surface=ar], device=home_pi_01, view=audience"
+)
 
 
 class SocketSender:
@@ -27,12 +31,15 @@ class SocketSender:
 @router.websocket("/ws")
 async def websocket_endpoint(socket: WebSocket, container: ContainerDep) -> None:
     """Accept, send the snapshot, then keep the socket open until the client leaves."""
-    await socket.accept()
+    # Parse first. The close still follows accept(): a server that closes before accepting answers
+    # the handshake with HTTP 403, and a browser then sees code 1006 with no reason.
     try:
         target = parse_target(dict(socket.query_params))
     except ValueError as error:
-        await socket.close(code=BAD_QUERY_CLOSE_CODE, reason=str(error))
+        await socket.accept()
+        await socket.close(code=BAD_QUERY_CLOSE_CODE, reason=_legal_reason(str(error)))
         return
+    await socket.accept()
     connection = await container.connections.accept(target, SocketSender(socket))
     if connection is None:
         await socket.close(code=GONE_CLOSE_CODE, reason="could not send the current state")
@@ -41,6 +48,11 @@ async def websocket_endpoint(socket: WebSocket, container: ContainerDep) -> None
         await _until_disconnected(socket)
     finally:
         container.connections.close(connection)  # whatever ended the socket, forget the client
+
+
+def _legal_reason(reason: str) -> str:
+    """A close reason over 123 bytes breaks the close frame; fall back to a short fixed one."""
+    return reason if len(reason.encode()) <= MAX_CLOSE_REASON_BYTES else FALLBACK_REASON
 
 
 async def _until_disconnected(socket: WebSocket) -> None:
