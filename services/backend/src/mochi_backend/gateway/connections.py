@@ -5,22 +5,35 @@ from mochi_backend.gateway.event_hub import Connection, EventHub, Sender
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.roster import HOME_DEVICE_ID, USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
-from mochi_contracts import EventPayload, EventType
+from mochi_contracts import EventPayload, EventType, GameState
+
+SURFACES = ("ar",)
+EXPECTED = "user=ana|ben[&surface=ar], device=home_pi_01, view=audience"
+ECHO_LIMIT = 16  # a WebSocket close reason may be at most 123 bytes
+
+
+def _echo(value: str) -> str:
+    return value if len(value) <= ECHO_LIMIT else value[:ECHO_LIMIT] + "..."
 
 
 def parse_target(query: dict[str, str]) -> ConnectionTarget:
-    """Turn `?user=ana` / `?device=home_pi_01` / `?view=audience` into a target.
+    """Turn `?user=ana[&surface=ar]`, `?device=home_pi_01` or `?view=audience` into a target.
 
     Raises ValueError naming the value and the expected shape.
     """
-    expected = "user=ana|ben, device=home_pi_01, view=audience"
+    if "surface" in query and query["surface"] not in SURFACES:
+        raise ValueError(f"unknown surface {_echo(query['surface'])!r}; expected surface=ar")
     if query.get("user") in USER_IDS:
+        if query.get("surface") == "ar":
+            return ConnectionTarget("glasses", user_id=query["user"])
         return ConnectionTarget("mobile", user_id=query["user"])
-    if query.get("device") == HOME_DEVICE_ID:
+    if "surface" not in query and query.get("device") == HOME_DEVICE_ID:
         return ConnectionTarget("home", device_id=HOME_DEVICE_ID)
-    if query.get("view") == "audience":
+    if "surface" not in query and query.get("view") == "audience":
         return ConnectionTarget("audience")
-    raise ValueError(f"unknown connection query {query!r}; expected one of {expected}")
+    shown = {k: _echo(v) for k, v in list(query.items()) if k != "surface"}
+    shown = dict(list(shown.items())[:1])
+    raise ValueError(f"unknown connection query {shown!r}; expected one of {EXPECTED}")
 
 
 class ConnectionService:
@@ -40,6 +53,10 @@ class ConnectionService:
             (EventType.SESSION_STATE_CHANGED, self._store.session_state()),
             (EventType.ACTIVITY_STATE_CHANGED, self._store.activity),
         ]
+        prompt = self._store.private_prompt
+        if prompt is not None and self._store.activity.state is GameState.ACTIVE_ROUND:
+            # The hub's delivery rules send this to the Home connection only.
+            events.append((EventType.ACTIVITY_PRIVATE_PROMPT, prompt))
         if self._live_hint.current is not None:
             events.append((EventType.HINT_CREATED, self._live_hint.current))
         return events

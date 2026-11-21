@@ -10,12 +10,12 @@ from mochi_contracts import (
     LearningEvent,
 )
 
-TargetKind = Literal["mobile", "home", "audience"]
+TargetKind = Literal["mobile", "home", "audience", "glasses"]
 
 
 @dataclass(frozen=True)
 class ConnectionTarget:
-    """What a connection asked to be: a person's phone, Mochi's own screen, or the projector."""
+    """What a connection asked to be: a phone, Mochi's screen, the projector or AR glasses."""
 
     kind: TargetKind
     user_id: str | None = None
@@ -30,6 +30,8 @@ def is_recipient(
     `hint_user` is the target user of the hint an event refers to (None = shown to everyone).
     Example: `hint.created` for Ana goes to Home, Audience and Ana's phone, not Ben's.
     """
+    if target.kind == "glasses":
+        return _glasses_recipient(event_type, target, hint_user)
     if event_type is EventType.ACTIVITY_PRIVATE_PROMPT:
         return target.kind == "home"
     if event_type in (EventType.LEARNING_EVENT_CREATED, EventType.LEARNING_EVENT_UPDATED):
@@ -37,6 +39,17 @@ def is_recipient(
     if event_type in (EventType.HINT_CREATED, EventType.HINT_CLEARED):
         return _hint_audience(hint_user, target)
     return True
+
+
+def _glasses_recipient(
+    event_type: EventType, target: ConnectionTarget, hint_user: str | None
+) -> bool:
+    """AR glasses (AGENTS 6.6, proposed): session state and the wearer's hints, nothing else."""
+    if event_type is EventType.SESSION_STATE_CHANGED:
+        return True
+    if event_type in (EventType.HINT_CREATED, EventType.HINT_CLEARED):
+        return hint_user is None or hint_user == target.user_id
+    return False
 
 
 def _owner_only(payload: EventPayload, target: ConnectionTarget) -> bool:
