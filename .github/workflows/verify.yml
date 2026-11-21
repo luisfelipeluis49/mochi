@@ -21,7 +21,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [glasses, web]
+        include:
+          - app: web
+            node: 22
+          # Node 24 for the glasses: on Node 22 a refused WebSocket connect sends `error` and no `close`, which
+          # the old glasses reconnect code waited for. Fixed in the glasses PR (#8); Node 22 passes after it.
+          - app: glasses
+            node: 24
     defaults:
       run:
         working-directory: apps/${{ matrix.app }}
@@ -29,10 +35,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      # apps/web has no package-lock.json yet; switch it to `npm ci` when the web fix branch adds one.
-      - run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+          node-version: ${{ matrix.node }}
+      - run: npm ci
       - run: npm test
       - if: matrix.app == 'web'
         run: npx tsc --noEmit
