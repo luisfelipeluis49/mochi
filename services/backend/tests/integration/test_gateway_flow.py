@@ -11,6 +11,7 @@ from mochi_contracts import (
     ActivityResult,
     Decision,
     DecisionKind,
+    Language,
     LearningEvent,
     LearningState,
     PrivatePrompt,
@@ -104,7 +105,7 @@ async def test_a_failing_or_slow_decide_means_silence() -> None:
         def reset(self) -> None:
             return None
 
-        def session_started(self, woken: bool) -> None:
+        def session_started(self, woken: bool, language: Language | None = None) -> None:
             return None
 
         def device_status(
@@ -260,7 +261,8 @@ async def test_the_full_walkthrough_from_agents_section_2() -> None:
         assert "activity.private_prompt" not in watcher.types()
     assert all("umbrella" not in t for t in audience.texts[cut:])
     await harness.container.activity.finish(RoundResult.GUESSED)
-    assert "umbrella" in audience.texts[-2] + audience.texts[-1]
+    assert "umbrella" in "".join(audience.texts[-3:])  # the result, the session, Mochi's line
+    assert harness.agora.spoken[-1][1] == "Ana got it!"  # the host confirms it out loud
     words = {
         e.expression: e.learning_state for e in harness.container.core.intelligence.words_for("ana")
     }

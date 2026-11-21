@@ -20,8 +20,8 @@ class FakeVoices(Voices):
 
 
 def named(events):
-    """Who was recognised, leaving out the "someone starts talking" notices."""
-    return [e[:2] for e in events if e[0] != "speaker" or e[2] > 0]
+    """What was reported, leaving out the "could not tell yet" notes for the log."""
+    return [e[:2] for e in events if e[0] != "unsure"]
 
 
 def talk(tracker, level, seconds, speech=True):
@@ -60,13 +60,63 @@ class VoiceTrackerTest(unittest.TestCase):
         events = talk(self.t, 0.2, 2) + talk(self.t, 0, 0.5, speech=False)
         self.assertEqual(named(events), [("speaker", "Ben"), ("speaker", "Ben")])
         events = talk(self.t, 0, 0.5, speech=False) + talk(self.t, 0.1, 0.6) + talk(self.t, 0, 0.5, speech=False)
-        self.assertEqual(events[0], ("speaker", None, 0.0))        # a new voice starts: not Ben any more
         self.assertEqual(named(events), [("speaker", "Ana")])      # short turn: recognised only at the pause
+
+    def test_a_new_sentence_does_not_make_the_speaker_unknown_again(self):
+        """Seen on the device: the name was on the screen and Mochi still said it did not know the
+        voice, because every new sentence began as "unknown" and the agent heard that first."""
+        self.enrol("Ana", 0.1)
+        talk(self.t, 0.1, 2)
+        talk(self.t, 0, 1, speech=False)
+        events = talk(self.t, 0.1, 0.5)                              # she starts her next sentence
+        self.assertEqual(events, [])
 
     def test_unknown_voice_is_nobody(self):
         self.enrol("Ana", 0.1)
         events = talk(self.t, 0.3, 2) + talk(self.t, 0, 0.5, speech=False)
-        self.assertEqual({e[1] for e in events if e[0] == "speaker"}, {None})
+        self.assertEqual(named(events), [("speaker", None)])        # said once, at the pause
+
+    def test_a_few_words_are_too_little_to_call_someone_a_stranger(self):
+        self.enrol("Ana", 0.1)
+        events = talk(self.t, 0.3, 1) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(named(events), [])                          # whoever was talking stays
+        self.assertEqual({e[0] for e in events}, {"unsure"})         # ...and the log has the scores
+
+    def test_keeps_trying_while_someone_talks_until_it_knows_them(self):
+        self.enrol("Ana", 0.1)
+        self.voices.min_score = 2                                    # the first guesses do not reach it
+        events = talk(self.t, 0.1, 1.2)
+        self.assertEqual([e[0] for e in events], ["unsure"])
+        self.voices.min_score = 0.35
+        events = talk(self.t, 0.1, 0.5)                              # 1.5 s of speech: asked again
+        self.assertEqual(named(events), [("speaker", "Ana")])
+        self.assertEqual(talk(self.t, 0.1, 3), [])                   # known: no more guessing
+
+    def test_a_score_just_under_the_bar_does_not_take_a_recognition_back(self):
+        self.enrol("Ana", 0.1)
+        events = talk(self.t, 0.1, 2)
+        self.assertEqual(named(events), [("speaker", "Ana")])
+        self.voices.min_score = 1.05                                 # the read at the pause dips a little
+        events = talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(named(events), [])
+
+    def test_a_clear_miss_on_the_whole_sentence_takes_an_early_guess_back(self):
+        """The first 0.8 s named someone; the whole sentence says clearly not: the sentence wins."""
+        self.enrol("Ana", 0.1)
+        events = talk(self.t, 0.1, 2)
+        self.assertEqual(named(events), [("speaker", "Ana")])
+        self.voices.min_score = 2
+        events = talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(named(events), [("speaker", None)])
+
+    def test_whoever_says_the_wake_phrase_is_known_from_the_start(self):
+        self.enrol("Ana", 0.1)
+        self.t.on = False                                            # no session yet
+        self.assertEqual(self.t.calling(np.full(RATE, 0.1, np.float32))[0][:2], ("speaker", "Ana"))
+        self.assertEqual(self.t.calling(np.full(RATE, 0.3, np.float32)), [])   # a stranger: nothing to say
+        # someone else's sentence ran straight into the call: only the call itself is compared
+        both = np.concatenate([np.full(4 * RATE, 0.3, np.float32), np.full(RATE, 0.1, np.float32)])
+        self.assertEqual(self.t.calling(both)[0][:2], ("speaker", "Ana"))
 
     def test_gives_up_when_nobody_talks(self):
         self.t.start_enroll("Ana")

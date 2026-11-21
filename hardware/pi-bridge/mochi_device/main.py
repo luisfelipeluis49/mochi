@@ -23,6 +23,7 @@ from .audio import Mic, chime
 from .backends import make_backend
 from .bridge import BridgeProcess
 from .face import MOODS, Face
+from .game import RoundScreen
 from .wakeword import KeywordSpotter
 
 
@@ -52,6 +53,8 @@ class Supervisor:
         self.dev = cfg["audio"]["device"]
         self.kws = KeywordSpotter(cfg)
         self.face = Face(cfg.get("face"))
+        self.face.on_tap = self.on_tap
+        self.game = RoundScreen()  # a Describe & Guess round on the screen (game.py)
         self.backend = make_backend(cfg, self.on_agent_event)
         self.mic = Mic(self.dev)
         self.bridge = BridgeProcess(self.dev, self.on_agent_voice)
@@ -93,10 +96,47 @@ class Supervisor:
         elif kind == "forget":
             log(f"forgetting {value}'s voice")
             self.kws.forget(value)
+            if hasattr(self.backend, "set_voices"):  # at once: nothing else would say so for a while
+                left = [v for v in self.kws.known_voices if v.lower() != str(value).lower()]
+                self.backend.set_voices(left, None)
+        elif kind == "round":  # a round of Describe & Guess began or ended (never log the card: it has the word)
+            log(f"round: {value.get('state')}" + ("" if value.get("state") != "ACTIVE_ROUND" or value.get("secret_word")
+                                                 else " without its word: is MOCHI_DEVICE_KEY set here as on the backend?"))
+            self.game.show(value, time.monotonic())
+            self._draw_round()
         elif kind == "stopped":  # the session was ended elsewhere: on_frame leaves the channel
             self.backend_end = str(value)
         elif kind == "bye":  # Mochi is saying goodbye: on_frame ends the session once it has
             self.bye_asked = time.monotonic()
+
+    # --- Describe & Guess on the screen ------------------------------------------------------
+    def _draw_round(self) -> None:
+        view = self.game.view()
+        if self.game.stage == "result":  # shown for a few seconds, then the face is back
+            self.face.show_for(self.game.RESULT_S, round=view)
+        else:
+            self.face.keep(round=view)
+
+    def on_tap(self, kind: str) -> None:
+        """The screen was touched ("tap") or held ("long"): it only means something during a round."""
+        now = time.monotonic()
+        if self.state != "ACTIVE" or self.game.stage is None:
+            return
+        if self.game.over(now):
+            self.game.clear()
+            return
+        self.last_speech = now  # people playing are there, even while they think in silence
+        action = self.game.touched(kind, now)
+        if action:
+            asyncio.create_task(self._tell_round(action))
+        self._draw_round()
+
+    async def _tell_round(self, action: str) -> None:
+        log(f"round: touch -> {action}")
+        send = self.backend.next_round() if action == "next" else self.backend.round_result(action)
+        if not await send:
+            self.game.refused(time.monotonic())
+            self._draw_round()
 
     def _goodbye_said(self, now: float) -> bool:
         """Mochi wrote [bye]: leave once its goodbye has been heard out, or after 8 s at the latest."""
@@ -109,10 +149,13 @@ class Supervisor:
         """What the voice tracker noticed (speakers.py)."""
         kind, name, amount = event
         tell = getattr(self.backend, "set_voices", lambda known, speaker: None)
-        if kind == "speaker":
+        if kind == "speaker":  # a known person, or (None) a stranger; until the next one it stays so
+            log(f"voice: {name or 'nobody I know'} (score {amount:.2f})")
             if name:
                 self.face.show_for(5, who=name)
             tell(self.kws.known_voices, name)
+        elif kind == "unsure":  # for the log only: the scores tell whether [voices] min_score fits
+            log(f"voice: not sure yet (score {amount:.2f})")
         elif kind == "enrolled":
             log(f"learned {name}'s voice from {amount:.0f} s of speech")
             self.face.show_for(6, who=name, mood="proud")
@@ -168,22 +211,28 @@ class Supervisor:
 
         if self.state == "IDLE":
             if hit and hit[0] == "wake":
-                log(f"wake phrase heard: {hit[1]!r} -> starting session")
+                # whose voice said it, when the Pi knows it (reported just before the hit itself)
+                caller = next((e[1] for e in reversed(self.kws.voice_events()) if e[0] == "speaker" and e[1]), None)
+                log(f"wake phrase heard: {hit[1]!r}{f' from {caller}' if caller else ''} -> starting session")
                 self.state = "STARTING"
                 self._chime(rising=True)
                 self.session_started = self.last_speech = now
-                self._start_task = asyncio.create_task(self.start_session(hit[1]))
+                self._start_task = asyncio.create_task(self.start_session(hit[1], caller))
             return
 
         self.last_speech = max(self.last_speech, self.kws.last_voice)  # a voice, not just loudness
+        if self.state != "ACTIVE":
+            self.kws.voice_events()  # a wake phrase said again while starting is not the next session's caller
 
         if self.state == "ACTIVE":
-            self.bridge.send(frame)
             # who is talking? (not while Mochi itself is: its own voice is not a person)
             mochi_talking = now - self.agent_voice_at < 0.6
+            # Mochi's voice comes back through the microphone, and the recogniser writes it down as
+            # something a person said (seen live: the greeting arrived as "Where is my chave?", and
+            # Mochi answered it). While Mochi speaks, what is sent on is silence.
+            deaf = mochi_talking and not self.cfg["audio"].get("hear_while_speaking", False)
+            self.bridge.send(bytes(len(frame)) if deaf else frame)
             self.kws.track_voices(True, hold=mochi_talking)
-            if mochi_talking and now - self.kws.last_voice < 0.2 and hasattr(self.backend, "set_voices"):
-                self.backend.set_voices(self.kws.known_voices, None)  # someone talks over Mochi: not known who
             for event in self.kws.voice_events():
                 self.on_voice_event(event)
             reason = None
@@ -202,12 +251,15 @@ class Supervisor:
             if reason:
                 await self.end_session(reason)
 
-    async def start_session(self, wake_phrase: str) -> None:
+    async def start_session(self, wake_phrase: str, caller: str | None = None) -> None:
+        """caller: whose voice said the wake phrase, when the Pi recognised it."""
         t0 = time.monotonic()
         self.backend_end = self.bye_asked = None
         try:
             if hasattr(self.backend, "set_voices"):
-                self.backend.set_voices(self.kws.known_voices, None)
+                self.backend.set_voices(self.kws.known_voices, caller)
+            if caller:
+                self.face.show_for(5, who=caller)
             join = await asyncio.wait_for(self._bring_up(wake_phrase), self.start_timeout_s)
             self.state = "ACTIVE"
             self.last_speech = time.monotonic()
@@ -222,6 +274,9 @@ class Supervisor:
                     log(f"cleanup after a failed start: {stop_error!r}")
             self.state = "IDLE"
             self.kws.reset()
+            self.kws.voice_events()
+            self.game.clear()  # the backend may have had a round on: not on a sleeping face
+            self.face.keep(round=None)
             self._chime(rising=False)
 
     async def _bring_up(self, wake_phrase: str):
@@ -241,7 +296,10 @@ class Supervisor:
         self.kws.reset()
         self.state = "IDLE"
         self.kws.track_voices(False)
+        self.kws.voice_events()  # whoever spoke last in this session is not the next one's caller
         self.bye_until = time.monotonic() + 3
+        self.game.clear()
+        self.face.keep(round=None)
         self.face.set(level=0, word="", note="", mood="neutral", who="")
         self._chime(rising=False)
         log("back to offline listening (no audio leaves the Pi)")

@@ -59,8 +59,9 @@ class Settings(BaseSettings):
     mochi_character_reasoning_effort: str = "none"  # empty for models without it (gpt-4.1-mini)
     mochi_character_timeout_seconds: float = 6.0
     mochi_follow_up_seconds: float = 20.0
-    mochi_greeting_en: str = "Hi! I'm listening."
-    mochi_greeting_pt: str = "Oi! Pode falar."
+    # Said when the device wakes Mochi: the person then picks practise, company or play.
+    mochi_greeting_en: str = "Hi! What would you like to do today?"
+    mochi_greeting_pt: str = "Oi! O que você quer fazer hoje?"
     # Ears (DECISIONS D-25). "openai" needs MODEL_API_KEY; without one, or when Agora refuses the
     # request, ARES with keywords is used instead.
     mochi_asr_vendor: str = "openai"

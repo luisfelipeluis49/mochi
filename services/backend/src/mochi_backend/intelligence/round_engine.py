@@ -30,14 +30,23 @@ _HOST_LINES = {
 
 
 def _names(context: SessionContext) -> tuple[str, str]:
-    """(guesser, describer): the learner guesses and the partner describes."""
+    """(guesser, describer): first the learner guesses and the partner describes; then they swap.
+
+    Example: after a round where Ben described, the next round is ("ben", "ana") (AGENTS 7.5).
+    """
     if len(context.participants) != PEOPLE_PER_SESSION:
         raise ValueError(
             f"need exactly 2 participants to start a round; got {len(context.participants)}"
         )
     first, second = (p.user_id for p in context.participants)
-    guesser = owner_for(context) or first
+    before = context.activity.describer_user_id if context.activity else None
+    guesser = before if before in (first, second) else (owner_for(context) or first)
     return guesser, (second if guesser == first else first)
+
+
+def _host_says(line: str, context: SessionContext) -> Speak:
+    """A line Mochi says as the game's host. Example: `_host_says("Ana got it!", context)`."""
+    return Speak(text=line, language=context.focus, reason=SpeakReason.ACTIVITY_HOST)
 
 
 def _active_activity(prompt: PrivatePrompt, guesser: str, line: str, learned: bool) -> Activity:
@@ -115,9 +124,11 @@ class RoundEngine:
         self._secrets[prompt.round_id] = prompt
         line = _HOST_LINES[context.focus][0].format(d=describer.title(), g=guesser.title())
         activity = _active_activity(prompt, guesser, line, learned is not None)
-        host = Speak(text=line, language=context.focus, reason=SpeakReason.ACTIVITY_HOST)
         return ActivityResult(
-            activity=activity, private_prompt=prompt, speak=host, learning_events=[]
+            activity=activity,
+            private_prompt=prompt,
+            speak=_host_says(line, context),
+            learning_events=[],
         )
 
     def _finish(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
@@ -132,10 +143,11 @@ class RoundEngine:
         if command.result is None:
             raise ValueError("result command needs result 'guessed' or 'skipped'; got None")
         prompt = self._secrets.pop(current.round_id)
+        ended = self._result_activity(current, prompt, command.result, context)
         return ActivityResult(
-            activity=self._result_activity(current, prompt, command.result, context),
+            activity=ended,
             private_prompt=None,
-            speak=None,
+            speak=_host_says(ended.public_instruction or "", context),  # "Ana got it!", aloud
             learning_events=self._reinforced(prompt, command.result, context, current),
         )
 

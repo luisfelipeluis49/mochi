@@ -97,7 +97,8 @@ for one device without touching the shared file, put only the keys that differ i
   Pi; the agent then decides on the device, so use it for demos only).
   When the backend requires a device key, put it in `.env` as `MOCHI_DEVICE_KEY` (or `device_key` in
   `[backend]`); it is sent as `Authorization: Bearer <key>` on `POST .../status` and `.../voices`
-  and never logged. A wake-up that has not produced a session after `[session] start_timeout_s`
+  and on `GET .../state` (without it a round of the game arrives without its secret word), and never
+  logged. A wake-up that has not produced a session after `[session] start_timeout_s`
   (25 s) is given up and Mochi goes back to listening.
 - `test_agent` (the default): a stand-in agent, for working without the backend.
 
@@ -138,21 +139,46 @@ Mochi can learn a voice by being asked, in either language, during a session:
 "Mochi, forget my voice."
 ```
 
-From then on the Pi recognises who is talking about 0.8 s into each turn (`mochi_device/speakers.py`:
-3D-Speaker CAM++ embeddings through sherpa-onnx, about 50 ms per check), shows the name on the
-screen and tells the agent, which then knows whether it is talking to Ana or Ben. An unknown voice
-stays unknown. Voiceprints never leave the Pi: they are in `data/voices.json` (delete it to forget
-everyone), and anything else that has a recording, such as a phone app later, can enrol through
-the same `Voices.learn(name, audio)`. Tolerances are under `[voices]` in the config.
+From then on the Pi recognises who is talking (`mochi_device/speakers.py`: 3D-Speaker CAM++
+embeddings through sherpa-onnx, about 50 ms per check), shows the name on the screen and tells the
+agent, which then knows whether it is talking to Ana or Ben. Voiceprints never leave the Pi: they
+are in `data/voices.json` (delete it to forget everyone), and anything else that has a recording,
+such as a phone app later, can enrol through the same `Voices.learn(name, audio)`. Tolerances are
+under `[voices]` in the config.
 
-Limits: a turn with less than half a second of speech is not attributed, nor is someone talking over
-Mochi; a voice learned in one language is recognised less surely in the other, so it helps to say
-something in both while enrolling.
+How it decides (changed 2026-11-21, after "the name was on the screen and Mochi still said it did
+not know me"):
+
+- Whoever says the wake phrase is recognised from that phrase (its last 1.2 s), so the session
+  starts knowing them.
+- During a turn a guess is made after 0.8, 1.5 and 2.5 s of speech, until one names someone, and
+  again at each pause. A name guessed early in a sentence is taken back at the pause only when the
+  whole sentence scores clearly under the bar (0.10 under `min_score`).
+- Who is talking **stays** until someone else is recognised, or until a stranger has spoken for at
+  least 1.5 s. A new sentence does not make the speaker unknown again: the agent is told over the
+  network, the Pi notices the end of a sentence 0.2 to 0.4 s late, and Agora starts the reply after
+  0.48 s of silence, so an answer that arrives at the pause arrives after the reply has begun.
+- Every decision is in the log with its score (`journalctl --user -u mochi`):
+  `voice: Ana (score 0.62)`, `voice: not sure yet (score 0.28)`, `voice: nobody I know (score 0.12)`.
+  A known person who often scores under `min_score` (0.35) should enrol again, speaking as they
+  usually do with Mochi.
+
+Limits: two people who answer each other with less than about a second between them are heard as
+one turn; a few words from a stranger keep the last name; a voice learned in one language is
+recognised less surely in the other, so it helps to say something in both while enrolling.
 
 | Tag | What the Pi does |
 |---|---|
 | `[enroll Ana pt]` | learns Ana's voice from the next ~7 s of speech, then confirms aloud in that language |
 | `[forget Ana]` | drops that voiceprint |
+
+## Mochi does not hear itself
+
+Mochi's voice comes back through the M1A's own microphone, faint but recognisable, and the speech
+recogniser then writes down sentences nobody said. While Mochi's voice is playing, and for 0.6 s
+after, the supervisor therefore sends silence instead of the microphone (`[audio]
+hear_while_speaking = false`). The cost is that talking over Mochi does not interrupt it; "tchau
+Mochi" still does, because the Pi hears that itself. See `docs/DECISIONS.md` D-34.
 
 ## Mochi's face
 
@@ -169,8 +195,28 @@ supervisor the face just sleeps and reconnects by itself.
 ../pi-setup/kiosk.sh off            # black page for the night; ../pi-setup/kiosk.sh brings the face back
 ```
 
-A session ends on a goodbye phrase, after `inactivity_timeout_s` without a voice, or at
-`max_session_s`. Stop the service before running `wake-test.sh` or `mochi.sh` by hand: only one
+### Describe & Guess on the screen
+
+With the backend running the session, "let's play" starts a round (the backend decides that; the
+stand-in agent can only chat). The round reaches the Pi as a `round` command in the device state
+and is drawn in front of the face (`mochi_device/game.py`, AGENTS.md 7.5):
+
+| The screen shows | A touch |
+|---|---|
+| "Ben" / "turn me towards you and tap" | tap: the secret word is shown |
+| the secret word / "tap when Ana gets it" | tap: guessed; held 0.6 s or more: skipped |
+| the word / "Ana got it!" for 8 s, then the face | tap: another round (the two swap) |
+
+The page only reports touches (`GET /tap?kind=tap|long` on the face server); the supervisor decides
+what one means and tells the backend (`POST /api/sessions/demo/activity/result`, `.../start`). A
+second touch within 1.5 s of the reveal is ignored, so one bouncing tap cannot end the round. The
+word is never logged. A round that is no longer in the device state (a reset, or a result older
+than 30 s) leaves the screen; a round that arrived without its word (no `MOCHI_DEVICE_KEY`) says so
+and can be left with a long press. Try the cards without a backend:
+`face.html#mode=awake&round={"tone":"secret","big":"umbrella","small":"tap when Ana gets it"}`.
+
+A session ends on a goodbye phrase, after `inactivity_timeout_s` without a voice (a touch during a
+round counts as someone being there), or at `max_session_s`. Stop the service before running `wake-test.sh` or `mochi.sh` by hand: only one
 program can hold the microphone.
 
 If Mochi misses someone, run `wake-test.sh`, have them say the phrase, and look at the `heard` line:

@@ -421,6 +421,55 @@ From the same conversation:
 Not changed, seen in the same log: "I need to adiar a reunião." five seconds after another hint got
 nothing, because that hint was still on the screen (`while_shown`).
 
+## D-31: the revised product vision in code: Mochi asks what to do, and Play works by voice on Mochi's own screen (2026-11-21)
+
+`vision/Mochi_Product_Vision.md` (revised 2026-11-20): after its name Mochi asks "What would you like to
+do today?" and the person picks, in ordinary words, Practice with Mochi, Practice with a Partner, or Play
+(Describe & Guess). Practice and Partner already existed as `attentive` and `[listen]` (D-26, D-27). Built
+on the `hardware` branch at Suhuai's request, in all three owners' directories; **for the team to accept
+or change.**
+- **Greeting** (`settings.py`): "Hi! What would you like to do today?" / "Oi! O que você quer fazer hoje?",
+  in the language of the wake phrase as before. `character.md` tells Mochi it asked that, so a one-word
+  answer ("Play.") is for it, and what the three things are. Secret Missions and the Fluency Helper are
+  named only as needing the watch and the glasses.
+- **The language Mochi was called in is the tie-breaker** for an answer that could be either language
+  (`session_started(woken, language)`, an optional second argument on the intelligence port). Seen with the
+  real model: "Play." after "hi Mochi" was answered in Portuguese, the last session's language.
+- **`[play]`**, a silent command like `[listen]` (it rides in `Speak.text`; not a contract value): the turn
+  that carries it starts a round inside its own commit (`TurnPipeline._with_round` ->
+  `ActivityService.start_in_turn`), and the host's line follows Mochi's in the same reply ("Yay, let's
+  play! Ben describes. Ana guesses!"). Starting it afterwards through `/speak` would cut Mochi's own
+  sentence off (`priority: INTERRUPT`). Once playing, Mochi is out of the talk as after `[listen]`.
+- **The round on the device**: a command of kind `round` in `GET /api/devices/home_pi_01/state`, built on
+  every poll from the round itself (`DeviceService._round`), not queued: a round lasts longer than the 30 s
+  a queued command lives, and a restarted device finds it again. Its `command_id` is
+  `<round_id>:<state>`, so the device acts once per state. The value uses the Activity field names plus
+  `secret_word` and `language`. **`secret_word` is only there when the reader sent the device key**: the
+  route itself stays open (6.4), and `scripts/test-client` reads it from the public URL.
+- **The result is said aloud** ("Ana got it!"): `RoundEngine._finish` returns a `Speak`, announced by
+  `ActivityService.finish`. Mochi does not judge the guess from what it hears: a turn has no speaker, so
+  the describer saying the word would count as a guess. The describer's tap decides (AGENTS 7.5).
+- **Roles swap** from round to round (`round_engine._names` reads the round before). Names only: the
+  language of a round still follows the session focus, which is English (`session_store.py`). AGENTS 7.5
+  ("the describer's target language") and M4 ("a word the guesser needed") disagree here. **For the team.**
+- **Fixed on the way:** a finished round still counted as a round in `DecisionFlow._follow_up` and
+  `_may_be_heard`, so after one round Mochi only answered "Oi Mochi ..." until Stop.
+- **Not built:** the Home view in `apps/web` (the Pi draws the round itself, `hardware/pi-setup/face.html`;
+  AGENTS 9.1 puts the Home view in `apps/web`, which is still empty); the names on the screen are the demo
+  roster (`ana`, `ben`), not the voices the Pi knows; a spoken "skip".
+- **From an independent review of this change, fixed before it was first tried:** the reply that starts a
+  round was screened for the secret word before the round existed, so "[play] ... umbrella ..." could be
+  said while "umbrella" was the word (now screened again once the word is drawn: only the host's line is
+  said); a round ended by Reset stayed on the device's screen (its absence from the state now clears it);
+  a result card was served for the rest of the session (now for 30 s); `.env.example` still had the old
+  greetings. **Left as they are, for the team:** `/ws?device=home_pi_01` has no key and receives the
+  private prompt, so the device key guards the state route only; a round can only be left by a touch or
+  Stop, and while it runs hints are off; the host's lines are English whatever language Mochi was called in.
+Checked with the real model through a scratch backend (fake Agora): "Let's play a game.", "Vamos jogar!",
+"Play.", "I want to practise with you.", "Just listen while we talk, please.", "A gente vai conversar, fica
+só ouvindo.", "What can you do?", "Can we play Secret Missions?" each got the right mode; a whole game
+(reveal, guessed, next round swapped, skipped by a long press) ran through the Pi's own code and the face
+page in a headless browser. **Not yet done with a person, a finger on the panel and Agora's voice.**
 
 ## D-32: durable storage in Postgres (2026-11-21)
 
@@ -452,3 +501,52 @@ scope; Kauê's `memory_store.py` and Matheus's contracts are touched, additively
   `storage_unavailable`.
 - **Contracts (additive):** `User`, `VoiceProfile`, `VoiceprintUpload` with examples and schema.
 - Test helper `make_harness` takes one more switch (`storage`), hence a `noqa: PLR0913` on it.
+
+## D-33: the Pi tells who is talking, and which language it was called in, in time (2026-11-21)
+
+Two things seen on the Pi. "Oi Mochi" was answered in English; and Mochi showed a learned name on its
+screen while saying it did not recognise the voice.
+- **Greeting language** (`mochi_device/phrases.py`): the phone recogniser writes a Brazilian "oi" as "uei"
+  or "uai", the sounds of "hey" and "hi" behind a rounded vowel. On the test clips 48% of the Portuguese
+  greetings that woke Mochi were reported as an English phrase. "oi" and "olá" now have those
+  pronunciations, and an h-less "hey"/"hi" right after "u"/"o" costs what a glued consonant costs: 10%
+  wrong (most of the rest are English voices reading "Oy"), English unchanged at 1%, the same detection
+  and false-wake numbers as before.
+- **Who is talking** (`mochi_device/speakers.py`, `main.py`, `backends.py`): every new sentence began as
+  "unknown", and so did every moment Mochi's own voice reached the microphone. The name came back 0.8 s
+  into a sentence at the earliest and otherwise at the pause, which the Pi notices 0.2 to 0.4 s late
+  (measured), while Agora starts the reply after 0.48 s: the agent answered with the old "unknown". Now the
+  speaker stays until someone else is recognised or a stranger has spoken for 1.5 s; whoever says the wake
+  phrase is recognised from it; guesses repeat at 0.8, 1.5 and 2.5 s; updates to the stand-in agent go out
+  one at a time; the backend is told on the next poll, not within a second; a report that failed is sent
+  again; forgetting a voice is reported at once; and the scores are logged. The price, accepted: a few
+  words from someone unknown, or an answer that follows within a second, keep the last name.
+  The model itself is fine: with one known voice and room noise, 1.5 s of speech is never missed at 0.35
+  and a stranger passes 3.5% of the time (30 speakers of the test corpus).
+
+## D-34: sentences nobody said: Mochi's own voice and a recogniser primed with the lexicon (2026-11-21)
+
+Seen in the first conversation of two people with the three modes (Mateus and Tasnim): Mochi taught
+"postpone" and "key" several times although nobody had said "adiar" or "chave". The backend log has them
+as the first sentence of a turn, right after Mochi spoke: "Where is my chave?" arrived 4.6 s after the
+session started, while the greeting was still playing; "I need to adiar the meeting. Posso praticar com
+você?" had only its second sentence said by a person.
+- **Two causes together.** The recogniser (`gpt-4o-transcribe`) is given the lexicon as "words that may
+  come up" (`composition.vocabulary`), and it writes unclear audio as those words. And unclear audio is
+  what it gets while Mochi speaks: a clip played on the M1A comes back in its own microphone (loudness
+  envelope match 0.59 at the expected delay, 0.29 at the 95th percentile elsewhere), at about the level of
+  the room.
+- **Built (Pi, `hardware/pi-bridge`):** while Mochi's voice is playing, and for 0.6 s after, silence is sent
+  on instead of the microphone (`[audio] hear_while_speaking = false`, the default). The price: Mochi
+  cannot be interrupted by talking over it; "tchau Mochi" is still heard, on the Pi itself.
+- **Not solved, for Luís and Kauê:** background speech does the same. In a noisy room, with nobody talking
+  to Mochi, the recogniser produced "My chave atrasar." and the lexicon rule answered with "key". Options:
+  give the recogniser only "Mochi" (and measure what that costs "adiar" and "guarda-chuva", AGENTS 12.2,
+  with the code-switch clips of the test kit), or have a lexicon word in an otherwise odd sentence
+  confirmed by the hint model before it is shown.
+- **Also from that conversation:** "eu perguntei explicitamente como se pronuncia", said to the partner,
+  made Mochi say the last hint aloud; telling someone that one asked no longer counts as asking
+  (`intelligence/aloud.py`). In listen mode "Como você diz coffee?" shows the word and says nothing, as
+  designed (D-30); the two people expected to hear it. **For the team:** say the word once when someone
+  asks outright, and keep unasked hints silent?
+

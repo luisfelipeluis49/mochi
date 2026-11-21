@@ -9,8 +9,9 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
   (POST /api/sessions/demo/start|stop), reads the join info from
   GET /api/devices/{device_id}/state, and keeps reading that state while the session runs: the
   backend can end the session, silence the speaker, and move Mochi's body (the `commands` in the
-  state: face, volume, temperature, voices). The Pi reports its volume, temperature and the voices
-  it knows (POST .../status, .../voices). No agent logic here: that stays in services/backend.
+  state: face, volume, temperature, voices, a Describe & Guess round). The Pi reports its volume,
+  temperature and the voices it knows (POST .../status, .../voices), and how a round ended (a tap
+  on the screen). No agent logic here: that stays in services/backend.
 """
 from __future__ import annotations
 
@@ -93,6 +94,11 @@ now. Use the name now and then, the way a friend would, not in every sentence.
 Examples: "[mood cool][volume 80] Louder it is!"
 "[mood sleepy][temp] I'm at fifty-two degrees, nice and warm." (asked in English)
 "[mood sleepy][temp] Estou com cinquenta e dois graus, quentinho." (asked in Portuguese)
+
+Right now you can only chat. Usually people can also ask you to keep quiet company while two of them
+talk to each other, or to host a guessing game (Describe & Guess), but both need your home base,
+which you cannot reach at the moment. If someone asks for one of them, say in a few words that you
+cannot do it just now, and offer to practise with them instead.
 """
 STATUS = """Right now your speaker volume is {volume} of 100 and your temperature is {temp} degrees Celsius.
 {voices}
@@ -134,7 +140,8 @@ class Body:
         """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
         "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session) |
         "hint" (value: {"word", "language", "meaning", "example"}: a word someone needed) |
-        "used" (value: {"word", "language"}: someone went on to say a word they were given)."""
+        "used" (value: {"word", "language"}: someone went on to say a word they were given) |
+        "round" (value: the round card, see services/backend gateway/device_service.py)."""
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
 
@@ -149,12 +156,12 @@ class Body:
             self.on_event("temp", await asyncio.to_thread(self.device.temperature))
         elif kind == "bye":
             self.on_event("bye", None)
-        elif kind in ("hint", "used"):  # from the backend, as a JSON card: a word someone needed,
-            try:                        # or one they went on to say after being given it
+        elif kind in ("hint", "used", "round"):  # from the backend, as a JSON card: a word someone
+            try:                                 # needed, one they then said, or a round of the game
                 card = json.loads(value)
             except ValueError:
                 return
-            if isinstance(card, dict) and card.get("word"):
+            if isinstance(card, dict) and card.get("state" if kind == "round" else "word"):
                 self.on_event(kind, card)
         elif kind == "enroll":
             words = value.split()
@@ -180,10 +187,14 @@ class TestAgentBackend:
         if not self.app_id or not self.cert:
             raise SystemExit("Set AGORA_APP_ID and AGORA_APP_CERTIFICATE in hardware/pi-bridge/.env")
         self._session = None
+        self._started = False               # the agent is up and can be given new instructions
         self._watcher: asyncio.Task | None = None
         self.known_voices: list[str] = []   # set_voices(): whose voices the Pi knows...
         self.speaker: str | None = None     # ...and who it hears right now
         self._told: tuple[int | None, int | None] = (None, None)
+        self._told_text = ""                # the instructions the agent has
+        self._telling = asyncio.Lock()      # one update at a time: two sent together can arrive in either order
+        self._untold = False                # the last update failed and is still owed
 
     def _status(self) -> tuple[int | None, int | None]:
         return read_status(self.device)
@@ -195,7 +206,8 @@ class TestAgentBackend:
         else:
             voices = f"Voices you know: {', '.join(self.known_voices)}. " + (
                 f"The person talking to you right now is {self.speaker}." if self.speaker
-                else "You do not recognise the voice talking right now.")
+                else "You have not recognised the voice talking right now: it takes you a sentence or two to "
+                     "be sure. If they ask whether you know who they are, ask them to say a little more.")
         return (self.cfg["instructions"].rstrip() + ABILITIES.format(min_volume=self.device.min_volume)
                 + STATUS.format(volume="unknown" if volume is None else volume,
                                 temp="unknown" if temp is None else temp, voices=voices))
@@ -206,17 +218,25 @@ class TestAgentBackend:
         if (known, speaker) == (self.known_voices, self.speaker):
             return
         self.known_voices, self.speaker = list(known), speaker
-        if self._session:
+        if self._started:  # before that, start() tells it once the agent is up
             asyncio.create_task(self._tell(self._told))
 
     async def _tell(self, status: tuple[int | None, int | None]) -> None:
-        """Give the agent its current instructions (they end with what is true right now)."""
-        try:
-            await self._session.update({"llm": {"system_messages": [
-                {"role": "system", "content": self._instructions(status)}]}})
-            self._told = status
-        except Exception as e:
-            print(f"[mochi] could not update the agent: {e!r}"[:300], flush=True)
+        """Give the agent its current instructions (they end with what is true right now).
+
+        Updates go out one after the other, and each is written when its turn comes, so the last
+        one to arrive always says what is true now.
+        """
+        async with self._telling:
+            session, text = self._session, self._instructions(status)
+            if not session or text == self._told_text:
+                return
+            try:
+                await session.update({"llm": {"system_messages": [{"role": "system", "content": text}]}})
+                self._told, self._told_text, self._untold = status, text, False
+            except Exception as e:
+                self._untold = True  # the watcher sends it again: who is talking may not change for a while
+                print(f"[mochi] could not update the agent: {e!r}"[:300], flush=True)
 
     async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
         """Say out loud that a voice was learned (or that it did not work)."""
@@ -272,10 +292,11 @@ class TestAgentBackend:
         }}
         if c.get("stt_vendor", "deepgram") == "ares":
             turn_detection["language"] = [x.strip() for x in c.get("stt_language", "en-US,pt-BR").split(",")]
+        self._told_text = self._instructions(status)
         agent = (
             Agent(
                 client=client,
-                instructions=self._instructions(status),
+                instructions=self._told_text,
                 greeting=greeting,
                 failure_message="Sorry, one moment.",
                 max_history=20,
@@ -295,6 +316,8 @@ class TestAgentBackend:
         )
         agent_id = await self._session.start()
         print(f"[mochi] test agent {agent_id} started in '{channel}'", flush=True)
+        self._started = True
+        await self._tell(status)  # someone may have been recognised while the agent was starting
         self._watcher = asyncio.create_task(self._watch())
         return JoinInfo(self.app_id, channel, bridge_uid, token)
 
@@ -322,7 +345,7 @@ class TestAgentBackend:
                             done.add(tag.group(0))
                             await self._act(tag.group(1).lower(), tag.group(2))
                 status = await asyncio.to_thread(self._status)
-                if _moved(status, self._told):
+                if _moved(status, self._told) or self._untold:
                     await self._tell(status)
                 complained = False
             except asyncio.CancelledError:
@@ -340,6 +363,7 @@ class TestAgentBackend:
             except BaseException:
                 pass
             self._watcher = None
+        self._started = False
         if self._session:
             try:
                 await self._session.stop()
@@ -381,6 +405,8 @@ class MochiBackend:
         self._stopped_by_backend = False
         self._done: set[str] = set()  # commands already carried out in this session
         self._voices: tuple[list[str], str | None] = ([], None)
+        self._voices_news = False  # who is talking changed: the backend should know before the reply
+        self._round_there = False  # the last state read had a round in it
         self._told = None  # the last status the backend was given
         self._status_failing = False
 
@@ -399,11 +425,12 @@ class MochiBackend:
             return json.loads(reply) if reply else {}
 
     def _state(self, timeout: float = 10) -> dict:
-        return self._req("GET", f"/api/devices/{self.device_id}/state", timeout)
+        # with the device key: only then does a round come with its secret word
+        return self._req("GET", f"/api/devices/{self.device_id}/state", timeout, auth=True)
 
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
         self._stopped_by_backend = False
-        self._done, self._told = set(), None
+        self._done, self._told, self._round_there = set(), None, False
         await self._report()  # so Mochi's first words already know how loud and warm it is
         body = {"woken_by": wake_phrase} if wake_phrase else {}
         await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/start", 10, body)
@@ -419,7 +446,8 @@ class MochiBackend:
     # --- what the Pi tells the backend ------------------------------------------------------
     def set_voices(self, known: list[str], speaker: str | None) -> None:
         """Called whenever the Pi recognises a (different) speaker or learns / forgets a voice."""
-        self._voices = (list(known), speaker)
+        if (list(known), speaker) != self._voices:
+            self._voices, self._voices_news = (list(known), speaker), True  # reported on the next poll
 
     async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
         """Learning a voice ended; the backend has Mochi say so."""
@@ -428,6 +456,23 @@ class MochiBackend:
             await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/voices", 5, body, True)
         except Exception as e:
             print(f"[mochi] backend voices: {e!r}"[:300], flush=True)
+
+    async def round_result(self, result: str) -> bool:
+        """The describer touched the screen: "guessed" (a tap) or "skipped" (a long press).
+        False when the backend did not take it, so the screen can be touched again."""
+        return await self._round("result", {"result": result})
+
+    async def next_round(self) -> bool:
+        """A tap on the result: another round (the backend swaps who describes)."""
+        return await self._round("start", {})
+
+    async def _round(self, what: str, body: dict) -> bool:
+        try:
+            await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/activity/{what}", 5, body)
+            return True
+        except Exception as e:  # 409: the round is over already (two taps), or one is still running
+            print(f"[mochi] backend round {what}: {e!r}"[:300], flush=True)
+            return False
 
     async def _report(self) -> None:
         """Tell the backend the volume, temperature and voices, if any of them changed."""
@@ -446,13 +491,20 @@ class MochiBackend:
         try:
             await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, status, True)
             self._status_failing = False
+            self._told = status
         except Exception as e:  # not worth a session: Mochi just knows a little less about itself
             if not self._status_failing:
                 print(f"[mochi] backend status: {e!r}"[:300], flush=True)
             self._status_failing = True
-        self._told = status  # either way: try again only when something changes
+            # Who is talking no longer changes with every sentence, so nothing later would repair
+            # a lost report: that one is sent again at the next status round. The rest can wait.
+            self._told = status if told and (known, speaker) == (told["voices"], told["speaker"]) else told
 
     async def _obey(self, commands: list[dict]) -> None:
+        round_there = any(command.get("kind") == "round" for command in commands)
+        if self._round_there and not round_there:  # reset, or an old result: off the screen
+            self.on_event("round", {"state": "IDLE"})
+        self._round_there = round_there
         for command in commands:
             if command.get("command_id") in self._done:
                 continue
@@ -515,8 +567,8 @@ class MochiBackend:
                     ok("commands")
                 except Exception as e:
                     fail("commands", e)
-                if since_status >= self.STATUS_EVERY_S:
-                    since_status = 0.0
+                if since_status >= self.STATUS_EVERY_S or self._voices_news:
+                    since_status, self._voices_news = 0.0, False
                     try:
                         await self._report()
                         ok("report")
@@ -584,6 +636,12 @@ class WithFallback:
     async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
         if self.active:
             await self.active.voice_enrolled(name, lang, learned)
+
+    async def round_result(self, result: str) -> bool:
+        return self.active is self.backend and await self.backend.round_result(result)  # only the backend plays
+
+    async def next_round(self) -> bool:
+        return self.active is self.backend and await self.backend.next_round()
 
 
 def make_backend(cfg: dict, on_event=None):

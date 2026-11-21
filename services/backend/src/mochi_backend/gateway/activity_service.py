@@ -26,6 +26,7 @@ class ActivityService:
         self._intelligence = core.intelligence
         self._silence = core.silence
         self._logger = core.logger
+        self._clock = core.clock
         self._pipeline = pipeline
         self._agora = agora
         self._commit = core.commit
@@ -33,20 +34,38 @@ class ActivityService:
     async def start(self) -> Activity:
         """Start a round: public state to everyone, the secret to the Home view only."""
         async with self._commit:
-            if not self._store.capturing:
-                raise ConflictError("session is not capturing; start it before starting a round")
-            result = self._run(ActivityCommand(type="start", result=None))
-            self._store.mode = SessionMode.ACTIVITY
-            if result.private_prompt is not None:
-                self._hub.protect_secret(result.private_prompt.secret_word)
-                self._store.round_secrets = self._secrets_of(result.private_prompt)
-                self._store.private_prompt = result.private_prompt
-            await self._publish_activity(result.activity)
-            if result.private_prompt is not None:
-                await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
-            await self._publish_session()
+            result = await self._begin()
         await self._announce(result.speak)  # outside the lock: a slow /speak must not freeze Stop
         return result.activity
+
+    async def start_in_turn(self) -> Speak | None:
+        """Start a round from inside a turn: someone asked Mochi to play, and it wrote `[play]`.
+
+        The turn already holds the commit lock. Returns the host's line, which the turn says
+        right after Mochi's own; None when no round can start now (one is running).
+        """
+        try:
+            result = await self._begin()
+        except ConflictError as error:
+            self._logger.log("play_not_started", {"why": str(error)})
+            return None
+        return result.speak
+
+    async def _begin(self) -> ActivityResult:
+        if not self._store.capturing:
+            raise ConflictError("session is not capturing; start it before starting a round")
+        result = self._run(ActivityCommand(type="start", result=None))
+        self._store.mode = SessionMode.ACTIVITY
+        self._store.round_ended_at = None
+        if result.private_prompt is not None:
+            self._hub.protect_secret(result.private_prompt.secret_word)
+            self._store.round_secrets = self._secrets_of(result.private_prompt)
+            self._store.private_prompt = result.private_prompt  # for a Home that reconnects
+        await self._publish_activity(result.activity)
+        if result.private_prompt is not None:
+            await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
+        await self._publish_session()
+        return result
 
     async def finish(self, outcome: RoundResult) -> Activity:
         """Record guessed/skipped: reveal the word, update cards, go back to `together`."""
@@ -55,9 +74,11 @@ class ActivityService:
             self._store.mode = SessionMode.TOGETHER
             self._store.round_secrets = ()
             self._store.private_prompt = None
+            self._store.round_ended_at = self._clock.now()
             await self._publish_activity(result.activity)
             await self._pipeline.save_learning_events(result.learning_events)
             await self._publish_session()
+        await self._announce(result.speak)  # Mochi confirms the result out loud
         return result.activity
 
     def _secrets_of(self, prompt: PrivatePrompt) -> tuple[str, ...]:

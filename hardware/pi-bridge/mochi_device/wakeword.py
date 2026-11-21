@@ -132,6 +132,12 @@ class Listener:
             in_head = not self.trimmed and self.total <= _n(HEAD)
             if self.since_read >= _n(READ_EVERY if in_head else TAIL_EVERY):
                 hit = self._read(final=False)
+        if hit and hit.group == "wake" and self.tracker:
+            # whose voice called: known before the session starts, so Mochi's first answer has it
+            try:
+                self.voice_events += self.tracker.calling(np.concatenate(self.utt))
+            except Exception as e:  # an extra: it must never cost the wake phrase itself
+                print(f"[mochi] could not tell who called: {e!r}", flush=True)
         if hit or self.silence >= _n(END):
             # after a hit, whatever follows ("...como se diz fila?") is not read again as part of it
             self.utt = None
@@ -226,9 +232,9 @@ class KeywordSpotter:
                     break
                 frames.append(nxt)
             audio = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32768.0
+            hits = []
             try:
-                for hit in listener.feed(audio):
-                    self._out.put(hit)
+                hits = listener.feed(audio)
             except Exception as e:  # never let one bad read end listening for good
                 print(f"[mochi] wake recogniser error, carrying on: {e!r}", flush=True)
                 listener.reset()
@@ -240,6 +246,8 @@ class KeywordSpotter:
                     self.known_voices = sorted(voices.people)
                 self._voice_out.put(event)
             listener.voice_events = []
+            for hit in hits:  # after the voice events: who said a wake phrase is there when the hit is read
+                self._out.put(hit)
 
     def feed(self, pcm16: bytes) -> tuple[str, str] | None:
         """Never blocks. A hit comes back on a later call than the frame that completed it."""
@@ -266,7 +274,8 @@ class KeywordSpotter:
         self._in.put(("forget", name))
 
     def voice_events(self) -> list[tuple]:
-        """("speaker", name | None, score), ("enrolled", name, seconds), ("enroll_failed", name, seconds)"""
+        """("speaker", name | None, score), ("unsure", None, score), ("enrolled", name, seconds),
+        ("enroll_failed", name, seconds): see speakers.py."""
         events = []
         while True:
             try:
