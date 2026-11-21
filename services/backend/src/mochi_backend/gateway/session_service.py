@@ -108,6 +108,7 @@ class SessionService:
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
             self._begin(agent_id)
+            self._logger.log("agent_started", {"agent_id": agent_id})
             self._intelligence.session_started(bool(woken_by), language_of_call(woken_by))
             return await self._publish_state()
 

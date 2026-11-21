@@ -371,3 +371,46 @@ async def test_openai_character_model_returns_none_on_any_failure(
 ) -> None:
     model = OpenAiCharacterModel(FakeHttpClient([reply]), _config())
     assert await model.reply(REQUEST) is None
+
+
+async def test_mochi_remembers_the_words_it_gave_so_its_goodbye_can_name_one() -> None:
+    """The history holds four exchanges; a longer practice talk would forget the word (D-38)."""
+    mochi = FakeCharacterModel(
+        "[mood curious][show feijão] Feijão. Você faz arroz e feijão?",
+        "[mood happy] Que delícia!",
+        "[mood happy][bye] Tchau! Hoje você aprendeu feijão.",
+    )
+    brain = _brain(mochi)
+    brain.session_started(woken=True)
+    await brain.decide(make_turn("Eu faço arroz e... how do you say beans?"), make_context())
+    await brain.decide(make_turn("Sim, todo domingo."), make_context())
+    await brain.decide(make_turn("Tchau, até amanhã!"), make_context())
+    assert [r.given for r in mochi.requests] == [[], ["feijão"], ["feijão"]]
+    brain.session_started(woken=True)  # a new session starts with nothing given
+    await brain.decide(make_turn("Good morning!"), make_context())
+    assert mochi.requests[-1].given == []
+
+
+def test_the_words_given_stand_next_to_the_sentence_and_are_meant_for_a_goodbye() -> None:
+    """The model decides whether the sentence is a goodbye; higher up the note was ignored."""
+    request = CharacterRequest(
+        text="Bye!", history=[], status=DeviceStatus(), given=["postpone", "umbrella"]
+    )
+    messages = messages_for(request, "PROMPT")
+    note = json.dumps(messages[-2])
+    assert "postpone, umbrella" in note and "If the next sentence is a goodbye" in note
+    assert messages[-1] == {"role": "user", "content": "Bye!"}
+    teaching = request.model_copy(update={"word": "queue"})  # a word is being taught right now
+    assert "postpone, umbrella" not in json.dumps(messages_for(teaching, "PROMPT"))
+
+
+async def test_during_a_round_mochi_is_not_reminded_of_a_word_it_gave() -> None:
+    """The round's secret is the newest word Mochi taught: a goodbye must not be led to it."""
+    mochi = FakeCharacterModel("[mood happy][show umbrella] Umbrella!", "[mood happy] Bye!")
+    brain = _brain(mochi)
+    brain.session_started(woken=True)
+    await brain.decide(make_turn("How do you say the thing for the rain?"), make_context())
+    await brain.decide(make_turn("Oi Mochi, tchau!"), make_context(activity=active_round()))
+    assert mochi.requests[-1].given == []
+    await brain.decide(make_turn("Bye bye!"), make_context())  # the round is over
+    assert [w.lower() for w in mochi.requests[-1].given] == ["umbrella"]

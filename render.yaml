@@ -46,26 +46,36 @@ services:
       # Agora-managed speech vendors: no vendor keys needed (tested against real Agora, see VERIFIED.md)
       # Ears (.env.example, DECISIONS D-25): OpenAI transcription when MODEL_API_KEY is set (the key then goes
       # to Agora with each session start), otherwise ARES with the lexicon as keywords.
+      # Ears and voice: the configuration tried by voice on Mochi Home on 2026-11-21 (config/presets/likely.env,
+      # DECISIONS D-40). Before: openai (gpt-4o-transcribe), lexicon not named, MiniMax voice, no latency flags.
       - key: MOCHI_ASR_VENDOR
-        value: openai
+        value: ares
       - key: MOCHI_ASR_LANGUAGE
         value: en-US
       - key: MOCHI_ARES_LANGUAGE
-        value: en-US,pt-PT
+        value: en-US,pt-BR
       - key: MOCHI_ASR_LEXICON_WORDS
-        value: "false" # do not name the lexicon to the recogniser: it wrote background speech as those words (D-36)
+        value: "true" # ARES hears adiar and guarda-chuva inside English only when they are named (D-40); the D-36 risk is open
+      - key: MOCHI_INTERRUPTION
+        value: append # Mochi finishes its answer before the next sentence gets its turn (D-38)
       - key: MOCHI_ASR_KEYWORDS
-        value: '["Mochi"]'
+        value: '["Mochi","Oi Mochi","guarda chuva","saca rolhas"]'
       - key: MOCHI_ASR_CREDENTIAL_MODE
         value: ""
       - key: MOCHI_ASR_PARAMS
         value: "{}"
       - key: MOCHI_TTS_VENDOR
-        value: minimax
+        value: cartesia # language fixed to "en" for the session; billing under Agora's managed key is unverified
       - key: MOCHI_TTS_CREDENTIAL_MODE
         value: managed
       - key: MOCHI_TTS_PARAMS
-        value: '{"url":"wss://api.minimax.io/ws/v1/t2a_v2","model":"speech-2.8-turbo","voice_setting":{"voice_id":"English_captivating_female1","speed":1.0},"audio_setting":{"sample_rate":44100},"language_boost":"auto"}'
+        value: '{"model_id":"sonic-3.6","voice":{"mode":"id","id":"9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"},"output_format":{"container":"raw","sample_rate":44100},"language":"en"}'
+      - key: MOCHI_CANCEL_STALE_TURNS
+        value: "true" # the work of a turn Agora abandoned or a newer one replaced is dropped (D-37)
+      - key: MOCHI_CHARACTER_HEDGE_SECONDS
+        value: "1.0" # Mochi's line is asked a second time when the first answer is this late (D-37)
+      - key: MOCHI_END_OF_SPEECH_SILENCE_MS
+        value: "600" # pause that ends a turn; below 600 risks splitting 'trails off... um' turns
       - key: MOCHI_AGENT_IDLE_TIMEOUT_SECONDS
         value: "60" # agent leaves 60 s after the Pi does (billing guard)
       - key: MOCHI_CORS_ORIGINS

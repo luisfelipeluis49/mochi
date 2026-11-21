@@ -76,7 +76,7 @@ when run from source.
 | `MOCHI_CHARACTER_ENABLED`, `MOCHI_CHARACTER_MODEL_NAME`, `MOCHI_CHARACTER_TIMEOUT_SECONDS`, `MOCHI_FOLLOW_UP_SECONDS`, `MOCHI_GREETING_EN`, `MOCHI_GREETING_PT` | true, gpt-5.4-mini, 6, 20, greetings | Mochi's own voice when it is spoken to; needs `MODEL_API_KEY` (DECISIONS D-23) |
 | `MOCHI_ASR_VENDOR`, `MOCHI_ASR_LANGUAGE`, `MOCHI_ASR_OPENAI_MODEL`, `MOCHI_ASR_PROMPT`, `MOCHI_ARES_LANGUAGE`, `MOCHI_ASR_KEYWORDS`, `MOCHI_ASR_CREDENTIAL_MODE`, `MOCHI_ASR_PARAMS` | openai, `en-US`, gpt-4o-transcribe, a prompt about mixing, `en-US,pt-PT`, `["Mochi"]`, empty, `{}` | speech-to-text: OpenAI transcription with `MODEL_API_KEY` (the key goes to Agora), else or on refusal ARES with the lexicon as keywords (DECISIONS D-25) |
 | `MOCHI_TTS_VENDOR`, `MOCHI_TTS_CREDENTIAL_MODE`, `MOCHI_TTS_PARAMS` | minimax, empty, `{}` | text-to-speech (`.env.example` uses Agora-managed minimax) |
-| `MOCHI_END_OF_SPEECH_SILENCE_MS` | 900 | pause that ends a turn (VAD) |
+| `MOCHI_END_OF_SPEECH_SILENCE_MS` | 600 | pause that ends a turn (VAD) |
 | `MOCHI_AGENT_IDLE_TIMEOUT_SECONDS` | 60 | Agora `idle_timeout`: the agent exits this long after the Pi leaves (0 = never; hard cap 72 h) |
 | `MOCHI_HINT_TTL_SECONDS`, `MOCHI_DECIDE_TIMEOUT_SECONDS` | 8, 2 | hint lifetime; `decide()` time limit |
 | `MOCHI_SPEAK_BASE_SECONDS`, `MOCHI_SPEAK_SECONDS_PER_WORD` | 0.6, 0.45 | speaking window for `mute_speaker` |

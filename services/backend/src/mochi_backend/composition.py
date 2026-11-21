@@ -15,7 +15,7 @@ from mochi_backend.gateway.demo_reset import DemoReset
 from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.event_hub import EventHub
-from mochi_backend.gateway.intelligence_port import IntelligencePort
+from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.roster import DEMO_USERS
 from mochi_backend.gateway.session_service import SessionConfig, SessionService
@@ -65,6 +65,10 @@ class Adapters:
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
     if not settings.model_configured:
         return NullHintModel()
+    return _openai_hints(settings, logger)
+
+
+def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
     return (
         OpenAiHintModel(
             HttpxClient(),
@@ -120,8 +124,21 @@ def _brain_for(
     )
     brain.keep_words_in(MemoryStore(start.events, StorageEventSink(start.storage)))
     if settings.character_configured:
-        brain.speak_as(OpenAiCharacterModel(HttpxClient(), _character_model(settings), logger))
+        brain.speak_as(_openai_character(settings, logger))
     return brain
+
+
+def _openai_character(settings: Settings, logger: EventLogger) -> OpenAiCharacterModel:
+    http = HttpxClient()
+    model = OpenAiCharacterModel(http, _character_model(settings), logger)
+    return model.streaming(http) if settings.streams_reply else model
+
+
+def _streamer(settings: Settings, intelligence: IntelligencePort) -> StreamingDecider | None:
+    """The intelligence that may stream Mochi's line, only with MOCHI_STREAM_REPLY (D-37)."""
+    if settings.streams_reply and isinstance(intelligence, StreamingDecider):
+        return intelligence
+    return None
 
 
 def _character_model(settings: Settings) -> CharacterModelConfig:
@@ -131,6 +148,7 @@ def _character_model(settings: Settings) -> CharacterModelConfig:
         api_key=settings.model_api_key,
         timeout_seconds=settings.mochi_character_timeout_seconds,
         reasoning_effort=settings.mochi_character_reasoning_effort,
+        hedge_after_seconds=settings.mochi_character_hedge_seconds,
     )
 
 
@@ -156,6 +174,7 @@ def _ares_ears(settings: Settings, words: tuple[str, ...]) -> SpeechTuning:
         tts_params=settings.mochi_tts_params,
         tts_credential_mode=settings.mochi_tts_credential_mode,
         end_of_speech_silence_ms=settings.mochi_end_of_speech_silence_ms,
+        interruption=settings.mochi_interruption,
     )
 
 
@@ -250,6 +269,8 @@ def _pipeline(settings: Settings, core: GatewayCore, voices: VoiceDirectory) -> 
             ears_prompt=settings.mochi_asr_prompt + " Words that may come up:",
             ears_words=vocabulary(settings),
             voices=voices,
+            cancel_stale_turns=settings.mochi_cancel_stale_turns,
+            streamer=_streamer(settings, core.intelligence),
         )
     )
 

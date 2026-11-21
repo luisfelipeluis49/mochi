@@ -15,6 +15,7 @@ from mochi_backend.intelligence.round_engine import RoundEngine
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.clock import Clock
 from mochi_backend.platform.ids import IdGenerator
+from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     ActivityCommand,
     ActivityResult,
@@ -55,6 +56,15 @@ class Intelligence:
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide what Mochi does with one turn. Example: "I need to adiar my meeting" -> hint."""
         return await self._flow.run(turn, context)
+
+    async def decide_streaming(
+        self, turn: Turn, context: SessionContext, sink: TextSink
+    ) -> Decision:
+        """`decide`, but a free-chat line goes to `sink` while it is written (D-37).
+
+        The Decision is the same as `decide` would return. Example: `decide_streaming(t, c, s)`.
+        """
+        return await self._flow.run(turn, context, sink)
 
     def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
         """Start a round or record its result. Raises ValueError when the command cannot apply."""
