@@ -193,15 +193,30 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .record-status { font-size: 20px; font-weight: 800; color: var(--berry); display: flex; align-items: center; gap: 8px; }
 .rec-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--berry); display: inline-block; }
 .record-hint { font-size: 13px; color: var(--muted); }
-.record-notice { font-size: 14px; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: #fff; }
-.record-notice a { font-weight: 700; color: inherit; }
+.record-notice { font-size: 14px; margin-top: 8px; padding: 12px; border-radius: 12px; background: var(--beige); display: grid; gap: 10px; }
+/* A link that looks like a button (no underline) */
+.link-btn { display: block; text-align: center; text-decoration: none; }
+.back-btn { justify-self: start; font-size: 15px; padding: 8px 16px; }
+
+/* ---------- The tab bar at the bottom of the phone pages ---------- */
+body[data-view="user"] .mobile { padding-bottom: 96px; } /* room so the bar does not cover the last card */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); /* iPhone home bar */
+  background: var(--cream); border-top: 1px solid var(--beige);
+}
+.tab {
+  display: block; text-align: center; text-decoration: none; font-weight: 700; font-size: 16px;
+  padding: 12px; border-radius: 12px; color: var(--night); background: #fff; border: 2px solid var(--beige);
+}
+.tab.on { background: var(--night); color: var(--cream); border-color: var(--night); }
 
 /* Conversation history entries are buttons that open the conversation */
 .conv-open { all: unset; display: grid; gap: 4px; width: 100%; cursor: pointer; }
 .conv-preview { font-size: 13px; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* One conversation: what you said */
-.insights button.back { all: unset; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--berry); }
 .only-you { font-size: 13px; color: var(--muted); margin: -4px 0 8px; }
 .sentences { list-style: none; display: grid; gap: 8px; }
 .sentences li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; background: #fff; border-radius: 12px; padding: 10px 12px; }
