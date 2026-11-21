@@ -40,6 +40,7 @@ class ActivityService:
             if result.private_prompt is not None:
                 self._hub.protect_secret(result.private_prompt.secret_word)
                 self._store.round_secrets = self._secrets_of(result.private_prompt)
+                self._store.private_prompt = result.private_prompt
             await self._publish_activity(result.activity)
             if result.private_prompt is not None:
                 await self._hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, result.private_prompt)
@@ -53,6 +54,7 @@ class ActivityService:
             result = self._run(ActivityCommand(type="result", result=outcome))
             self._store.mode = SessionMode.TOGETHER
             self._store.round_secrets = ()
+            self._store.private_prompt = None
             await self._publish_activity(result.activity)
             await self._pipeline.save_learning_events(result.learning_events)
             await self._publish_session()
