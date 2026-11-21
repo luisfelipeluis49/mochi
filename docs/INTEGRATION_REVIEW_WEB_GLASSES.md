@@ -44,3 +44,23 @@ phones through the normal path.
 
 Not verified: real touch on the 3.5-inch panel, Rokid runtime WebSocket behaviour, a Render cold start with the
 glasses, `vite build`, and anything against the live backend.
+
+## Resolution (branch `review/web-glasses`)
+
+Fixed with tests: 3, 4, 5, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19 (and the " · " split in the glasses, part of 10).
+Not changed, team decision: 1 (the rename), 2, 6, 10 (one rule), 11, 20, 21.
+
+Verified together: backend `make verify` 838 tests; web 40 tests, `tsc --noEmit` and `vite build` pass; glasses 36
+tests. Live check against a local backend in fake-Agora mode (real WebSocket, real routes):
+
+| Connection | Result |
+|---|---|
+| `?user=sophie&surface=ar` | closed 4400, reason names the allowed values |
+| `?user=ana&surface=vr` | closed 4400, "unknown surface 'vr'" |
+| Ana's glasses after "I need to adiar my meeting tomorrow." | `hint.created` only; no learning event |
+| Ana's phone, same turn | `learning_event.created` and `hint.created` |
+| Ben's glasses | nothing |
+| Home reconnecting mid-round | session, activity, then `activity.private_prompt` |
+| Audience / Ana's glasses mid-round | no private prompt |
+
+Not verified: a browser, the Pi's touch screen, Rokid runtime, a Render cold start with the glasses, the CI job on GitHub.
