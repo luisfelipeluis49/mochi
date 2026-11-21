@@ -9,7 +9,7 @@
 // remembers and shows what the backend sent.
 // =============================================================================
 
-import type { Activity, ConversationReport, Hint, LearningEvent, MochiEvent, PrivatePrompt, Session, SessionSummary, Speak } from "../contracts.ts";
+import type { Activity, ConversationReport, Hint, LearningEvent, MochiEvent, PrivatePrompt, Session, SessionSummary, Speak, SpeakerChanged } from "../contracts.ts";
 
 // How many events the ?debug=1 list keeps.
 export const DEBUG_LOG_SIZE = 10;
@@ -22,12 +22,17 @@ export interface ClientState {
   activity: Activity | null;        // the game state (IDLE / ACTIVE_ROUND / ROUND_RESULT)
   /** the time (ms) when the current game state arrived, to show the result for a few seconds */
   activityReceivedAt: number;
-  hint: Hint | null;                // the latest hint (it hides itself at expires_at)
+  hint: Hint | null;                // the latest hint
+  /** client clock (ms) until which the hint is shown. Worked out from the SERVER's own times
+   *  (expires_at − emitted_at) counted from when it arrived, so a wrong device clock (a Pi has no
+   *  clock battery) cannot hide or stretch hints. */
+  hintShownUntil: number;
   privatePrompt: PrivatePrompt | null; // the SECRET word (only Mochi's screen receives this)
   words: Record<string, LearningEvent>; // saved words, by their id
   speaking: { speak: Speak; receivedAt: number } | null; // Mochi talking out loud
   summaries: Record<string, SessionSummary>; // every session summary received, by id (phone only; PROPOSED v0.5)
   reports: Record<string, ConversationReport>; // every conversation report, by id (the /me page; PROPOSED v0.5)
+  speaker: SpeakerChanged | null;   // whose voice Mochi hears right now (PROPOSED v0.5)
   /** last events received, newest first, at most DEBUG_LOG_SIZE (for ?debug=1) */
   log: MochiEvent[];
 }
@@ -39,11 +44,13 @@ export const initialState: ClientState = {
   activity: null,
   activityReceivedAt: 0,
   hint: null,
+  hintShownUntil: 0,
   privatePrompt: null,
   words: {},
   speaking: null,
   summaries: {},
   reports: {},
+  speaker: null,
   log: [],
 };
 
@@ -70,9 +77,11 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
     case "session.state.changed":   // Start/Stop pressed, or mode changed
       next.session = event.payload;
       break;
-    case "hint.created":            // a new hint word
+    case "hint.created": {          // a new hint word
       next.hint = event.payload;
+      next.hintShownUntil = now + hintLifetimeMs(event.payload.expires_at, event.emitted_at);
       break;
+    }
     case "hint.cleared":            // backend says "remove this hint" (only if it is the one on screen)
       if (state.hint?.hint_id === event.payload.hint_id) next.hint = null;
       break;
@@ -96,6 +105,9 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
     case "conversation.report.created": // one analysed conversation for this person (PROPOSED v0.5)
       next.reports = { ...state.reports, [event.payload.report_id]: event.payload };
       break;
+    case "speaker.changed":         // whose voice Mochi hears now (PROPOSED v0.5)
+      next.speaker = event.payload;
+      break;
   }
   return next;
 }
@@ -103,13 +115,31 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
 /** The hint to show right now, or null if there is none or its time ran out. */
 export function liveHint(state: ClientState, now: number): Hint | null {
   if (!state.hint) return null;
-  return Date.parse(state.hint.expires_at) > now ? state.hint : null;
+  return now < state.hintShownUntil ? state.hint : null;
+}
+
+/** Default and maximum time a hint stays, if the server's times are missing or odd. */
+export const HINT_DEFAULT_MS = 8000;
+export const HINT_MAX_MS = 60000;
+
+/** How long a hint should stay, from the SERVER's own two times (both on the server's clock),
+ *  so the device's clock never matters. Falls back to 8 s if a time is missing; never over 60 s. */
+export function hintLifetimeMs(expiresAt: string, emittedAt: string): number {
+  const ms = Date.parse(expiresAt) - Date.parse(emittedAt);
+  if (!Number.isFinite(ms) || ms <= 0) return HINT_DEFAULT_MS;
+  return Math.min(ms, HINT_MAX_MS);
 }
 
 /** A hint can hold up to 3 options separated by " · " ("me queimei · tomei muito sol").
  *  Returns them as a list, one per line on screen. */
 export function hintOptions(expression: string): string[] {
   return expression.split("·").map((x) => x.trim()).filter(Boolean).slice(0, 3);
+}
+
+/** The name to show for whoever is talking, or null. Not shown when Mochi is not listening. */
+export function speakerName(state: ClientState): string | null {
+  if (!state.session?.capturing) return null;
+  return state.speaker?.name ?? null;
 }
 
 /** How long to show "speaking". The backend doesn't say, so we guess from the text length

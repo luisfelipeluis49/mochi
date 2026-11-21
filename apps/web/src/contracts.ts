@@ -114,8 +114,8 @@ export interface SessionSummary {
   created_at: string;
 }
 
-// PROPOSED v0.5 — conversation.report.created: Mochi's analysis of ONE real conversation for ONE person
-// (a work meeting, a call, a chat with a friend). Shown on that person's "Minhas conversas" page (/me).
+// PROPOSED v0.5 — conversation.report.created: Mochi's analysis of ONE recording (Record → Stop) for ONE
+// person (a work meeting, a call, a chat with a friend). Only that person's own sentences are in it. Shown on that person's "Minhas conversas" page (/me).
 // Sent to that user's phone only, when the conversation (session) stops.
 export type MistakeKind =
   | "grammar"       // e.g. "Yesterday I send" → "Yesterday I sent"
@@ -138,18 +138,38 @@ export interface UnknownWord {
   times: number;             // how many times they needed it in this conversation
 }
 
+// One sentence the person said, in order. ONLY the owner's sentences: Mochi tells voices apart, and
+// what the other people in the conversation said is never sent to this person's page.
+export interface MySentence {
+  at: string;              // when it was said
+  text: string;            // exactly what the person said
+  better: string | null;   // the corrected sentence, when it had a mistake
+  topic: string | null;    // the mistake's group, e.g. "Past tense" (null when no mistake)
+}
+
 export interface ConversationReport {
   report_id: string;
   user_id: string;
   target_language: Language;
-  title: string;                   // e.g. "Weekly sync", chosen by the person or "Conversation 3"
+  title: string;                   // e.g. "Weekly sync"; "" = not named (the page shows the time instead)
   context: ConversationContext;
-  started_at: string;
+  started_at: string;              // when the person pressed "Record"
+  ended_at: string;                // when they pressed "Stop" — each recording is one conversation
+  my_sentences: MySentence[];      // what THIS person said (never the others)
   speaking_minutes: number;        // minutes THIS person spoke
   mistakes: Mistake[];
   unknown_words: UnknownWord[];
   strengths: string[];             // e.g. ["Explaining your work"]
   focus_next: string[];            // e.g. ["Past tense: sent, went, made"]
+}
+
+// PROPOSED v0.5 — speaker.changed: whose voice Mochi hears right now. The Pi recognises the voices it
+// has learned (hardware/pi-bridge/mochi_device/speakers.py) and already reports `speaker` to the backend
+// (POST /api/devices/home_pi_01/status, AGENTS.md 6.6). The gateway would pass it on to the screens,
+// so the web Mochi shows the name like the device's own face.html does. Sent to every connection.
+export interface SpeakerChanged {
+  name: string | null;     // the name the voice was learned with, e.g. "Tasnim"; null = nobody recognised
+  user_id: string | null;  // the matching user id when known, e.g. "tasnim"
 }
 
 export interface PayloadByType {
@@ -163,6 +183,7 @@ export interface PayloadByType {
   "agent.speak.requested": Speak;
   "session.summary.created": SessionSummary; // PROPOSED v0.5
   "conversation.report.created": ConversationReport; // PROPOSED v0.5
+  "speaker.changed": SpeakerChanged; // PROPOSED v0.5
 }
 
 export type EventType = keyof PayloadByType;

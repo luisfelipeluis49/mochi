@@ -11,7 +11,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MochiEvent } from "../contracts.ts";
-import type { Who } from "../lib/who.ts";
+import { SECOND_USER, type Who } from "../lib/who.ts";
+import { displayName } from "../lib/i18n.ts";
 import { MockGateway } from "./demoScript.ts";
 
 // Run the whole scripted demo very fast (x500) and collect what one page receives.
@@ -27,7 +28,7 @@ async function run(who: Who): Promise<MochiEvent[]> {
 }
 
 const ana: Who = { kind: "user", user: "ana" };
-const sophie: Who = { kind: "user", user: "sophie" };
+const sophie: Who = { kind: "user", user: SECOND_USER }; // the second demo person (ben in the backend roster today)
 const home: Who = { kind: "device", device: "home_pi_01" };
 const audience: Who = { kind: "audience" };
 
@@ -53,7 +54,7 @@ test("each person gets only their own words and summary", async () => {
   assert.deepEqual(words(a), ["postpone", "umbrella"]);
   assert.deepEqual(words(s), ["me queimei", "protetor solar"]);
   assert.deepEqual(summaries(a), ["ana", "ana"]);       // yesterday + today
-  assert.deepEqual(summaries(s), ["sophie", "sophie"]);
+  assert.deepEqual(summaries(s), [SECOND_USER, SECOND_USER]);
   assert.equal(summaries(await run(audience)).length, 0);
 });
 
@@ -63,7 +64,7 @@ test("the story: Oi Mochi → Companhia → game → Mochi congratulates → sto
   assert.ok(modes.includes("choosing") && modes.includes("together") && modes.includes("activity"));
   const said = events.flatMap((e) => (e.type === "agent.speak.requested" ? [e.payload.text] : []));
   assert.ok(said.includes("Protetor solar."));
-  assert.ok(said.includes("Correct! Sophie, your turn to describe."));
+  assert.ok(said.includes(`Correct! ${displayName(SECOND_USER)}, your turn to describe.`));
   const last = events.filter((e) => e.type === "session.state.changed").at(-1);
   assert.equal(last?.type === "session.state.changed" && last.payload.capturing, false);
 });
@@ -84,4 +85,63 @@ test("conversation reports go only to their owner's page", async () => {
   assert.deepEqual(reports(await run({ kind: "user", user: "tasnim" })), ["tasnim", "tasnim", "tasnim", "tasnim"]);
   assert.equal(reports(await run(audience)).length, 0);
   assert.equal(reports(await run(home)).length, 0);
+});
+
+test("with ?people=tasnim,matheus the demo uses your names, and Mochi shows who is talking", async () => {
+  const got: MochiEvent[] = [];
+  const gw = new MockGateway({ kind: "device", device: "home_pi_01" }, (e) => got.push(e), 500, () => Date.now(), ["tasnim", "matheus"]);
+  gw.connect(true);
+  await new Promise((r) => setTimeout(r, 75));
+  gw.activityResult("guessed");
+  await new Promise((r) => setTimeout(r, 40));
+  gw.clear();
+  const speakers = got.flatMap((e) => (e.type === "speaker.changed" ? [e.payload.name] : []));
+  assert.ok(speakers.includes("Tasnim") && speakers.includes("Matheus"));
+  assert.equal(speakers.at(-1), null); // nobody after Stop
+  const hintsFor = got.flatMap((e) => (e.type === "hint.created" ? [e.payload.target_user_id] : []));
+  assert.deepEqual([...new Set(hintsFor)].sort(), ["matheus", "tasnim"]);
+  const said = got.flatMap((e) => (e.type === "agent.speak.requested" ? [e.payload.text] : []));
+  assert.ok(said.includes("Correct! Matheus, your turn to describe."));
+});
+
+test("Matheus gets his own past conversations", async () => {
+  const titles = (await run({ kind: "user", user: "matheus" })).flatMap((e) =>
+    e.type === "conversation.report.created" ? [e.payload.title] : []);
+  assert.deepEqual(titles, ["Weekly sync with the team", "Demo rehearsal", "Weekly sync with the team"]);
+});
+
+test("on the /me page: Record → Stop saves ONE new conversation; a second recording is a separate one", async () => {
+  const got: MochiEvent[] = [];
+  const gw = new MockGateway({ kind: "user", user: "tasnim" }, (e) => got.push(e), 1, () => Date.now(), undefined, "recording");
+  gw.connect(false);
+  const before = got.filter((e) => e.type === "conversation.report.created").length; // the 4 past ones
+  assert.equal(before, 4);
+  assert.ok(!got.some((e) => e.type === "hint.created"), "nothing plays by itself on /me");
+
+  gw.start(); await new Promise((r) => setTimeout(r, 20)); gw.stop();
+  gw.start(); await new Promise((r) => setTimeout(r, 20)); gw.stop();
+  gw.clear();
+
+  const reports = got.flatMap((e) => (e.type === "conversation.report.created" ? [e.payload] : []));
+  const fresh = reports.slice(before);
+  assert.equal(fresh.length, 2);
+  assert.notEqual(fresh[0].report_id, fresh[1].report_id);
+  assert.notEqual(fresh[0].my_sentences[1].text, fresh[1].my_sentences[1].text); // different conversations
+  for (const r of fresh) {
+    assert.equal(r.user_id, "tasnim");
+    assert.ok(r.my_sentences.length > 0);
+    assert.ok(Date.parse(r.ended_at) >= Date.parse(r.started_at));
+    // every mistake listed comes from one of HER sentences
+    for (const m of r.mistakes) assert.ok(r.my_sentences.some((s) => s.text === m.said && s.better === m.better));
+  }
+  const recording = got.flatMap((e) => (e.type === "session.state.changed" ? [e.payload.capturing] : []));
+  assert.deepEqual(recording.slice(-4), [true, false, true, false]);
+});
+
+test("past conversations carry only the owner's sentences, in order", async () => {
+  const r = (await run({ kind: "user", user: "tasnim" })).flatMap((e) =>
+    e.type === "conversation.report.created" ? [e.payload] : [])[0];
+  const times = r.my_sentences.map((s) => Date.parse(s.at));
+  assert.deepEqual(times, [...times].sort((a, b) => a - b));
+  assert.equal(r.my_sentences[1].better, "Yesterday I sent the report to the client.");
 });

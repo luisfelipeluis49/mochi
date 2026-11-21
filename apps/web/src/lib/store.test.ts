@@ -94,6 +94,17 @@ test("parseEvent rejects junk", () => {
   assert.equal(parseEvent(JSON.stringify(ev("hint.created", hint)))?.type, "hint.created");
 });
 
+test("the speaker's name shows only while Mochi is listening", async () => {
+  const { speakerName } = await import("./store.ts");
+  let s = applyEvent(initialState, ev("speaker.changed", { name: "Tasnim", user_id: "tasnim" }), T0);
+  assert.equal(speakerName(s), null); // not listening yet
+  s = applyEvent(s, ev("session.state.changed",
+    { status: "active", mode: "together", focus: "en", capturing: true, participants: ["tasnim", "matheus"] }), T0);
+  assert.equal(speakerName(s), "Tasnim");
+  s = applyEvent(s, ev("speaker.changed", { name: null, user_id: null }), T0);
+  assert.equal(speakerName(s), null);
+});
+
 test("hintOptions splits on ' · ' and keeps a single expression whole", () => {
   assert.deepEqual(hintOptions("me queimei · tomei muito sol"), ["me queimei", "tomei muito sol"]);
   assert.deepEqual(hintOptions("postpone"), ["postpone"]);
@@ -108,4 +119,20 @@ test("parseEvent with another schema_version still returns the event and warns o
   assert.equal(warn.mock.callCount(), 1);
   assert.equal(parseEvent(raw("0.4", 3))?.sequence, 3);
   assert.equal(warn.mock.callCount(), 1);
+});
+
+test("a wrong device clock does not hide or stretch hints (Pi without a clock battery)", async () => {
+  const { hintLifetimeMs } = await import("./store.ts");
+  const hint = { hint_id: "h1", target_user_id: "ana", target_language: "en" as const, expression: "postpone",
+    meaning: null, example: null, reason: "code_switch" as const, expires_at: "2026-11-19T16:00:12.700Z" };
+  const sent = { schema_version: "0.4", event_id: "e1", type: "hint.created", session_id: "demo",
+    emitted_at: "2026-11-19T16:00:04.700Z", sequence: 901, payload: hint } as Parameters<typeof applyEvent>[1];
+  for (const skew of [-30_000, 0, 30_000]) {           // device 30 s behind, right, 30 s ahead
+    const arrived = Date.parse("2026-11-19T16:00:04.800Z") + skew;
+    const s = applyEvent(initialState, sent, arrived);
+    assert.equal(liveHint(s, arrived + 7_900)?.expression, "postpone", `skew ${skew}`);
+    assert.equal(liveHint(s, arrived + 8_100), null, `skew ${skew}`);
+  }
+  assert.equal(hintLifetimeMs("bad", "2026-11-19T16:00:04.700Z"), 8000);
+  assert.equal(hintLifetimeMs("2026-11-19T17:00:00.000Z", "2026-11-19T16:00:00.000Z"), 60000);
 });

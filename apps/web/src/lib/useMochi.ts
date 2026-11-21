@@ -14,7 +14,7 @@ import { type Backend, connectMock, connectReal } from "./backend.ts";
 import { type ClientState, applyEvent, initialState, onNewConnection } from "./store.ts";
 import type { Who } from "./who.ts";
 
-export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number }) {
+export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number; mockPeople?: [string, string]; mockScenario?: "demo" | "recording" }) {
   const [state, setState] = useState<ClientState>(initialState); // everything received so far
   const [connected, setConnected] = useState(false);              // is the connection open?
   const [now, setNow] = useState(() => Date.now());               // the current time
@@ -33,11 +33,11 @@ export function useMochi(who: Who, opts: { mock: boolean; mockSpeed: number }) {
         if (c) { setRejected(null); setState(onNewConnection); } // new connection: forget old sequence numbers
       },
     };
-    const b = opts.mock ? connectMock(who, handlers, opts.mockSpeed) : connectReal(who, handlers);
+    const b = opts.mock ? connectMock(who, handlers, opts.mockSpeed, opts.mockPeople, opts.mockScenario) : connectReal(who, handlers);
     backend.current = b;
     return () => b.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, opts.mock, opts.mockSpeed]);
+  }, [key, opts.mock, opts.mockSpeed, opts.mockPeople?.join(","), opts.mockScenario]);
 
   // The clock: update "now" every 250 ms so expired hints and the result screen go away on time.
   useEffect(() => {

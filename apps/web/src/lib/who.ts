@@ -31,9 +31,11 @@ export function wsQuery(who: Who): string {
   return "view=audience";
 }
 
-/** The second demo person on the Index links. The backend roster is ana + ben; the mock uses "sophie".
- *  Team decision: no rename yet, so the name lives in this one constant (the rename is one line). */
-export const SECOND_USER = "sophie";
+/** The second demo person. It must be in the backend roster (services/backend/.../gateway/roster.py),
+ *  which today is ana + ben; any other name is refused with close code 4400. The product deck calls
+ *  her Sophie: if the team renames ben → sophie in the backend, change this ONE line too.
+ *  The mock demo, the start-page links and the tests all follow this constant. */
+export const SECOND_USER = "ben";
 
 /** The links shown on the Index page. */
 export function indexLinks(): { href: string; label: string }[] {

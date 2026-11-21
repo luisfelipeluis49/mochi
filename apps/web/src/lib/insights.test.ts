@@ -17,6 +17,7 @@ import { initialState } from "./store.ts";
 
 const report = (id: string, at: string, minutes: number, extra: Partial<ConversationReport> = {}): ConversationReport => ({
   report_id: id, user_id: "tasnim", target_language: "en", title: id, context: "meeting", started_at: at,
+  ended_at: at, my_sentences: [],
   speaking_minutes: minutes, mistakes: [], unknown_words: [], strengths: [], focus_next: [], ...extra,
 });
 
