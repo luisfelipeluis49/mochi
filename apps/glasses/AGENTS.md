@@ -1,3 +1,5 @@
+The root `AGENTS.md` (repo root) is the contract and wins on any conflict with this file. `surface=ar` is PROPOSED (root AGENTS 6.6), and `candidates` / `context` on a Hint are not in the contract.
+
 # Mochi AR
 
 Mochi turns conversations into language practice. Mochi AR is its smart-glasses add-on, and it has one job, the Fluency Helper: when the wearer hesitates while speaking, one to three suggested words or phrases appear privately in their view, each with a short meaning.

@@ -30,8 +30,11 @@ export const MAX_CANDIDATES = 3;
 // The context line is a reminder of where the speaker stopped, not a transcript.
 export const MAX_CONTEXT_CHARS = 40;
 
-export function initialState() {
+// `userId` is the wearer. Only hints for the wearer (or for nobody) are shown;
+// with no wearer known, only hints for nobody.
+export function initialState(userId = null) {
   return {
+    userId: typeof userId === 'string' && userId !== '' ? userId : null,
     lastSequence: null, // highest envelope sequence applied on this connection
     capturing: false, // true between Start and Stop
     // { hintId, context, candidates: [{ expression, meaning }], hideAtMs } or null
@@ -100,12 +103,24 @@ function toCandidate(entry) {
   return { expression, meaning: text(entry.meaning) };
 }
 
+// Team convention (no field change): `expression` may hold up to three options
+// separated by " · ", all sharing the one `meaning`, which is shown once (on
+// the first option).
+const OPTION_SEPARATOR = ' · ';
+
+function splitExpression(payload) {
+  const parts = text(payload.expression).split(OPTION_SEPARATOR).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return [payload];
+  return parts.map((expression, index) => ({ expression, meaning: index === 0 ? payload.meaning : '' }));
+}
+
 // The suggestions in a Hint payload: the proposed `candidates` list when it
-// has any usable entry, otherwise the v0.4 single expression. No duplicates,
-// at most three.
+// has any usable entry, otherwise the " · " options of `expression`, which is
+// the v0.4 single expression when there is no separator. No duplicates, at
+// most three.
 export function candidatesOf(payload) {
   const listed = Array.isArray(payload.candidates) ? payload.candidates : [];
-  const source = listed.some((entry) => toCandidate(entry)) ? listed : [payload];
+  const source = listed.some((entry) => toCandidate(entry)) ? listed : splitExpression(payload);
   const seen = new Set();
   const candidates = [];
   for (const entry of source) {
@@ -146,6 +161,9 @@ export function reduce(state, event, nowMs) {
       return next;
 
     case EVENT.HINT_CREATED: {
+      // Not for this wearer: leave whatever is on screen alone.
+      const target = payload.target_user_id;
+      if (target !== null && target !== undefined && target !== state.userId) return next;
       const candidates = candidatesOf(payload);
       if (text(payload.hint_id) === '' || candidates.length === 0) return next;
       next.hint = {
@@ -187,6 +205,9 @@ export function dismiss(state) {
 export function socketUrl(backendUrl, userId) {
   const base = String(backendUrl || '').trim().replace(/\/+$/, '');
   if (!base) return '';
+  if (!/^(https?|wss?):\/\//i.test(base)) {
+    throw new Error(`Server address needs a scheme (http(s):// or ws(s)://), got "${base}"`);
+  }
   const wsBase = base.replace(/^http(s?):\/\//i, 'ws$1://');
   return `${wsBase}/ws?user=${encodeURIComponent(userId)}&surface=ar`;
 }
