@@ -18,12 +18,13 @@
 // hint or new cards; they appear when the session ends.
 // =============================================================================
 
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useState } from "react";
 import { LEARNING_STATE_ORDER, type Language, type LearningEvent, type SessionSummary } from "../contracts.ts";
 import { barPercent, lastSession, progress, sessionHistory } from "../lib/analytics.ts";
 import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
-import { markStartedHere, showLive, startedHere, startPhoneMic } from "../lib/phoneMic.ts";
+import { showLive } from "../lib/phoneMic.ts";
+import { usePhoneMic } from "../lib/usePhoneMic.ts";
 import { type ClientState, hintOptions, liveHint, wordsNewestFirst } from "../lib/store.ts";
 
 // The inputs this screen receives from main.tsx.
@@ -98,48 +99,9 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
   const [busy, setBusy] = useState(false);              // true while a button request is on its way (buttons are disabled)
   const [error, setError] = useState<string | null>(null); // error message if the backend could not be reached
   const capturing = state.session?.capturing ?? false;  // is Mochi listening right now?
-  const [here, setHere] = useState(() => startedHere()); // did THIS phone start the running session?
+  const { here, startHere, stopHere } = usePhoneMic(capturing, () => setError(t.micFailed)); // this phone's mic
   const live = showLive(capturing, here);               // false while a session started on the Pi runs
   const hint = live ? liveHint(state, now) : null;      // the hint for this person, while it is on screen
-  const micStop = useRef<(() => Promise<void>) | null>(null); // stops this phone's mic, when it is on
-  const wasCapturing = useRef(capturing);
-
-  // Turn the mic off and forget "started here".
-  const endHere = async () => {
-    const stop = micStop.current;
-    micStop.current = null;
-    markStartedHere(false);
-    setHere(false);
-    await stop?.().catch(() => undefined);
-  };
-
-  // The session ended (Stop here, on another phone, or a reset): turn the mic off too.
-  useEffect(() => {
-    if (wasCapturing.current && !capturing) void endHere();
-    wasCapturing.current = capturing;
-  }, [capturing]);
-
-  // Leaving the page: turn the mic off (the session itself keeps running until Stop).
-  useEffect(() => () => { void micStop.current?.(); }, []);
-
-  // Start on this phone: the usual Start, then this phone's mic joins Mochi's channel.
-  const startHere = async (b: Backend) => {
-    markStartedHere(true);
-    setHere(true);
-    await b.start();
-    const join = await b.phoneAudio(); // null in the mock: no mic
-    if (!join) return;
-    try {
-      micStop.current = await startPhoneMic(join);
-    } catch {
-      setError(t.micFailed); // no permission, no HTTPS, or the SDK did not load
-    }
-  };
-
-  const stopHere = async (b: Backend) => {
-    await endHere();
-    await b.stop();
-  };
   const words = wordsNewestFirst(state);                // saved words, newest first
   const p = progress(state);                            // the numbers for "Your progress"
   const last = lastSession(state);                      // the newest session summary, or null
