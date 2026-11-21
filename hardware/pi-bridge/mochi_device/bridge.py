@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import signal
 
 from .backends import JoinInfo
@@ -12,10 +13,12 @@ BRIDGE_BIN = BRIDGE_DIR / "build" / "mochi-bridge"
 
 
 class BridgeProcess:
-    def __init__(self, speaker: str, on_voice=None):
-        """on_voice(level 0-100): called as the loudness of the agent's voice changes."""
+    def __init__(self, speaker: str, on_voice=None, on_left=None):
+        """on_voice(level 0-100): called as the loudness of the agent's voice changes.
+        on_left(uid): the other side of the call (Mochi's agent) left the channel."""
         self.speaker = speaker
         self.on_voice = on_voice
+        self.on_left = on_left
         self.proc: asyncio.subprocess.Process | None = None
         self._log_task: asyncio.Task | None = None
 
@@ -40,6 +43,9 @@ class BridgeProcess:
                 if self.on_voice:
                     self.on_voice(int(text.rsplit(" ", 1)[1]))
                 continue
+            left = re.match(r"\[bridge\] remote user (\d+) left", text)
+            if left and self.on_left:
+                self.on_left(int(left.group(1)))
             # keep the once-a-second status lines out of the supervisor log unless they show trouble
             if "| sent" in text and "not joined" not in text:
                 continue

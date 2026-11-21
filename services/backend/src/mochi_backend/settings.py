@@ -74,7 +74,11 @@ class Settings(BaseSettings):
         "never translate."
     )
     mochi_ares_language: str = "en-US,pt-PT"  # ARES has no Brazilian variant: pt-PT stands in
-    mochi_asr_keywords: list[str] = ["Mochi"]  # names to expect; the lexicon's words are added
+    mochi_asr_keywords: list[str] = ["Mochi"]  # names to expect
+    # Also tell the ears the lexicon's words ("adiar", "chave", ...). It makes them hear those
+    # words in unclear audio too: background speech came back as "I forgot my guarda-chuva." and
+    # Mochi taught "umbrella" to nobody (DECISIONS D-35, D-36).
+    mochi_asr_lexicon_words: bool = True
     mochi_asr_params: VendorParams = {}
     mochi_asr_credential_mode: str = ""
     mochi_tts_vendor: str = "minimax"

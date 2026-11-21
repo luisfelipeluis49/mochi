@@ -72,7 +72,7 @@ class Supervisor:
         if self.share_voices and hasattr(self.backend, "use_voices"):
             self.backend.use_voices(self.kws.voiceprints)  # so the backend's database and this Pi share voices
         self.mic = Mic(self.dev)
-        self.bridge = BridgeProcess(self.dev, self.on_agent_voice)
+        self.bridge = BridgeProcess(self.dev, self.on_agent_voice, self.on_agent_left)
         self.state = "IDLE"
         self.quit = asyncio.Event()
         self._start_task: asyncio.Task | None = None
@@ -89,6 +89,13 @@ class Supervisor:
         if level:
             self.agent_voice_at = time.monotonic()
         self.face.set(level=level)
+
+    def on_agent_left(self, uid: int) -> None:
+        """Mochi's agent left the call (the service ended it, or it failed): nobody would answer any
+        more, so the session ends instead of sitting awake and deaf. Seen live: it left after 99 s
+        and Mochi stayed "awake" for another minute while the person kept talking to it."""
+        if self.state == "ACTIVE":
+            self.backend_end = "Mochi's agent left the call"
 
     def on_agent_event(self, kind: str, value) -> None:
         """Things the agent did or asked for (see backends.py): shown on the face."""

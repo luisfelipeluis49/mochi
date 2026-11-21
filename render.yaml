@@ -52,6 +52,8 @@ services:
         value: en-US
       - key: MOCHI_ARES_LANGUAGE
         value: en-US,pt-PT
+      - key: MOCHI_ASR_LEXICON_WORDS
+        value: "false" # do not name the lexicon to the recogniser: it wrote background speech as those words (D-36)
       - key: MOCHI_ASR_KEYWORDS
         value: '["Mochi"]'
       - key: MOCHI_ASR_CREDENTIAL_MODE

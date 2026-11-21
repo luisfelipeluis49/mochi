@@ -579,3 +579,31 @@ você?" had only its second sentence said by a person.
   designed (D-30); the two people expected to hear it. **For the team:** say the word once when someone
   asks outright, and keep unasked hints silent?
 
+## D-36: the recogniser is no longer told the lexicon's words on the deployed backend (2026-11-21)
+
+D-35 left open that background speech is written down as the lexicon's words. It happened again in the
+first spoken test through the deployed backend: two seconds after "Can I practice English with you?" the
+log has "I forgot my guarda-chuva." and "Meeting"; the Pi scored the voice of those seconds as unknown
+(0.12 to 0.17, the speaker's own 0.4 to 0.6). Mochi taught "umbrella" on top of its own answer and the
+word was saved for Ana.
+- **Measured** on the Pi's backend (real Agora, `gpt-4o-transcribe`, one run each; 16 mixed-language
+  sentences, and 10 real recordings made faint and distant as background):
+
+  | | lexicon named (as before) | only "Mochi" |
+  |---|---|---|
+  | faint background written as a lexicon sentence, with a hint | 1 of 10 ("People don't like to adiar reuniões, but sometimes it's necessary." -> postpone) | 0 of 10 |
+  | adiar, guarda-chuva, garfo, feira, presente, geladeira, umbrella, wallet, traffic jam, obrigado | all written down | all written down |
+  | "postpone" in a Portuguese sentence | "postpone" | "postone" (hint "poste") |
+  | "supermarket", "salt" in a Portuguese sentence | kept | translated ("supermercado", "sal") |
+
+- **Built:** `MOCHI_ASR_LEXICON_WORDS` (default true: nothing changes for anyone who does not set it).
+  Set to false on the deployed backend (`render.yaml`) and on the Pi's own. **For Luís and Kauê:** make
+  false the default? The cost seen is English words inside Portuguese sentences.
+- **Not solved by this:** background speech that is clear enough is still written down as what it is
+  (4 of the 10 faint recordings became sentences either way) and, while someone practises alone with
+  Mochi, answered. Telling it apart needs who is speaking for each sentence; the Pi's verdict came 2 to
+  4 seconds after those sentences, and the speaker's own first second often scores as low as a
+  stranger's. Not built.
+- **Also:** Agora ended the agent by itself 99 seconds into that session (no reason given, the backend
+  had not asked); the Pi now ends the session when the agent leaves instead of staying awake.
+
