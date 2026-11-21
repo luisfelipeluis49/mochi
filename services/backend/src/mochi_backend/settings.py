@@ -2,13 +2,13 @@
 
 from typing import Literal, Self
 
-from pydantic import ValidationError, model_validator
+from pydantic import ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from mochi_backend.platform.http_client import JsonValue
 
 VendorParams = dict[str, JsonValue]
-_SECRET_MARKERS = ("key", "secret", "certificate", "token")
+_SECRET_MARKERS = ("key", "secret", "certificate", "token", "database_url")
 _REAL_MODE_REQUIRED = (
     "agora_app_id",
     "agora_app_certificate",
@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     mochi_turn_key: str = ""
     mochi_device_key: str = ""
     model_api_key: str = ""
+    database_url: str = ""  # Postgres; empty = memory only (lost on restart). See D-32
     mochi_public_url: str = "http://localhost:8000"
     mochi_agora_mode: Literal["fake", "real"] = "real"
     mochi_silence_strategy: Literal["empty_reply", "mute_speaker"] = "empty_reply"
@@ -82,6 +83,13 @@ class Settings(BaseSettings):
     mochi_speak_base_seconds: float = 0.6
     mochi_speak_seconds_per_word: float = 0.45
     port: int = 8000
+
+    @field_validator("database_url")
+    @classmethod
+    def _database_url_is_postgres(cls, value: str) -> str:
+        if value and not value.startswith(("postgres://", "postgresql://")):
+            raise ValueError("must start with postgres:// or postgresql:// (or be empty)")
+        return value
 
     @model_validator(mode="after")
     def _real_mode_needs_credentials(self) -> Self:

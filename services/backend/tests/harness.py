@@ -7,10 +7,14 @@ from mochi_backend.gateway.container import AppContainer
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.turn_pipeline import TurnOutcome
+from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import load_settings
+from mochi_backend.storage.event_log import StorageEventSink
+from mochi_backend.storage.factory import StorageStart
+from mochi_backend.storage.port import NullStorage, Storage
 from tests.fakes.fake_agora import FakeAgoraClient, FakeTokenIssuer
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
@@ -71,13 +75,14 @@ def _brain(
     return brain
 
 
-def make_harness(
+def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     *,
     env: dict[str, str] | None = None,
     intelligence: IntelligencePort | None = None,
     model: FakeHintModel | None = None,
     character: FakeCharacterModel | None = None,
     gated: bool = False,
+    storage: Storage | None = None,
 ) -> Harness:
     """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY).
 
@@ -85,10 +90,15 @@ def make_harness(
     """
     settings = load_settings({"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", **(env or {})})
     clock, ids, logger = FakeClock(), SequentialIdGenerator(), FakeEventLogger()
-    brain = intelligence or _brain(clock, ids, model, character, settings.mochi_hint_ttl_seconds)
+    kept = storage or NullStorage()
+    ttl = settings.mochi_hint_ttl_seconds
+    start = StorageStart.read(kept, "memory")
+    brain = intelligence or _brain(clock, ids, model, character, ttl)
+    if isinstance(brain, Intelligence):
+        brain.keep_words_in(MemoryStore(start.events, StorageEventSink(kept)))
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()
-    adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules")
+    adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules", start)
     container = build_container(settings, adapters)
     return Harness(container, clock, scheduler, agora, tokens, logger, gate)
