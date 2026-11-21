@@ -91,8 +91,14 @@ for one device without touching the shared file, put only the keys that differ i
   The Pi reports its volume, temperature, the voices it knows and who is talking
   (`POST .../status`) whenever one changes, and how learning a voice ended (`POST .../voices`).
   Set `mochi_backend_url` to where the backend runs. If the backend cannot start a session (down,
-  unreachable), Mochi's own agent takes that one (`fallback = "test_agent"`), so Mochi always
-  answers when called.
+  unreachable), the session does not start (`fallback = "none"`, the default: the Pi decides
+  nothing and holds no App Certificate). To let Mochi's own agent take that session instead, set
+  `fallback = "test_agent"` in `[backend]` (needs `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` on the
+  Pi; the agent then decides on the device, so use it for demos only).
+  When the backend requires a device key, put it in `.env` as `MOCHI_DEVICE_KEY` (or `device_key` in
+  `[backend]`); it is sent as `Authorization: Bearer <key>` on `POST .../status` and `.../voices`
+  and never logged. A wake-up that has not produced a session after `[session] start_timeout_s`
+  (25 s) is given up and Mochi goes back to listening.
 - `test_agent` (the default): a stand-in agent, for working without the backend.
 
 The stand-in's character and the way it helps (clue first, the word in a sentence,

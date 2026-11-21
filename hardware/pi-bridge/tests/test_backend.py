@@ -6,6 +6,7 @@ import asyncio
 import json
 import threading
 import time
+import subprocess
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
@@ -26,6 +27,7 @@ class FakeBackend:
         self.statuses: list[dict] = []  # what the device reported about itself
         self.voices: list[dict] = []    # voices it said it learned
         self.commands: list[dict] = []  # what Mochi wants its body to do
+        self.auth: dict[str, list] = {}  # Authorization header seen, per POST action
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -39,6 +41,7 @@ class FakeBackend:
 
             def do_POST(self):
                 action = self.path.rsplit("/", 1)[1]
+                fake.auth.setdefault(action, []).append(self.headers.get("Authorization"))
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
                 if action in ("status", "voices"):
                     (fake.statuses if action == "status" else fake.voices).append(body)
@@ -206,6 +209,139 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         await self.backend.stop()  # must not raise: the supervisor has to get back to listening
 
 
+class PollResilienceTest(unittest.IsolatedAsyncioTestCase):
+    """One failing step in the poll loop must not end it (the microphone would keep streaming)."""
+
+    def setUp(self):
+        self.fake = FakeBackend()
+        self.addCleanup(self.fake.close)
+        self.speaker = FakeSpeaker()
+        self.events: list[tuple] = []
+        self.backend = MochiBackend(self.fake.url, "home_pi_01", self.speaker,
+                                    lambda kind, value: self.events.append((kind, value)),
+                                    poll_interval_s=0.02)
+        self.backend.STATUS_EVERY_S = 0.05
+
+    async def test_a_mixer_timeout_does_not_end_the_poller(self):
+        broken = {"on": True}
+        real = self.speaker.set_muted
+
+        def set_muted(muted):
+            if broken["on"]:
+                raise subprocess.TimeoutExpired("amixer", 5)
+            real(muted)
+        self.speaker.set_muted = set_muted
+        await self.backend.start()
+        self.fake.speaker_muted = True
+        await asyncio.sleep(0.2)
+        self.assertFalse(self.backend._poller.done())
+        broken["on"] = False
+        self.assertTrue(await until(lambda: self.speaker.muted))  # it keeps trying
+        self.fake.capturing = False                               # and still notices Stop
+        self.assertTrue(await until(lambda: ("stopped", "backend stopped capturing") in self.events))
+        await self.backend.stop()
+
+    async def test_a_failing_status_read_does_not_end_the_poller(self):
+        def volume():
+            raise subprocess.TimeoutExpired("amixer", 5)
+        self.speaker.volume = volume
+        await self.backend.start()
+        await asyncio.sleep(0.3)
+        self.assertFalse(self.backend._poller.done())
+        self.fake.capturing = False
+        self.assertTrue(await until(lambda: self.events))
+        await self.backend.stop()
+
+    async def test_a_failing_command_does_not_end_the_poller(self):
+        async def act(kind, value):
+            raise RuntimeError("boom")
+        self.backend.body.act = act
+        await self.backend.start()
+        self.fake.commands = [{"command_id": "c1", "kind": "mood", "value": "happy"}]
+        await asyncio.sleep(0.2)
+        self.assertFalse(self.backend._poller.done())
+        await self.backend.stop()
+
+    async def test_if_the_poller_dies_the_supervisor_is_told_so_the_mic_stops(self):
+        async def boom(*a):
+            raise MemoryError("unexpected")  # not caught by a step's own handler
+        self.backend._sleep = boom
+        await self.backend.start()
+        self.assertTrue(await until(lambda: any(e[0] == "stopped" for e in self.events)))
+        await self.backend.stop()
+        self.assertEqual(self.fake.posts, ["start", "stop"])  # the backend session is still ended
+
+
+class DeviceKeyTest(unittest.IsolatedAsyncioTestCase):
+    """Once the backend asks for it, status and voices carry Authorization: Bearer <device key>."""
+
+    def setUp(self):
+        self.fake = FakeBackend()
+        self.addCleanup(self.fake.close)
+
+    async def test_the_key_is_sent_on_status_and_voices(self):
+        backend = MochiBackend(self.fake.url, "home_pi_01", FakeSpeaker(), None, 0.02, device_key="s3cret")
+        await backend.start()
+        await backend.voice_enrolled("Ana", "en", True)
+        await backend.stop()
+        self.assertEqual(self.fake.auth["status"][0], "Bearer s3cret")
+        self.assertEqual(self.fake.auth["voices"][0], "Bearer s3cret")
+        self.assertEqual(self.fake.auth["start"], [None])  # the other calls do not carry it
+
+    async def test_without_a_key_no_header_is_sent(self):
+        backend = MochiBackend(self.fake.url, "home_pi_01", FakeSpeaker(), None, 0.02)
+        await backend.start()
+        await backend.voice_enrolled("Ana", "en", True)
+        await backend.stop()
+        self.assertEqual(self.fake.auth["status"], [None])
+        self.assertEqual(self.fake.auth["voices"], [None])
+
+    def test_make_backend_takes_the_key_from_the_environment_and_never_prints_it(self):
+        import io
+        import os
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+
+        from mochi_device import config
+        from mochi_device.backends import make_backend
+
+        cfg = config.load()
+        cfg["backend"].update(kind="mochi_backend", fallback="none")
+        with patch.dict(os.environ, {"MOCHI_DEVICE_KEY": "s3cret"}), redirect_stdout(io.StringIO()) as out:
+            backend = make_backend(cfg)
+        self.assertEqual(backend.device_key, "s3cret")
+        self.assertNotIn("s3cret", out.getvalue())
+        self.assertNotIn("s3cret", repr(backend))
+
+
+class FallbackConfigTest(unittest.TestCase):
+    """The Pi-side agent holds the App Certificate and decides on the device: opt-in only."""
+
+    def _cfg(self, **backend):
+        from mochi_device import config
+        cfg = config.load()
+        cfg["backend"].update(kind="mochi_backend", **backend)
+        return cfg
+
+    def test_off_by_default(self):
+        import os
+        from unittest.mock import patch
+
+        from mochi_device.backends import make_backend
+        cfg = self._cfg()
+        with patch.dict(os.environ, {"AGORA_APP_ID": "a", "AGORA_APP_CERTIFICATE": "c"}):
+            self.assertIsInstance(make_backend(cfg), MochiBackend)
+
+    def test_available_when_switched_on(self):
+        import os
+        from unittest.mock import patch
+
+        from mochi_device.backends import make_backend
+        cfg = self._cfg(fallback="test_agent")
+        with patch.dict(os.environ, {"AGORA_APP_ID": "a", "AGORA_APP_CERTIFICATE": "c"}):
+            self.assertIsInstance(make_backend(cfg), WithFallback)
+
+
 class Runner:
     """Stands in for either backend; `broken` makes start fail."""
 
@@ -245,9 +381,21 @@ class WithFallbackTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await both.start("hi mochi")).channel, "mochi-test")
         await both.stop()
         self.assertEqual(own.calls, [("start", "hi mochi"), "stop"])
-        self.assertEqual(backend.calls, [("start", "hi mochi")])  # never asked to stop what it never ran
+        self.assertEqual(backend.calls, [("start", "hi mochi"), "stop"])  # its half-started session is ended once
         backend.broken = False  # the backend is back: the next session is its again
         self.assertEqual((await both.start()).channel, "mochi-demo")
+
+    async def test_a_backend_that_failed_after_its_post_is_stopped_before_the_own_agent_starts(self):
+        backend, own = Runner("mochi-demo", broken=True), Runner("mochi-test")
+
+        async def stop():
+            backend.calls.append("stop")
+            raise OSError("stop failed too")  # must be swallowed
+        backend.stop = stop
+        both = WithFallback(backend, own)
+        self.assertEqual((await both.start("hi mochi")).channel, "mochi-test")
+        self.assertEqual(backend.calls, [("start", "hi mochi"), "stop"])
+        self.assertEqual(own.calls, [("start", "hi mochi")])
 
     async def test_both_are_told_whose_voices_are_known(self):
         backend, own = Runner("a"), Runner("b")
@@ -348,6 +496,22 @@ class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SupervisorTest(unittest.IsolatedAsyncioTestCase):
+    async def test_a_backend_that_never_answers_cannot_keep_mochi_starting(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.cfg = {"audio": {"chimes": False}}
+        sup.kws = MagicMock()
+        sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
+
+        async def never(wake_phrase=None):
+            await asyncio.sleep(3600)
+        sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(), start=never)
+        sup.state, sup.backend_end, sup.bye_asked = "STARTING", None, None
+        sup.start_timeout_s = 0.1
+        await asyncio.wait_for(sup.start_session("hi mochi"), timeout=2)
+        self.assertEqual(sup.state, "IDLE")
+        sup.backend.stop.assert_awaited_once()
+        sup.bridge.stop.assert_awaited_once()  # anything half-started is stopped
+
     async def test_leaves_the_channel_when_the_backend_stopped_the_session(self):
         now = time.monotonic()
         sup = Supervisor.__new__(Supervisor)  # no microphone, models or screen
