@@ -75,3 +75,39 @@ Correction to an earlier remark in this session: commits `aa8f23c` and `f4c0920`
 
 Echo of Mochi's voice into the mic, touch, whether an empty reply keeps Agora silent, Agora's LLM timeout, whether
 Agora echoes request bodies in a 4xx, the Pi restart replay, the 8.5-minute figure, live latency and billing.
+
+## 5. Resolution in this PR (branch `review/post-merge-fixes`)
+
+Each fix has a test; the gateway and intelligence suites are in `services/backend/tests`, the Pi tests in
+`hardware/pi-bridge/tests`. 830 backend tests pass (`make verify`); 64 Pi tests pass (they need stubs for
+`sherpa_onnx` and `dotenv` on a machine without them; the C bridge was not compiled).
+
+| # | Fix |
+|---|---|
+| 1, 2 | `.env.example` repaired (sources cleanly, `MOCHI_ASR_VENDOR=openai`); `render.yaml` and README on the `free` plan |
+| 3 | `MOCHI_DEVICE_KEY` (required in real mode) on `/status` and `/voices`; `name` and `voices` validated; the Pi sends the key |
+| 4 | `gateway/secret_screen.py`: during a round a hint or a spoken line containing the secret word (or its meaning) is dropped; independent of roles |
+| 5 | `_answer_mochi` keeps the language of the word asked about (`pineapple` for Ana) |
+| 6 | `wants_to_hear` only for explicit requests to hear a word |
+| 7 | The hint no longer waits for the character reply; a slow line is dropped on the watching path |
+| 8, 9 | Missing/non-numeric confidence is "not sure"; hint-model failures are logged (metadata only) |
+| 10–13, 15 | Volume keeps the mute; poll steps are guarded; a failed start stops the backend session; fallback off by default; start bounded at 25 s |
+| 14, 16, 23 | Commands expire after 30 s and `bye` is handed out once; a round needs a running session; Agora error text is redacted |
+
+**Deploy note.** Real mode now requires `MOCHI_DEVICE_KEY` (Render: set it before this branch reaches `main`, or the
+service will not start). The Pi needs the same value in `MOCHI_DEVICE_KEY`.
+
+## 6. Left open, on purpose
+
+- Default Pi `kind` is still `test_agent` (a Pi-side agent with the App Certificate). Matheus decides.
+- `GET /state` still returns the Agora join token to anyone (contract 6.4 has no auth).
+- The secret word's Portuguese form is only screened when the word came from a learning event.
+- On the watching path Mochi's spoken line is dropped when the character model is slower than the hint model.
+- Items marked C in section 2.
+
+## 7. Claims in PR #1's own description (checked)
+
+Merged by its author without review; it says so. "No event, endpoint or enum in Section 6 was renamed or removed":
+true, but it added routes, a body and a field (Section 6.6 of AGENTS.md v0.5). "Key sent to Agora with
+`MODEL_API_KEY`": true (`composition.py`). "775 backend tests": true. "49 Pi tests": 64 exist now; they need stubs
+for two packages here. "Not tried with two people": still the next step.
