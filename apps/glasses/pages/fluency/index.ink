@@ -46,17 +46,29 @@ export default {
     const options = query || {};
     const backendUrl = typeof options.server === 'string' ? options.server : config.backendUrl;
     const userId = text(options.user) || config.userId;
-    const url = socketUrl(backendUrl, userId);
-
     this._strings = getStrings(pickLocale(navigator.languages));
-    this._demo = url === '';
-    this._state = initialState();
+    this._userId = userId;
+    this._detail = '';
+    this._state = initialState(userId);
     this._status = STATUS.CONNECTING;
     this._expiryTimer = null;
 
+    let url = '';
+    try {
+      url = socketUrl(backendUrl, userId);
+    } catch (error) {
+      // A bare host without a scheme: say so on screen instead of looping.
+      console.error('[mochi]', error.message);
+      this._badUrl = true;
+      this._demo = false;
+      this.render();
+      return;
+    }
+    this._demo = url === '';
+
     const handlers = {
       onMessage: (raw) => this.handleMessage(raw),
-      onStatus: (status) => this.handleStatus(status),
+      onStatus: (status, detail) => this.handleStatus(status, detail),
     };
     this._source = this._demo
       ? createMockSource(handlers)
@@ -68,7 +80,7 @@ export default {
 
   onShow() {
     if (!this._source) return;
-    this._state = initialState();
+    this._state = initialState(this._userId);
     this._source.start();
   },
 
@@ -85,8 +97,9 @@ export default {
     this.clearExpiryTimer();
   },
 
-  handleStatus(status) {
+  handleStatus(status, detail) {
     this._status = status;
+    this._detail = detail || '';
     if (status === STATUS.ONLINE) this._state = resetForNewConnection(this._state);
     this.render();
   },
@@ -134,7 +147,12 @@ export default {
       label = listening ? t.listening : t.micOff;
     } else if (this._status === STATUS.RECONNECTING) {
       label = t.reconnecting;
+    } else if (this._status === STATUS.WAKING_UP) {
+      label = t.wakingUp;
+    } else if (this._status === STATUS.REJECTED) {
+      label = this._detail ? `${t.rejected}: ${this._detail}` : t.rejected;
     }
+    if (this._badUrl) label = t.badUrl;
     if (this._demo) label = `${t.demo} - ${label}`;
 
     const count = hint ? hint.candidates.length : 0;
