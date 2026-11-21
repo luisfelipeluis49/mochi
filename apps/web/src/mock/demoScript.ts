@@ -13,7 +13,8 @@
 //   3. Jogar: Ana describes "umbrella" (only she sees it), Sophie guesses,
 //      Mochi says "Correct! Sophie, your turn to describe."
 //   4. Each phone gets its session summary (PROPOSED v0.5) and its word cards.
-//   Each phone also starts with one earlier session (yesterday) for the "Sessions" bars.
+//   Each phone also starts with one earlier session (yesterday) for the "Sessions" bars,
+//   and four analysed past conversations for the "My conversations" page (/me).
 //
 // This is NOT how visibility works for real: the gateway decides that. The mock
 // only imitates the gateway's routing table so each page sees what it would see.
@@ -22,7 +23,7 @@
 import {
   SCHEMA_VERSION,
   type Activity, type EventType, type Language, type LearningEvent, type LearningState, type MochiEvent,
-  type PayloadByType, type RoundResult, type Session, type SessionSummary,
+  type ConversationReport, type PayloadByType, type RoundResult, type Session, type SessionSummary,
 } from "../contracts.ts";
 import type { Who } from "../lib/who.ts";
 
@@ -47,6 +48,8 @@ export function mockWouldDeliver(event: MochiEvent, who: Who): boolean {
       return who.kind === "user" && event.payload.user_id !== null && event.payload.user_id === who.user;
     case "session.summary.created": // PROPOSED v0.5: only that person's phone
       return who.kind === "user" && event.payload.user_id === who.user;
+    case "conversation.report.created": // PROPOSED v0.5: only that person's phone
+      return who.kind === "user" && event.payload.user_id === who.user;
   }
 }
 
@@ -61,6 +64,56 @@ const SUMMARIES: Omit<SessionSummary, "summary_id" | "created_at">[] = [
     user_id: "ana", target_language: "en", speaking_minutes: 24,
     strengths: ["Describing objects"], to_review: ["Past tense: went, bought"],
     new_expressions: ["postpone", "umbrella"], next_step: "Describe & Guess: stories",
+  },
+];
+
+/** Four past conversations for the "My conversations" page (/me), English practice at work and with friends.
+ *  Mistakes go down over the week, so the trend shows progress. daysAgo is turned into a date on connect. */
+const PAST_CONVERSATIONS: (Omit<ConversationReport, "report_id" | "user_id" | "started_at"> & { daysAgo: number })[] = [
+  {
+    daysAgo: 6, title: "Weekly sync with the team", context: "meeting", target_language: "en", speaking_minutes: 18,
+    mistakes: [
+      { kind: "grammar", topic: "Past tense", said: "Yesterday I send the report to the client.", better: "Yesterday I sent the report to the client.", count: 4 },
+      { kind: "grammar", topic: "Prepositions", said: "I'm good in Excel.", better: "I'm good at Excel.", count: 2 },
+      { kind: "false_friend", topic: "False friends", said: "I pretend to finish it today.", better: "I intend to finish it today.", count: 1 },
+    ],
+    unknown_words: [
+      { expression: "postpone", meaning: "adiar", said_instead: "adiar", times: 2 },
+      { expression: "deadline", meaning: "prazo", said_instead: "the date to finish", times: 1 },
+    ],
+    strengths: ["Explaining your work"], focus_next: [],
+  },
+  {
+    daysAgo: 4, title: "Call with a client", context: "meeting", target_language: "en", speaking_minutes: 25,
+    mistakes: [
+      { kind: "grammar", topic: "Past tense", said: "Last week we receive your email.", better: "Last week we received your email.", count: 3 },
+      { kind: "word_choice", topic: "make / do / ask", said: "Can I make a question?", better: "Can I ask a question?", count: 2 },
+      { kind: "grammar", topic: "Prepositions", said: "We talked in the meeting on Monday about it.", better: "We talked about it in the meeting on Monday.", count: 1 },
+    ],
+    unknown_words: [
+      { expression: "follow up", meaning: "dar retorno", said_instead: "send news later", times: 1 },
+      { expression: "invoice", meaning: "nota fiscal", said_instead: "nota fiscal", times: 2 },
+    ],
+    strengths: ["Asking clear questions"], focus_next: [],
+  },
+  {
+    daysAgo: 2, title: "Coffee with Sophie", context: "conversation", target_language: "en", speaking_minutes: 30,
+    mistakes: [
+      { kind: "grammar", topic: "Past tense", said: "On Saturday I go to the beach.", better: "On Saturday I went to the beach.", count: 2 },
+      { kind: "false_friend", topic: "False friends", said: "Actually I live in São Paulo.", better: "Currently I live in São Paulo.", count: 1 },
+    ],
+    unknown_words: [{ expression: "umbrella", meaning: "guarda-chuva", said_instead: "guarda-chuva", times: 1 }],
+    strengths: ["Telling a story"], focus_next: [],
+  },
+  {
+    daysAgo: 1, title: "Weekly sync with the team", context: "meeting", target_language: "en", speaking_minutes: 20,
+    mistakes: [
+      { kind: "grammar", topic: "Past tense", said: "I finish the slides yesterday.", better: "I finished the slides yesterday.", count: 1 },
+      { kind: "word_choice", topic: "make / do / ask", said: "Let me make a question.", better: "Let me ask a question.", count: 1 },
+    ],
+    unknown_words: [{ expression: "deadline", meaning: "prazo", said_instead: "prazo", times: 1 }],
+    strengths: ["Explaining your work", "Asking clear questions"],
+    focus_next: ["Past tense: sent, received, finished", "Ask a question (not \"make\")", "Use: deadline, postpone, follow up"],
   },
 ];
 
@@ -169,6 +222,13 @@ export class MockGateway {
     this.emit("session.summary.created", { summary_id: "sum_prev_ana", user_id: "ana", target_language: "en",
       speaking_minutes: 12, strengths: ["Asking questions"], to_review: ["Prepositions: in / on / at"], new_expressions: ["actually"],
       next_step: "Company: talk about your weekend", created_at: yesterday });
+    // The "My conversations" page: this person's past analysed conversations (any user name works in the mock).
+    if (this.who.kind === "user") {
+      const user = this.who.user;
+      PAST_CONVERSATIONS.forEach(({ daysAgo, ...r }, i) => this.emit("conversation.report.created", {
+        ...r, report_id: `rep_${user}_${i + 1}`, user_id: user, started_at: this.iso(-daysAgo * 24 * 60 * 60 * 1000),
+      }));
+    }
     if (autoplay) this.later(1500, () => this.start());
   }
 

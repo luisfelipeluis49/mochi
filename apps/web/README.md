@@ -8,6 +8,7 @@ Updated for the **new product vision (Nov 2026)**: Ana and Sophie, "Oi, Mochi!" 
 |---|---|
 | `/home?device=home_pi_01` | Mochi's 3.5-inch screen: face (cream), "What do you want to do today?", hints with 1–3 options and who they are for, what Mochi says, the game. Tap anywhere, or hold (600 ms) |
 | `/m?user=ana` · `/m?user=sophie` | A person's phone, the analytics page: Start/Stop and mode, **Your progress** (new words, used with help, recalled in a game, minutes), **Your last session** (summary), **Sessions** (minutes per session), **My words** cards |
+| `/me?user=tasnim` | **My conversations**: the analytics of one person's real conversations (work meetings, calls, chats). Totals, mistakes per 10 minutes over time, practice next, most common mistakes ("You said → Better"), words you didn't know, the list of conversations. Needs the proposed `conversation.report.created` event; works now with `?mock=1` |
 | `/audience` | The projector. Never shows the secret word before `ROUND_RESULT` |
 
 Add to any URL: `?mock=1` (replay the demo without a backend), `&speed=4` (faster mock), `&debug=1` (last ten events), `&lang=pt-BR` (Portuguese text), `&projector=1` (a phone page drawn large, for the projector).
@@ -35,9 +36,10 @@ See `CODE_GUIDE.md` for every file, grouped by language.
 
 ## Report
 
-**Tested:** 28 logic tests (`npm test`) cover:
+**Tested:** 35 logic tests (`npm test`) cover:
 - duplicate events ignored, hint expiry, hint options, session summaries;
 - the analytics numbers (words by step, minutes added up, session order, bar sizes);
+- the "My conversations" numbers (totals, mistakes per 10 minutes, improvement, mistakes and words grouped, practice next);
 - the mode question winning over Mochi speaking it;
 - the full round (reveal, guessed, skipped, no double send, result then back to the face);
 - that the mock gives the secret word only to Mochi's screen, and words and summaries only to their owner.

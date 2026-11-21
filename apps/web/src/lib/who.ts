@@ -8,7 +8,7 @@
 
 /** The three kinds of connection. */
 export type Who =
-  | { kind: "user"; user: string }        // a phone:         /m?user=ana
+  | { kind: "user"; user: string }        // a phone:         /m?user=ana  (also /me?user=ana, "My conversations")
   | { kind: "device"; device: string }    // Mochi's screen:  /home?device=home_pi_01
   | { kind: "audience" };                 // the projector:   /audience
 

@@ -77,3 +77,11 @@ test("sequence numbers only go up", async () => {
   const events = await run(home);
   events.forEach((e, i) => i > 0 && assert.ok(e.sequence > events[i - 1].sequence));
 });
+
+test("conversation reports go only to their owner's page", async () => {
+  const reports = (events: MochiEvent[]) => events.flatMap((e) =>
+    e.type === "conversation.report.created" ? [e.payload.user_id] : []);
+  assert.deepEqual(reports(await run({ kind: "user", user: "tasnim" })), ["tasnim", "tasnim", "tasnim", "tasnim"]);
+  assert.equal(reports(await run(audience)).length, 0);
+  assert.equal(reports(await run(home)).length, 0);
+});
