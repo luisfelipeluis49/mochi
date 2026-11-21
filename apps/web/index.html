@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  index.html  —  LANGUAGE: HTML
+  The only HTML page. It is almost empty on purpose: React (src/main.tsx)
+  draws every screen inside <div id="root">.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport: fit phone screens and block pinch-zoom (Mochi's screen must not zoom on a tap) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Mochi</title>
+  </head>
+  <body>
+    <div id="root"></div> <!-- React puts the app here -->
+    <script type="module" src="/src/main.tsx"></script> <!-- start the app -->
+  </body>
+</html>
