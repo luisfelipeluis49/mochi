@@ -57,7 +57,9 @@ class ConnectionService:
         sent as `learning_event.created`, oldest first; the hub's delivery rules give each phone
         only its own person's words. Returns None if the client is gone.
         """
-        scoped = self._hub.for_session(target.session_id)  # its events carry its session
+        runtime = self._registry.peek(target.session_id)
+        # The session's own view knows its round's secret word; a session not started has none.
+        scoped = runtime.core.hub if runtime else self._hub.for_session(target.session_id)
         return await scoped.connect(target, sender, lambda: self._snapshot(target.session_id))
 
     def _snapshot(self, session_id: str) -> list[tuple[EventType, EventPayload]]:

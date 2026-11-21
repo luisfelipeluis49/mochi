@@ -7,9 +7,9 @@ from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.client_port import AgoraError
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.errors import ConflictError, NotFoundError
-from mochi_backend.gateway.session_registry import SessionRuntime
+from mochi_backend.gateway.session_registry import SessionRegistry, SessionRuntime
 from mochi_contracts import SessionStatus
-from tests.harness import ANA, Harness, make_harness
+from tests.harness import ANA, AUDIENCE, Harness, make_harness
 
 ADIAR = "I need to adiar my meeting tomorrow."
 PHONE = "p-1"
@@ -20,7 +20,7 @@ BEN_PHONE = ConnectionTarget("mobile", user_id="ben", session_id=PHONE)
 async def _both_running() -> tuple[Harness, SessionRuntime]:
     harness = make_harness()
     await harness.container.sessions.start()  # the Pi's session
-    phone = harness.container.registry.open(PHONE)
+    phone = await harness.container.registry.open(PHONE)
     await phone.sessions.start()
     return harness, phone
 
@@ -93,7 +93,7 @@ async def test_connecting_before_start_sees_an_idle_session_then_the_real_events
     early = await harness.connect(ANA_PHONE)
     assert early.types()[0] == "session.state.changed"
     assert harness.container.registry.peek(PHONE) is None  # connecting opens nothing
-    phone = harness.container.registry.open(PHONE)
+    phone = await harness.container.registry.open(PHONE)
     await phone.sessions.start()
     assert early.types().count("session.state.changed") == 2
 
@@ -127,11 +127,45 @@ async def test_the_phone_gets_its_own_join_block_not_the_pis() -> None:
 async def test_too_many_live_sessions_is_a_clear_conflict() -> None:
     harness = make_harness()
     for number in range(7):
-        harness.container.registry.open(f"s{number}")
-    with pytest.raises(ConflictError):
-        harness.container.registry.open("one-too-many")
+        await harness.container.registry.open(f"s{number}")
+    await harness.container.registry.open("one-too-many")  # the oldest (s0) makes room
+    ids = harness.container.registry.live_ids()
+    assert "s0" not in ids and "one-too-many" in ids and len(ids) == 8
     with pytest.raises(NotFoundError):
-        harness.container.registry.runtime("one-too-many")
+        harness.container.registry.runtime("s0")
+
+
+async def test_a_full_house_stops_the_evicted_sessions_agent() -> None:
+    harness = make_harness()
+    first = await harness.container.registry.open("s0")
+    await first.sessions.start()
+    for number in range(1, 8):
+        await harness.container.registry.open(f"s{number}")
+    await harness.container.registry.open("late")
+    assert harness.agora.stopped == ["agent-1"]
+
+
+async def test_only_the_demo_left_cannot_make_room() -> None:
+    harness = make_harness()
+    registry = SessionRegistry(
+        harness.container.registry.runtime("demo"),
+        lambda _: harness.container.registry.runtime("demo"),
+        limit=1,
+    )
+    with pytest.raises(ConflictError):
+        await registry.open("anyone")
+
+
+async def test_reconnecting_mid_round_still_hides_the_word_from_the_projector() -> None:
+    harness = make_harness()
+    await harness.container.sessions.start()
+    activity = await harness.container.activity.start()
+    secret = harness.container.core.store.round_secrets[0]
+    audience = await harness.connect(AUDIENCE)  # connects AFTER the round began
+    assert activity.state.value == "ACTIVE_ROUND"
+    assert secret not in "".join(audience.texts)
+    home = await harness.connect(ConnectionTarget("home", device_id="home_pi_01"))
+    assert secret in "".join(home.texts)  # the private prompt still reaches Mochi's own screen
 
 
 async def test_a_failed_start_leaves_no_session_behind() -> None:

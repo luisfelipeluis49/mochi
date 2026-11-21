@@ -62,15 +62,28 @@ class SessionRegistry:
             raise NotFoundError(f"unknown session {session_id!r}; start it first")
         return found
 
-    def open(self, session_id: str) -> SessionRuntime:
-        """The session, created if new. `ConflictError` (409) when too many are live."""
+    async def open(self, session_id: str) -> SessionRuntime:
+        """The session, created if new. When too many are live, the oldest phone session goes.
+
+        A phone that closed its tab without Stop leaves a session behind (Agora ends its agent
+        after the idle timeout, the session stays); making room for the new one is better than
+        refusing it. `ConflictError` (409) only when nothing but the demo session could go.
+        """
         found = self._live.get(session_id)
         if found is not None:
             return found
         if len(self._live) >= self._limit:
-            raise ConflictError(f"{self._limit} sessions are live; stop one first")
+            await self._evict_oldest()
         self._live[session_id] = self._build(session_id)
         return self._live[session_id]
+
+    async def _evict_oldest(self) -> None:
+        for session_id, runtime in self._live.items():  # oldest first
+            if session_id != SESSION_ID:
+                await runtime.sessions.stop()
+                self.close(session_id)
+                return
+        raise ConflictError(f"{self._limit} sessions are live; stop one first")
 
     def close(self, session_id: str) -> None:
         """Forget a stopped session (the demo session stays)."""

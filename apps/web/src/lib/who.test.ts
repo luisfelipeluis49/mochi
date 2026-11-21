@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { PI_SESSION as PI, isSessionId as okId, newSessionId as makeId, ownSessionId as own, sessionFor as follow } from "./phoneSession.ts";
 import { SECOND_USER, indexLinks, whoFromUrl, wsQuery } from "./who.ts";
 
 test("whoFromUrl reads the three kinds of page", () => {
@@ -24,8 +25,6 @@ test("Index links include ana, ben and the one-constant second person", () => {
   assert.ok(hrefs.includes("/m?user=ben"));
   assert.ok(hrefs.includes(`/m?user=${SECOND_USER}`));
 });
-
-import { PI_SESSION as PI, isSessionId as okId, newSessionId as makeId, ownSessionId as own, sessionFor as follow } from "./phoneSession.ts";
 
 test("/m?session=demo keeps the session in the Who; without it there is none", () => {
   assert.deepEqual(whoFromUrl("/m", "?user=ana&session=demo"), { kind: "user", user: "ana", session: "demo" });

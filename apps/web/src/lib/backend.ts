@@ -119,7 +119,12 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
   // The commands: each one is a POST to the address from AGENTS.md §6.4.
   const s = `/api/sessions/${session}`;
   return {
-    start: () => post(`${s}/start`),
+    // A phone's own session may still be there from a tab that was closed without Stop (its agent
+    // is gone): stop it first so Start always begins a fresh one. Stopping nothing is a 200.
+    start: async () => {
+      if (session !== PI_SESSION) await post(`${s}/stop`).catch(() => undefined);
+      await post(`${s}/start`);
+    },
     // The phone's own channel (never the Pi's). In the Pi's session the Pi listens: no phone mic.
     phoneAudio: async () => (session === PI_SESSION ? null : await getJson<AgoraJoin>(`${s}/agora`)),
     stop: () => post(`${s}/stop`),

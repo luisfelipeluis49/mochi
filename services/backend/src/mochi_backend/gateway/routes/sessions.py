@@ -29,7 +29,7 @@ async def start_session(
     When the device was woken by its wake phrase, Mochi greets in that language and the next
     sentence is meant for it.
     """
-    runtime = container.registry.open(session_id)
+    runtime = await container.registry.open(session_id)
     try:
         return await runtime.sessions.start(woken_by=body.woken_by if body else None)
     except UpstreamError:
