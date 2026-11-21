@@ -1,4 +1,4 @@
-"""M1A microphone as a stream of 20 ms frames (via arecord), plus local chimes."""
+"""M1A microphone as a stream of 20 ms frames (via arecord), plus local chimes and Mochi's own few words."""
 import asyncio
 import math
 import struct
@@ -63,6 +63,23 @@ def _tone_file(freqs: list[float], ms_each: int = 90) -> str:
             w.setframerate(SAMPLE_RATE)
             w.writeframes(bytes(frames))
     return str(path)
+
+
+SOUNDS = Path(__file__).resolve().parents[1] / "sounds"  # recorded sentences: {what}_{en|pt}.wav
+
+
+async def say(device: str, what: str, language: str = "en") -> bool:
+    """Mochi says one of its recorded sentences from its own speaker: no connection is needed.
+
+    what: "offline" | "online" | "hot". False when there is no such recording or the speaker is busy.
+    Example: `await say(dev, "offline", "pt")` plays sounds/offline_pt.wav ("Estou sem conexão.").
+    """
+    path = SOUNDS / f"{what}_{'pt' if language.startswith('pt') else 'en'}.wav"
+    if not path.exists():
+        return False
+    proc = await asyncio.create_subprocess_exec("aplay", "-q", "-D", device, str(path),
+                                                stderr=asyncio.subprocess.DEVNULL)
+    return await proc.wait() == 0
 
 
 async def chime(device: str, rising: bool) -> None:

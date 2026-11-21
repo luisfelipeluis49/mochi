@@ -60,6 +60,10 @@ mochi_backend_url = "http://localhost:8000"
 device_id = "home_pi_01"
 # Seconds between two reads of the device state during a session.
 poll_interval_s = 0.15
+# A backend hosted on a plan that puts idle services to sleep (Render's free plan: after 15
+# minutes, and waking takes about a minute, longer than a wake-up may take here): while Mochi
+# sleeps, touch the backend this often so it stays awake. 0 = never (a backend on this machine).
+keep_awake_s = 0
 # With kind = "mochi_backend": what happens when the backend cannot start a session (it is down or
 # cannot be reached).
 #   "none" (the default): the session does not start. The Pi never decides anything (AGENTS.md section 4)
@@ -169,6 +173,25 @@ enabled = true
 # Raise them if Mochi mixes people up; lower them if it often does not recognise anyone.
 min_score = 0.35
 min_margin = 0.08
+
+[network]
+# Mochi looks every few seconds whether it can reach the internet, and its face says so when it
+# cannot ("No connection"). A look only opens a connection to one of these addresses and closes it;
+# two failed looks in a row count as no connection.
+check = true
+hosts = ["1.1.1.1:443", "8.8.8.8:53"]
+every_s = 5
+timeout_s = 2
+
+[alerts]
+# What Mochi says by itself, from recordings in sounds/ (its usual voice needs the connection):
+# "I have no connection." when the connection is lost, or when it is called without one;
+# "I'm back online." when it returns; "I'm getting too hot." from hot_at degrees Celsius.
+# During a session it waits until the session has ended. Portuguese after "oi Mochi".
+speak = true
+language = "en"     # until someone has called it: "en" or "pt"
+hot_at = 80         # also where the temperature on the screen turns orange
+every_s = 120       # the same thing is not said again within this many seconds
 
 [face]
 # Mochi's face on its own screen (hardware/pi-setup/face.html) listens here for what Mochi is doing.

@@ -10,6 +10,9 @@ reconnects by itself, and with no page open this costs nothing.
     note   a smaller line under the word: its language and what it means ("English · garfo")
     pop    {"what": "volume" | "temp", "value": n, "n": counter}: a badge shown for a few seconds
     who    the name of the person Mochi recognises talking ("" = nobody)
+    temp   Mochi's own temperature in whole degrees Celsius (None = not known): always shown while it sleeps
+    hot    True while that is too warm ([alerts].hot_at): the temperature is then shown whatever Mochi does
+    online False while Mochi has no connection to the internet: the face says so
     round  a Describe & Guess round in front of the face, or None:
            {"tone": "ask" | "secret" | "result", "big": the large line, "small": the line under it}
 
@@ -29,7 +32,8 @@ class Face:
         self.enabled = cfg.get("enabled", True)
         self.host, self.port = cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8765))
         self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "pop": None,
-                            "who": "", "round": None}
+                            "who": "", "round": None, "temp": None, "hot": False,
+                            "online": True}
         self.on_tap = None  # on_tap(kind): the screen was touched ("tap") or held ("long")
         self._changed: set[asyncio.Event] = set()  # one per connected page
         self._server: asyncio.AbstractServer | None = None

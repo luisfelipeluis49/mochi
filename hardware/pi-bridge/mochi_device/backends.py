@@ -428,6 +428,16 @@ class MochiBackend:
         # with the device key: only then does a round come with its secret word
         return self._req("GET", f"/api/devices/{self.device_id}/state", timeout, auth=True)
 
+    async def ping(self) -> bool:
+        """Touch the backend so a hosted one does not go to sleep (a free Render service stops after
+        15 idle minutes and then takes about a minute to answer the next wake phrase)."""
+        try:
+            await asyncio.to_thread(self._req, "GET", "/healthz", 90)
+            return True
+        except Exception as e:
+            print(f"[mochi] backend not answering: {e!r}"[:300], flush=True)
+            return False
+
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
         self._stopped_by_backend = False
         self._done, self._told, self._round_there = set(), None, False
@@ -636,6 +646,9 @@ class WithFallback:
     async def voice_enrolled(self, name: str, lang: str, learned: bool) -> None:
         if self.active:
             await self.active.voice_enrolled(name, lang, learned)
+
+    async def ping(self) -> bool:
+        return await self.backend.ping()
 
     async def round_result(self, result: str) -> bool:
         return self.active is self.backend and await self.backend.round_result(result)  # only the backend plays

@@ -10,6 +10,7 @@ import threading
 import time
 import subprocess
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
@@ -538,6 +539,8 @@ class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
         sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
         sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
         sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
@@ -646,6 +649,8 @@ class RoundOnTheDeviceTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.cfg = {"session": {"inactivity_timeout_s": 30, "max_session_s": 600}, "audio": {"chimes": False}}
         sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.backend = MagicMock(spec=["round_result", "next_round"], round_result=AsyncMock(return_value=True),
                                 next_round=AsyncMock(return_value=True))
         sup.state, sup.last_speech = "ACTIVE", now - 20
@@ -721,6 +726,133 @@ class FaceTapTest(unittest.IsolatedAsyncioTestCase):
         face._server.close()
 
 
+class LookingAfterItselfTest(unittest.IsolatedAsyncioTestCase):
+    """Mochi's face always knows how warm Mochi is, and says when the connection is gone."""
+
+    def _supervisor(self, answers):
+        sup = Supervisor.__new__(Supervisor)
+        sup.face, sup.online = MagicMock(), True
+        sup.net = {"hosts": ["192.0.2.1:9"], "timeout_s": 0.1}
+        sup.dev, sup.state, sup.alerts, sup.told, sup.owed, sup.hot, sup.language = "null", "IDLE", {"speak": False}, {}, None, False, "en"
+        sup.loss_said = False
+        sup.cfg, sup.pinged, sup.backend = {"backend": {}}, -1e9, MagicMock(spec=["ping"], ping=AsyncMock(return_value=True))
+        patch = unittest.mock.patch("mochi_device.main.reachable", side_effect=answers)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return sup
+
+    async def test_one_failed_look_is_not_a_lost_connection_two_are(self):
+        sup = self._supervisor([True, False, False, True])
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=61.6):
+            misses = await sup._look_once(0)
+            sup.face.set.assert_called_with(temp=62, hot=False, online=True)
+            misses = await sup._look_once(misses)                  # the hotspot hiccups once
+            self.assertTrue(sup.online)
+            misses = await sup._look_once(misses)                  # ...and is really gone
+            sup.face.set.assert_called_with(temp=62, hot=False, online=False)
+            await sup._look_once(misses)
+            sup.face.set.assert_called_with(temp=62, hot=False, online=True)  # back at once
+
+    def _awake_to_alerts(self, sup):
+        sup.dev, sup.state, sup.language = "null", "IDLE", "en"
+        sup.alerts, sup.told, sup.owed, sup.hot, sup.loss_said = {"hot_at": 80, "every_s": 120}, {}, None, False, False
+        said = []
+
+        async def fake_say(device, what, language="en"):
+            said.append((what, language))
+            return True
+        patch = unittest.mock.patch("mochi_device.main.say", fake_say)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return said
+
+    async def test_losing_the_connection_is_said_aloud_and_so_is_its_return(self):
+        sup = self._supervisor([False, False, True, False, False])
+        said = self._awake_to_alerts(sup)
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=60.0):
+            misses = await sup._look_once(0)
+            self.assertEqual(said, [])                               # one failed look: nothing yet
+            misses = await sup._look_once(misses)
+            await asyncio.sleep(0)
+            self.assertEqual(said, [("offline", "en")])
+            misses = await sup._look_once(misses)
+            await asyncio.sleep(0)
+            self.assertEqual(said, [("offline", "en"), ("online", "en")])
+            misses = await sup._look_once(misses)
+            misses = await sup._look_once(misses)                    # a hotspot that comes and goes...
+            await asyncio.sleep(0)
+            self.assertEqual(len(said), 2)                           # ...is not announced every time
+
+    async def test_too_warm_is_said_once_until_it_has_cooled_down(self):
+        sup = self._supervisor([True] * 8)
+        said = self._awake_to_alerts(sup)
+        sup.language, sup.alerts["every_s"] = "pt", 0
+        for temp in (79.0, 81.0, 83.0, 78.0, 81.0, 74.0):
+            with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=temp):
+                await sup._look_once(0)
+        await asyncio.sleep(0)
+        self.assertEqual(said, [("hot", "pt")])                      # 81 after 78 is the same heat, not news
+        sup.face.set.assert_called_with(temp=74, hot=False, online=True)
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=82.0):
+            await sup._look_once(0)
+        await asyncio.sleep(0)
+        self.assertEqual(said, [("hot", "pt"), ("hot", "pt")])
+        sup.face.set.assert_called_with(temp=82, hot=True, online=True)
+
+    async def test_during_a_session_it_waits_and_says_it_afterwards_if_still_true(self):
+        sup = self._supervisor([False, False])
+        said = self._awake_to_alerts(sup)
+        sup.state = "ACTIVE"
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=60.0):
+            await sup._look_once(await sup._look_once(0))
+        await asyncio.sleep(0)
+        self.assertEqual((said, sup.owed), ([], "offline"))          # the speaker is Mochi's voice now
+        sup.state = "IDLE"
+        sup._tell_what_is_owed()
+        await asyncio.sleep(0)
+        self.assertEqual(said, [("offline", "en")])
+        sup.owed, sup.online = "offline", True                       # owed, but the connection came back
+        sup._tell_what_is_owed()
+        await asyncio.sleep(0)
+        self.assertEqual(len(said), 1)
+
+    async def test_called_without_a_connection_mochi_says_so_instead_of_trying(self):
+        sup = self._supervisor([False])                              # it looks once more, to be sure
+        said = self._awake_to_alerts(sup)
+        sup.cfg, sup.online, sup.told = {"audio": {"chimes": False}}, False, {"offline": time.monotonic()}
+        sup.kws, sup.game = MagicMock(known_voices=[]), RoundScreen()
+        sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
+        sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(), start=AsyncMock())
+        sup.state, sup.backend_end, sup.bye_asked, sup.start_timeout_s = "STARTING", None, None, 5
+        await sup.start_session("oi mochi")
+        await asyncio.sleep(0)
+        sup.backend.start.assert_not_awaited()
+        self.assertEqual((sup.state, said), ("IDLE", [("offline", "en")]))   # said again although just said
+
+    async def test_a_hosted_backend_is_kept_awake_while_mochi_sleeps(self):
+        sup = self._supervisor([True] * 4)
+        sup.cfg = {"backend": {"keep_awake_s": 240}}
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=60.0):
+            await sup._look_once(0)
+            await sup._look_once(0)                                  # five seconds later: not again yet
+            await asyncio.sleep(0)
+            self.assertEqual(sup.backend.ping.await_count, 1)
+            sup.pinged -= 300
+            sup.state = "ACTIVE"                                     # a session keeps it awake by itself
+            await sup._look_once(0)
+            sup.state, sup.cfg = "IDLE", {"backend": {}}             # a backend on this machine: never
+            await sup._look_once(0)
+            await asyncio.sleep(0)
+            self.assertEqual(sup.backend.ping.await_count, 1)
+
+    async def test_the_look_can_be_switched_off_and_a_missing_thermometer_is_no_error(self):
+        sup = self._supervisor([False])
+        sup.net = {"check": False}
+        with unittest.mock.patch("mochi_device.main.cpu_temperature", return_value=None):
+            await sup._look_once(0)
+        sup.face.set.assert_called_with(temp=None, hot=False, online=True)
+
+
 class OwnAgentVoicesTest(unittest.IsolatedAsyncioTestCase):
     """Mochi's own agent is told who is talking by updating its instructions over the network."""
 
@@ -781,6 +913,9 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = ("wake", "OI MOCHI")
         sup.kws.voice_events.return_value = [("speaker", "Ana", 0.6)]
         sup.face = MagicMock()
+        sup.game = RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
         sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(),
                                 start=AsyncMock(return_value=JoinInfo("app", "mochi-test", 1001, "tok")))
@@ -804,6 +939,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.cfg = {"audio": {"chimes": False}}
         sup.kws, sup.face, sup.game = MagicMock(known_voices=[]), MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.game.show(CARD, 1)                        # the backend already had a round on
         sup.bridge = MagicMock(start=AsyncMock(side_effect=OSError("no bridge")), stop=AsyncMock())
         sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(),
@@ -825,6 +962,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
         sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
         sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
         sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
@@ -852,6 +991,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
         sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
         sup.backend = MagicMock(spec=["stop", "set_voices"], stop=AsyncMock())
         sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
@@ -868,6 +1009,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.cfg = {"audio": {"chimes": False}}
         sup.kws, sup.face, sup.game = MagicMock(), MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
 
         async def never(wake_phrase=None):
@@ -888,6 +1031,8 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
         sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
         sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
         sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None

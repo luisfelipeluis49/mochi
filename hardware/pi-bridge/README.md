@@ -172,6 +172,39 @@ recognised less surely in the other, so it helps to say something in both while 
 | `[enroll Ana pt]` | learns Ana's voice from the next ~7 s of speech, then confirms aloud in that language |
 | `[forget Ana]` | drops that voiceprint |
 
+## Temperature and connection on the screen
+
+While Mochi sleeps, its own temperature is always in the bottom right corner of the screen (it turns
+orange from 80 °C). Every five seconds the supervisor also looks whether the internet can be
+reached: it opens a connection to `1.1.1.1:443` or `8.8.8.8:53` and closes it again, sending
+nothing. Two failed looks in a row count as no connection: a sleeping or waking Mochi then shows a
+full "No connection / Sem conexão" card, and during a session a small red sign sits in the bottom
+left corner. One good look brings the face back. The log says "no connection to the internet" and
+"the connection is back". Settings are under `[network]` in the config (`check = false` turns the
+look off). Being joined to a Wi-Fi network is not enough: a phone hotspot without signal is one.
+Try the screens: `face.html#mode=sleeping&temp=62&online=false`.
+
+Mochi also says it, in a few recorded words from its own speaker (its usual voice needs the
+connection it has just lost). The recordings are in `sounds/` and settings under `[alerts]`:
+
+| When | English (`*_en.wav`) | Portuguese (`*_pt.wav`) |
+|---|---|---|
+| the connection is lost, or Mochi is called without one | "I have no connection." | "Estou sem conexão." |
+| it returns (only if the loss was said) | "I'm back online." | "A conexão voltou." |
+| the processor reaches `hot_at` (80 °C) | "I'm getting too hot." | "Estou ficando quente demais." |
+
+- Portuguese after "oi Mochi", English after "hi Mochi"; before anyone has called it, `language`.
+- During a session nothing is said (the speaker is Mochi's voice then); it is said when the session
+  ends, if it is still true. The screen shows it at once: the red sign, and the temperature in
+  orange whatever Mochi is doing.
+- The same thing is not said twice within `every_s` (120 s), and "too hot" again only after Mochi
+  cooled down by five degrees in between. `speak = false` keeps it to the screen.
+- Called while there is no connection, Mochi looks once more and then says so instead of trying
+  for 25 seconds.
+- The voices are not Mochi's usual one: Piper voices that may be redistributed (English: a
+  LibriTTS-R speaker, CC BY 4.0; Portuguese: `faber`, CC0, a male voice). To replace one, put a
+  mono WAV with the same name in `sounds/`.
+
 ## Mochi does not hear itself
 
 Mochi's voice comes back through the M1A's own microphone, faint but recognisable, and the speech

@@ -19,9 +19,10 @@ import time
 from dotenv import load_dotenv
 
 from . import config as config_mod
-from .audio import Mic, chime
+from .audio import Mic, chime, say
 from .backends import make_backend
 from .bridge import BridgeProcess
+from .device import LOOK_AT, cpu_temperature, reachable
 from .face import MOODS, Face
 from .game import RoundScreen
 from .wakeword import KeywordSpotter
@@ -55,6 +56,16 @@ class Supervisor:
         self.face = Face(cfg.get("face"))
         self.face.on_tap = self.on_tap
         self.game = RoundScreen()  # a Describe & Guess round on the screen (game.py)
+        self.net = cfg.get("network", {})  # how the connection is watched (see _look_after_itself)
+        self.online = True
+        # what Mochi says by itself, from recordings (no connection needed): see _tell
+        self.alerts = cfg.get("alerts", {})
+        self.language = str(self.alerts.get("language", "en"))  # then the language of the last wake phrase
+        self.hot = False                       # warmer than [alerts].hot_at right now
+        self.told: dict[str, float] = {}       # when each thing was last said
+        self.loss_said = False                 # "no connection" was said, so its return will be too
+        self.pinged = -1e9                     # when the backend was last touched to keep it awake
+        self.owed: str | None = None           # something to say once the session has ended
         self.backend = make_backend(cfg, self.on_agent_event)
         self.mic = Mic(self.dev)
         self.bridge = BridgeProcess(self.dev, self.on_agent_voice)
@@ -180,6 +191,80 @@ class Supervisor:
             return "thinking"  # someone finished talking and Mochi has not answered yet
         return "awake"
 
+    # --- how warm Mochi is and whether it has a connection, for its face --------------------------
+    async def _look_after_itself(self) -> None:
+        """Every few seconds, for as long as Mochi runs."""
+        misses = 0
+        while True:
+            misses = await self._look_once(misses)
+            await asyncio.sleep(float(self.net.get("every_s", 5)))
+
+    async def _look_once(self, misses: int) -> int:
+        """One look. Returns how many looks in a row found no connection (one alone is not a loss)."""
+        temp = cpu_temperature()
+        found = not self.net.get("check", True) or await asyncio.to_thread(
+            reachable, tuple(self.net.get("hosts", LOOK_AT)), float(self.net.get("timeout_s", 2)))
+        misses = 0 if found else misses + 1
+        online = misses < 2
+        if online != self.online:
+            log("the connection is back" if online else "no connection to the internet (Wi-Fi or hotspot?)")
+            self.online = online
+            self._tell("online" if online else "offline")
+        self._feel(temp)
+        self.face.set(temp=None if temp is None else round(temp), hot=self.hot, online=online)
+        self._keep_backend_awake(online)
+        return misses
+
+    def _keep_backend_awake(self, online: bool) -> None:
+        """[backend].keep_awake_s: touch the backend this often while Mochi sleeps (0 = never)."""
+        every = float(self.cfg.get("backend", {}).get("keep_awake_s", 0))
+        now = time.monotonic()
+        if not every or not online or self.state != "IDLE" or now - self.pinged < every:
+            return
+        self.pinged = now
+        if hasattr(self.backend, "ping"):
+            asyncio.create_task(self.backend.ping())
+
+    def _feel(self, temp: float | None) -> None:
+        """Too warm is said once; again only after Mochi has cooled down by five degrees in between."""
+        limit = float(self.alerts.get("hot_at", 80))
+        if temp is None:
+            return
+        if temp >= limit and not self.hot:
+            self.hot = True
+            log(f"too warm: {temp:.0f} degrees")
+            self._tell("hot")
+        elif temp < limit - 5:
+            self.hot = False
+
+    def _tell(self, what: str) -> None:
+        """Say it out loud, from a recording: "offline" | "online" | "hot".
+
+        Not during a session (the speaker is Mochi's voice then): it is owed, and said when the
+        session ends if it is still true. Not twice within [alerts].every_s. "online" only after
+        "offline" was really said: a return nobody was told about needs no announcement.
+        """
+        now = time.monotonic()
+        if not self.alerts.get("speak", True):
+            return
+        if what == "online" and not self.loss_said:
+            return
+        if self.state != "IDLE":
+            self.owed = what
+            return
+        if what != "online" and now - self.told.get(what, -1e9) < float(self.alerts.get("every_s", 120)):
+            return
+        self.told[what] = now
+        self.loss_said = what == "offline" or (self.loss_said and what != "online")
+        asyncio.create_task(say(self.dev, what, self.language))
+
+    def _tell_what_is_owed(self) -> None:
+        """After a session: what could not be said during it, if it still holds."""
+        owed, self.owed = self.owed, None
+        still = {"offline": not self.online, "online": self.online, "hot": self.hot}
+        if owed and still.get(owed):
+            self._tell(owed)
+
     def _chime(self, rising: bool) -> None:
         if self.cfg["audio"].get("chimes", True):
             asyncio.create_task(chime(self.dev, rising))
@@ -187,6 +272,7 @@ class Supervisor:
     async def run(self) -> None:
         await self.mic.start()
         await self.face.start()
+        vitals = asyncio.create_task(self._look_after_itself())
         log(f"listening offline for {self.cfg['wake']['phrases']} (backend: {self.cfg['backend']['kind']})")
         try:
             while not self.quit.is_set():
@@ -200,6 +286,7 @@ class Supervisor:
                     continue
                 await self.on_frame(frame)
         finally:
+            vitals.cancel()
             await self.end_session("shutdown")
             await self.mic.stop()
             self.kws.close()
@@ -214,6 +301,7 @@ class Supervisor:
                 # whose voice said it, when the Pi knows it (reported just before the hit itself)
                 caller = next((e[1] for e in reversed(self.kws.voice_events()) if e[0] == "speaker" and e[1]), None)
                 log(f"wake phrase heard: {hit[1]!r}{f' from {caller}' if caller else ''} -> starting session")
+                self.language = "pt" if hit[1].lower().split()[0] in ("oi", "olá", "ola") else "en"
                 self.state = "STARTING"
                 self._chime(rising=True)
                 self.session_started = self.last_speech = now
@@ -277,9 +365,15 @@ class Supervisor:
             self.kws.voice_events()
             self.game.clear()  # the backend may have had a round on: not on a sleeping face
             self.face.keep(round=None)
-            self._chime(rising=False)
+            if isinstance(e, ConnectionError):  # called while there is no connection: say so, in words
+                self.told.pop("offline", None)
+                self._tell("offline")
+            else:
+                self._chime(rising=False)
 
     async def _bring_up(self, wake_phrase: str):
+        if not self.online and not await asyncio.to_thread(reachable, tuple(self.net.get("hosts", LOOK_AT))):
+            raise ConnectionError("no connection to the internet")  # looked again, to be sure: still none
         join = await self.backend.start(wake_phrase)
         await self.bridge.start(join)
         return join
@@ -302,6 +396,7 @@ class Supervisor:
         self.face.keep(round=None)
         self.face.set(level=0, word="", note="", mood="neutral", who="")
         self._chime(rising=False)
+        self._tell_what_is_owed()
         log("back to offline listening (no audio leaves the Pi)")
 
 
