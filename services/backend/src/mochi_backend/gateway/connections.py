@@ -7,7 +7,6 @@ from mochi_backend.gateway.roster import HOME_DEVICE_ID, USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_contracts import EventPayload, EventType
 
-
 SURFACES = ("ar",)
 EXPECTED = "user=ana|ben[&surface=ar], device=home_pi_01, view=audience"
 ECHO_LIMIT = 16  # a WebSocket close reason may be at most 123 bytes
@@ -18,15 +17,16 @@ def _echo(value: str) -> str:
 
 
 def parse_target(query: dict[str, str]) -> ConnectionTarget:
-    """Turn `?user=ana` / `?user=ana&surface=ar` / `?device=home_pi_01` / `?view=audience` into a target.
+    """Turn `?user=ana[&surface=ar]`, `?device=home_pi_01` or `?view=audience` into a target.
 
     Raises ValueError naming the value and the expected shape.
     """
     if "surface" in query and query["surface"] not in SURFACES:
         raise ValueError(f"unknown surface {_echo(query['surface'])!r}; expected surface=ar")
     if query.get("user") in USER_IDS:
-        kind = "glasses" if query.get("surface") == "ar" else "mobile"
-        return ConnectionTarget(kind, user_id=query["user"])
+        if query.get("surface") == "ar":
+            return ConnectionTarget("glasses", user_id=query["user"])
+        return ConnectionTarget("mobile", user_id=query["user"])
     if "surface" not in query and query.get("device") == HOME_DEVICE_ID:
         return ConnectionTarget("home", device_id=HOME_DEVICE_ID)
     if "surface" not in query and query.get("view") == "audience":

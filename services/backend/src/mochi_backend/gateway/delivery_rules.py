@@ -15,7 +15,7 @@ TargetKind = Literal["mobile", "home", "audience", "glasses"]
 
 @dataclass(frozen=True)
 class ConnectionTarget:
-    """What a connection asked to be: a person's phone, Mochi's own screen, the projector, or a person's AR glasses."""
+    """What a connection asked to be: a phone, Mochi's screen, the projector or AR glasses."""
 
     kind: TargetKind
     user_id: str | None = None
