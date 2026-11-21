@@ -1080,6 +1080,46 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.backend.stop.assert_awaited_once()
         sup.bridge.stop.assert_awaited_once()  # anything half-started is stopped
 
+    async def test_when_mochis_agent_leaves_the_call_the_session_ends(self):
+        """Seen live: the agent was gone after 99 s and the face stayed awake for another minute."""
+        now = time.monotonic()
+        sup = Supervisor.__new__(Supervisor)
+        sup.cfg = {"session": {"inactivity_timeout_s": 30, "max_session_s": 600}, "audio": {"chimes": False}}
+        sup.kws = MagicMock(last_voice=now)
+        sup.kws.feed.return_value = None
+        sup.kws.voice_events.return_value = []
+        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
+        sup.bridge = MagicMock(running=True, stop=AsyncMock())
+        sup.backend = MagicMock(spec=["stop"], stop=AsyncMock())
+        sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
+        sup.session_started = sup.last_speech = now
+        sup.agent_voice_at = sup.heard_at = sup.bye_until = 0.0
+        sup.on_agent_left(1002)
+        await sup.on_frame(b"\0" * 640)
+        self.assertEqual(sup.state, "IDLE")
+        sup.backend.stop.assert_awaited_once()
+        sup.backend_end = None
+        sup.on_agent_left(1002)                        # asleep: nothing to end
+        self.assertIsNone(sup.backend_end)
+
+    async def test_the_bridge_says_when_the_other_side_leaves(self):
+        from mochi_device.bridge import BridgeProcess
+        left = []
+        bridge = BridgeProcess("null", None, left.append)
+
+        class Lines:
+            def __init__(self, lines): self.lines = iter(lines)
+            def __aiter__(self): return self
+            async def __anext__(self):
+                try: return next(self.lines)
+                except StopIteration: raise StopAsyncIteration from None
+        bridge.proc = MagicMock(stderr=Lines([b"[bridge] remote user 1002 joined\n", b"[bridge] remote user 1002 left (0)\n"]))
+        with contextlib.redirect_stdout(io.StringIO()):
+            await bridge._relay_log()
+        self.assertEqual(left, [1002])
+
     async def test_leaves_the_channel_when_the_backend_stopped_the_session(self):
         now = time.monotonic()
         sup = Supervisor.__new__(Supervisor)  # no microphone, models or screen

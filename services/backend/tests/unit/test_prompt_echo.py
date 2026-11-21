@@ -52,3 +52,12 @@ def test_an_echoed_list_never_reaches_the_hint_rules() -> None:
     assert turns == ["Como você falar Esqueci a palavra. Limpar em inglês?"]
     assert "ears_prompt_echo" in harness.logger.names()
     assert harness.container.core.store.hints == []
+
+
+def test_the_lexicon_can_be_left_out_of_what_the_ears_are_told() -> None:
+    """Named words are also heard in unclear audio: faint background speech came back as
+    "People don't like to adiar reuniões" and got a hint (DECISIONS D-36)."""
+    named = vocabulary(load_settings({"MOCHI_AGORA_MODE": "fake"}))
+    assert "adiar" in named and "Mochi" in named  # the default is unchanged
+    plain = load_settings({"MOCHI_AGORA_MODE": "fake", "MOCHI_ASR_LEXICON_WORDS": "false"})
+    assert vocabulary(plain) == ("Mochi",)

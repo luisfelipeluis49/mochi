@@ -140,8 +140,9 @@ def vocabulary(settings: Settings) -> tuple[str, ...]:
     Example: `vocabulary(settings)[:2]` is `("Mochi", "adiar")`.
     """
     words = list(settings.mochi_asr_keywords)
-    for entry in Lexicon.load().entries:
-        words += [entry.word(Language.PT_BR), entry.word(Language.EN)]
+    if settings.mochi_asr_lexicon_words:
+        for entry in Lexicon.load().entries:
+            words += [entry.word(Language.PT_BR), entry.word(Language.EN)]
     return tuple(dict.fromkeys(words))[:MAX_KEYWORDS]
 
 
