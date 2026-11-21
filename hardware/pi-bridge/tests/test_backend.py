@@ -26,6 +26,8 @@ class FakeBackend:
         self.bodies: list[dict] = []    # what each of those carried
         self.statuses: list[dict] = []  # what the device reported about itself
         self.voices: list[dict] = []    # voices it said it learned
+        self.remote_voices: list[dict] = []  # what GET .../voices answers (its database)
+        self.puts: list[tuple[str, dict]] = []  # voiceprints sent: (path, body)
         self.commands: list[dict] = []  # what Mochi wants its body to do
         self.auth: dict[str, list] = {}  # Authorization header seen, per POST action
         fake = self
@@ -51,9 +53,18 @@ class FakeBackend:
                 fake.capturing = action == "start"
                 self.reply({})
 
+            def do_PUT(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                fake.puts.append((self.path, body))
+                fake.auth.setdefault("put", []).append(self.headers.get("Authorization"))
+                self.reply({})
+
             def do_GET(self):
                 if fake.broken:
                     return self.reply({"detail": "boom"}, 500)
+                if self.path.endswith("/voices"):
+                    fake.auth.setdefault("list", []).append(self.headers.get("Authorization"))
+                    return self.reply(fake.remote_voices)
                 self.reply({"capturing": fake.capturing, "agora": JOIN if fake.capturing else None,
                             "speaker_muted": fake.speaker_muted, "commands": fake.commands})
 
@@ -371,7 +382,7 @@ class Runner:
     def set_voices(self, known, speaker):
         self.calls.append(("voices", known, speaker))
 
-    async def voice_enrolled(self, name, lang, learned):
+    async def voice_enrolled(self, name, lang, learned, voiceprint=None):
         self.calls.append(("enrolled", name))
 
 
@@ -451,6 +462,28 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo")
         sup.on_agent_event("show", "queue")           # a bare word clears an older note
         sup.face.show_for.assert_called_with(10, word="queue", note="")
+
+
+class RestoredVoicesTest(unittest.TestCase):
+    def test_voices_from_the_backend_are_handed_to_the_listener(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.kws = MagicMock()
+        voices = [{"name": "Ana", "voiceprint": [0.1, 0.2]}]
+        sup.on_agent_event("voices", voices)
+        sup.kws.merge_voices.assert_called_once_with(voices)
+
+    def test_an_enrolled_voice_sends_its_vector_with_the_announcement(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.kws, sup.face, sup.enrol_lang = MagicMock(), MagicMock(), "pt"
+        sup.kws.voiceprints.return_value = {"Ana": {"voiceprint": [0.1], "saved": None}}
+        sup.backend = MagicMock(voice_enrolled=AsyncMock())
+
+        async def run():
+            sup.on_voice_event(("enrolled", "Ana", 9.0))
+            await asyncio.sleep(0)
+
+        asyncio.run(run())
+        sup.backend.voice_enrolled.assert_awaited_once_with("Ana", "pt", True, {"voiceprint": [0.1], "saved": None})
 
 
 class UsedWordTest(unittest.IsolatedAsyncioTestCase):
@@ -560,3 +593,58 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+PRINT = {"voiceprint": [0.1, 0.2, 0.3], "saved": "2026-11-21 15:00"}
+
+
+class VoiceSyncTest(unittest.IsolatedAsyncioTestCase):
+    """The Pi and the backend's database share voices: only ever adding, never removing."""
+
+    def setUp(self):
+        self.fake = FakeBackend()
+        self.events = []
+        self.backend = MochiBackend(self.fake.url, "home_pi_01", None, lambda k, v: self.events.append((k, v)),
+                                    device_key="s3cret")
+        self.here = {"Ana": PRINT}
+        self.backend.use_voices(lambda: self.here)
+
+    def tearDown(self):
+        self.fake.close()
+
+    async def test_a_learned_voice_sends_its_voiceprint_after_the_announcement(self):
+        await self.backend.voice_enrolled("Ana", "pt", True, PRINT)
+        self.assertEqual(self.fake.voices, [{"name": "Ana", "language": "pt", "learned": True}])
+        self.assertEqual(self.fake.puts, [("/api/devices/home_pi_01/voices/Ana/voiceprint",
+                                           {"language": "pt", **PRINT})])
+        self.assertEqual(self.fake.auth["put"], ["Bearer s3cret"])
+
+    async def test_a_voice_that_did_not_work_sends_no_voiceprint(self):
+        await self.backend.voice_enrolled("Ana", "pt", False, None)
+        self.assertEqual(self.fake.puts, [])
+
+    async def test_a_replaced_pi_gets_its_voices_back(self):
+        self.here = {}
+        self.fake.remote_voices = [{"name": "Ana", "user_id": "ana", "language": "pt", **PRINT}]
+        await self.backend.sync_voices()
+        self.assertEqual(self.events, [("voices", self.fake.remote_voices)])
+        self.assertEqual(self.fake.puts, [])
+        self.assertEqual(self.fake.auth["list"], ["Bearer s3cret"])
+
+    async def test_voices_only_this_pi_has_go_to_the_backend(self):
+        self.fake.remote_voices = [{"name": "ana", "user_id": "ana", "language": "pt", "voiceprint": None}]
+        await self.backend.sync_voices()
+        self.assertEqual(self.events, [])
+        self.assertEqual(self.fake.puts[0][1]["language"], "pt")  # keeps the language the backend knew
+
+    async def test_an_empty_backend_removes_nothing_here(self):
+        await self.backend.sync_voices()
+        self.assertEqual(self.events, [])
+        self.assertEqual(self.here, {"Ana": PRINT})
+        self.assertEqual(len(self.fake.puts), 1)  # it fills the backend instead
+
+    async def test_a_backend_that_is_down_is_not_a_problem(self):
+        self.fake.broken = True
+        self.fake.close()
+        await self.backend.sync_voices()
+        self.assertEqual(self.events, [])

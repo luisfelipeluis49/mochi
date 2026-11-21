@@ -2,6 +2,7 @@
 
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.event_hub import Connection, EventHub, Sender
+from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.roster import HOME_DEVICE_ID, USER_IDS
 from mochi_backend.gateway.session_store import SessionStore
@@ -39,13 +40,20 @@ def parse_target(query: dict[str, str]) -> ConnectionTarget:
 class ConnectionService:
     """Accepts clients and sends them the snapshot they are allowed to see."""
 
-    def __init__(self, hub: EventHub, store: SessionStore, live_hint: LiveHint) -> None:
+    def __init__(
+        self, hub: EventHub, store: SessionStore, live_hint: LiveHint, words: IntelligencePort
+    ) -> None:
         self._hub = hub
         self._store = store
         self._live_hint = live_hint
+        self._words = words
 
     async def accept(self, target: ConnectionTarget, sender: Sender) -> Connection | None:
-        """Send session state, activity state and any live hint, then register; None if gone."""
+        """Send session state, activity state, any live hint and saved words, then register.
+
+        Saved words are sent as `learning_event.created`, oldest first; the hub's delivery rules
+        give each phone only its own person's words. Returns None if the client is gone.
+        """
         return await self._hub.connect(target, sender, self._snapshot)
 
     def _snapshot(self) -> list[tuple[EventType, EventPayload]]:
@@ -59,6 +67,9 @@ class ConnectionService:
             events.append((EventType.ACTIVITY_PRIVATE_PROMPT, prompt))
         if self._live_hint.current is not None:
             events.append((EventType.HINT_CREATED, self._live_hint.current))
+        for user in USER_IDS:
+            saved = reversed(self._words.words_for(user))
+            events += [(EventType.LEARNING_EVENT_CREATED, word) for word in saved]
         return events
 
     def close(self, connection: Connection) -> None:

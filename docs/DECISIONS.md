@@ -452,3 +452,33 @@ scope; Kauê's `memory_store.py` and Matheus's contracts are touched, additively
   `storage_unavailable`.
 - **Contracts (additive):** `User`, `VoiceProfile`, `VoiceprintUpload` with examples and schema.
 - Test helper `make_harness` takes one more switch (`storage`), hence a `noqa: PLR0913` on it.
+
+## D-33: the clients use the stored data; local file storage for fake mode; failures are visible (2026-11-21)
+
+Follow-up to D-32 after a review of the Pi, the web apps and the failure modes. Luís asked that the Pi and the
+apps really use what the database holds. **Touches `hardware/pi-bridge` (Matheus) at his owner's request.**
+- **Phones get their words back.** The `?user=` WebSocket snapshot now also sends that person's saved words as
+  `learning_event.created` (oldest first), through the same delivery rules (nobody else's, never to the
+  projector, the Home view or glasses). No new event type; the web store upserts by `learning_event_id`.
+- **The Pi uses the stored voices.** After learning a voice it `PUT`s the vector (order: `POST .../voices`, then
+  `PUT`). At each session start (the backend is awake by then) it runs `sync_voices`: voices the backend has with a
+  vector and the Pi lacks are added on the listener thread (`Voices.merge`, a command like `enroll`); voices the
+  Pi has and the backend lacks are sent. **Union only: nothing is ever deleted by a sync**, so an empty or
+  memory-only backend cannot wipe `voices.json`. Known gap: a `[forget NAME]` command the Pi missed (it expires
+  after 30 s) can be undone by the next sync.
+- **Local file storage (fake mode only).** `MOCHI_LOCAL_DATA=<file>` keeps users, words and voices in one JSON
+  file (`storage/local_file.py`, written atomically, mode 0600 because it holds voiceprints) when `DATABASE_URL`
+  is empty. `DATABASE_URL` wins. **Refused in real mode** (a container's disk is wiped on each deploy).
+  Off by default, so tests write no files; `scripts/start-dev.sh` turns it on (`.local/`, git-ignored).
+  `/readyz` then shows `storage: local_file`.
+- **Failures are visible and healed.** A failed write is kept (newest per record) and retried before the next
+  write, in order; a write that comes after a failed one waits behind it without trying (one timeout per write at
+  most). A reset drops the older waiting word saves and goes to the end, so a retry cannot undo a later delete or reset. `/readyz` has `storage_unsaved`
+  (writes waiting); `ready` is **not** changed, because the memory fallback is meant to look healthy to
+  `smoke.sh` and `deploy.sh`. Startup tries the database 3 times, 2 s apart, and every statement has a 10 s
+  timeout. A database still down after that means memory only until the next restart (logged
+  `storage_unavailable` per attempt and `storage_fallback`).
+- **Validation:** a voice name needs at least one letter; `VoiceprintUpload.saved` is at most 64 characters
+  (contract change, schema regenerated).
+- **Reset** still keeps users and voices (so a reset does not make Mochi forget who is who).
+

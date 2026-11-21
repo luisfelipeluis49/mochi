@@ -196,4 +196,4 @@ class VoiceprintUpload(ContractModel):
 
     language: VoiceLanguage
     voiceprint: list[float]
-    saved: str | None
+    saved: Annotated[str | None, StringConstraints(max_length=64)]  # a timestamp text

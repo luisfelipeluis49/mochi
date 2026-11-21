@@ -59,3 +59,7 @@ class FakeStorage:
         """Delete by name."""
         self._enter("delete_voice")
         self.voices.pop(voice_key(name), None)
+
+    def unsaved_writes(self) -> int:
+        """Nothing waits in a fake."""
+        return 0

@@ -39,8 +39,11 @@ class Voices:
         self.model = sherpa_onnx.SpeakerEmbeddingExtractor(
             sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(MODEL), num_threads=threads))
         self.people: dict[str, np.ndarray] = {}
+        self.saved: dict[str, str] = {}  # when each voice was learned
         if store.exists():
-            self.people = {name: np.array(p["voiceprint"], np.float32) for name, p in json.loads(store.read_text()).items()}
+            kept = json.loads(store.read_text())
+            self.people = {name: np.array(p["voiceprint"], np.float32) for name, p in kept.items()}
+            self.saved = {name: p["saved"] for name, p in kept.items() if p.get("saved")}
 
     def embed(self, audio: np.ndarray) -> np.ndarray:
         stream = self.model.create_stream()
@@ -72,20 +75,52 @@ class Voices:
             vecs = keep
         print_ = vecs.mean(0)
         self.people[name] = print_ / np.linalg.norm(print_)
+        self.saved[name] = time.strftime("%Y-%m-%d %H:%M")
         self._save()
         return len(vecs) * 2.0
+
+    def export(self) -> dict[str, dict]:
+        """Every voice as the backend keeps it: name -> {"voiceprint": [...], "saved": text | None}."""
+        return {name: {"voiceprint": [round(float(x), 5) for x in p], "saved": self.saved.get(name)}
+                for name, p in self.people.items()}
+
+    def merge(self, profiles: list[dict]) -> list[str]:
+        """Add the voices from the backend that this Pi does not have (any letter case). Never
+        replaces or removes one, and skips a vector of the wrong size. Returns the names added."""
+        added = []
+        for profile in profiles:
+            name, vector = str(profile.get("name", "")).strip(), profile.get("voiceprint")
+            known = any(n.lower() == name.lower() for n in self.people)
+            if name and not known and self._fits(vector):
+                self.people[name] = np.array(vector, np.float32)
+                self.saved[name] = str(profile.get("saved") or time.strftime("%Y-%m-%d %H:%M"))
+                added.append(name)
+        if added:
+            self._save()
+        return added
+
+    def _fits(self, vector) -> bool:
+        """A usable voiceprint: numbers, finite, and as long as the ones already here."""
+        if not isinstance(vector, list) or not vector or len(vector) > 1024:
+            return False
+        if not all(isinstance(x, (int, float)) and np.isfinite(x) for x in vector):
+            return False
+        sizes = {len(p) for p in self.people.values()}
+        return sizes == {len(vector)} if sizes else len(vector) == getattr(self.model, "dim", len(vector))
 
     def forget(self, name: str) -> bool:
         found = next((n for n in self.people if n.lower() == name.lower()), None)
         if found:
             del self.people[found]
+            self.saved.pop(found, None)
             self._save()
         return bool(found)
 
     def _save(self) -> None:
         self.store.parent.mkdir(parents=True, exist_ok=True)
         self.store.write_text(json.dumps({
-            name: {"voiceprint": [round(float(x), 5) for x in p], "saved": time.strftime("%Y-%m-%d %H:%M")}
+            name: {"voiceprint": [round(float(x), 5) for x in p],
+                   "saved": self.saved.get(name) or time.strftime("%Y-%m-%d %H:%M")}
             for name, p in self.people.items()}))
         self.store.chmod(0o600)
 

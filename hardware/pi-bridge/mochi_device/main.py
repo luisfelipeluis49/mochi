@@ -53,6 +53,8 @@ class Supervisor:
         self.kws = KeywordSpotter(cfg)
         self.face = Face(cfg.get("face"))
         self.backend = make_backend(cfg, self.on_agent_event)
+        if hasattr(self.backend, "use_voices"):
+            self.backend.use_voices(self.kws.voiceprints)  # so the backend's database and this Pi share voices
         self.mic = Mic(self.dev)
         self.bridge = BridgeProcess(self.dev, self.on_agent_voice)
         self.state = "IDLE"
@@ -90,6 +92,9 @@ class Supervisor:
             log(f"learning {name}'s voice")
             self.kws.enroll(name)
             self.face.show_for(30, who=f"{name} ...")
+        elif kind == "voices":  # voices the backend has and this Pi lacks (a replaced Pi): add them
+            log("restoring voices from the backend: " + ", ".join(str(v.get("name")) for v in value))
+            self.kws.merge_voices(value)
         elif kind == "forget":
             log(f"forgetting {value}'s voice")
             self.kws.forget(value)
@@ -117,7 +122,8 @@ class Supervisor:
             log(f"learned {name}'s voice from {amount:.0f} s of speech")
             self.face.show_for(6, who=name, mood="proud")
             tell(self.kws.known_voices, name)
-            asyncio.create_task(self.backend.voice_enrolled(name, self.enrol_lang, True))
+            asyncio.create_task(self.backend.voice_enrolled(
+                name, self.enrol_lang, True, self.kws.voiceprints().get(name)))
         elif kind == "enroll_failed":
             log(f"could not learn {name}'s voice: only {amount:.0f} s of speech")
             self.face.set(who="")

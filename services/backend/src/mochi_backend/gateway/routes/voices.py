@@ -6,12 +6,12 @@ from fastapi import APIRouter, HTTPException, Path
 
 from mochi_backend.gateway.device_link import require_device
 from mochi_backend.gateway.routes.dependencies import ContainerDep
-from mochi_backend.gateway.routes.devices import NAME_LIMIT, DeviceKey, PersonName
+from mochi_backend.gateway.routes.devices import NAME_LIMIT, NAME_PATTERN, DeviceKey
 from mochi_backend.gateway.voice_directory import InvalidVoiceprintError
 from mochi_contracts import VoiceprintUpload, VoiceProfile
 
 router = APIRouter()
-VoiceName = Annotated[str, Path(max_length=NAME_LIMIT), PersonName]
+VoiceName = Annotated[str, Path(max_length=NAME_LIMIT, pattern=NAME_PATTERN)]
 
 
 @router.get("/api/devices/{device_id}/voices", dependencies=[DeviceKey])

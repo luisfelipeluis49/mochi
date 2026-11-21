@@ -11,6 +11,7 @@ from mochi_backend.storage.port import voice_key
 from mochi_contracts import Language, LearningEvent, User, VoiceProfile
 
 CONNECT_TIMEOUT_SECONDS = 5
+STATEMENT_TIMEOUT_MS = 10_000  # a database that accepts the connection and then hangs
 
 
 class PostgresStorage:
@@ -21,7 +22,12 @@ class PostgresStorage:
         self._logger = logger
 
     def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._url, connect_timeout=CONNECT_TIMEOUT_SECONDS, autocommit=True)
+        return psycopg.connect(
+            self._url,
+            connect_timeout=CONNECT_TIMEOUT_SECONDS,
+            autocommit=True,
+            options=f"-c statement_timeout={STATEMENT_TIMEOUT_MS}",
+        )
 
     def prepare(self) -> None:
         """Create the tables that are missing. Raises `psycopg.Error` when unreachable."""
@@ -85,7 +91,8 @@ class PostgresStorage:
             try:
                 kept.append(parse(row))
             except (ValidationError, ValueError):
-                self._logger.log("storage_row_skipped", {"table": table, "key": str(row[0])[:60]})
+                key = "" if table == "voices" else str(row[0])[:60]  # a voice name is personal
+                self._logger.log("storage_row_skipped", {"table": table, "key": key})
         return kept
 
     def save_voice(self, voice: VoiceProfile) -> None:
@@ -105,6 +112,10 @@ class PostgresStorage:
         """Delete one voice and its vector."""
         with self._connect() as connection:
             connection.execute(schema.DELETE_VOICE, (voice_key(name),))
+
+    def unsaved_writes(self) -> int:
+        """Writes are direct here (`WriteBehindStorage` queues them), so nothing is waiting."""
+        return 0
 
 
 def _event(row: tuple[object, ...]) -> LearningEvent:

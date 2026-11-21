@@ -107,3 +107,18 @@ def test_mochi_forgetting_a_voice_deletes_the_stored_voiceprint_too() -> None:
     client.post("/dev/sessions/demo/turn", json={"text": "Hi Mochi, please forget my voice."})
     assert list(storage.voices) == ["ben"]
     assert [v["name"] for v in client.get(VOICES, headers=KEY).json()] == ["Ben"]
+
+
+def test_a_voice_name_needs_a_letter_and_the_saved_text_is_bounded() -> None:
+    client = _client(FakeStorage())
+    for name in ("%20", "-", "%27", "J.R."):  # blank, dash, apostrophe, a dot
+        assert (
+            client.put(f"{VOICES}/{name}/voiceprint", json=UPLOAD, headers=KEY).status_code == 422
+        )
+    assert client.put(f"{VOICES}/Zoë/voiceprint", json=UPLOAD, headers=KEY).status_code == 200
+    long_text = {**UPLOAD, "saved": "x" * 65}
+    assert client.put(f"{VOICES}/Ana/voiceprint", json=long_text, headers=KEY).status_code == 422
+
+
+def test_readyz_counts_writes_that_are_waiting_to_be_retried() -> None:
+    assert _client(FakeStorage()).get("/readyz").json()["storage_unsaved"] == 0

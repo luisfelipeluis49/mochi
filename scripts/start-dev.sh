@@ -10,6 +10,9 @@ need uv "install from https://docs.astral.sh/uv/"
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 export MOCHI_AGORA_MODE="${MOCHI_AGORA_MODE:-fake}"
 export MOCHI_ENABLE_DEV_ROUTES="${MOCHI_ENABLE_DEV_ROUTES:-true}"
+if [ "$MOCHI_AGORA_MODE" = "fake" ] && [ -z "${DATABASE_URL:-}" ]; then  # saved words and voices survive a restart
+  export MOCHI_LOCAL_DATA="${MOCHI_LOCAL_DATA:-$ROOT/.local/mochi-data.json}"
+fi
 
 WEB_PID=""
 if [ -f "$ROOT/apps/web/package.json" ] && grep -q '"dev"' "$ROOT/apps/web/package.json"; then

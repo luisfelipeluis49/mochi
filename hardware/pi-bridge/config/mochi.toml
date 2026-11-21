@@ -157,7 +157,8 @@ Keep every reply to one or two short spoken sentences: no lists, no emoji, numbe
 
 [voices]
 # Mochi can learn voices ("Mochi, learn my voice, I'm Ana") and then knows who is talking. The
-# voiceprints stay on the Pi, in data/voices.json; delete that file to forget everyone.
+# voiceprints are kept on the Pi, in data/voices.json, and copied to the backend's database (a
+# replaced Pi gets them back at its first session). To forget someone, ask Mochi to forget them.
 enabled = true
 # How alike a voice must be to a known one (0-1), and how much more alike than to the next person.
 # Raise them if Mochi mixes people up; lower them if it often does not recognise anyone.
