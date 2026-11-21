@@ -536,7 +536,10 @@ class MochiBackend:
             except BaseException:
                 pass
             self._poller = None
-        await self._mute(False)  # never leave the speaker silent after a session
+        try:
+            await self._mute(False)  # never leave the speaker silent after a session
+        except Exception as e:  # a mixer that does not answer must not skip the stop below
+            print(f"[mochi] unmuting the speaker: {e!r}"[:300], flush=True)
         if self._stopped_by_backend:
             # It is already stopped there. Asking again could end a session someone has just started.
             self._stopped_by_backend = False
@@ -556,10 +559,9 @@ class WithFallback:
         self.active = None  # whoever runs the current session
 
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
+        self.active = self.backend  # from the first moment: a cancelled start can still be stopped
         try:
-            join = await self.backend.start(wake_phrase)
-            self.active = self.backend
-            return join
+            return await self.backend.start(wake_phrase)
         except Exception as e:
             print(f"[mochi] the backend could not start a session ({e!r}); Mochi's own agent takes this one"[:300],
                   flush=True)
@@ -593,7 +595,7 @@ def make_backend(cfg: dict, on_event=None):
         backend = MochiBackend(b["mochi_backend_url"], b["device_id"], device, on_event,
                                float(b.get("poll_interval_s", 0.3)),
                                device_key=os.environ.get("MOCHI_DEVICE_KEY") or b.get("device_key"))
-        if b.get("fallback", "test_agent") != "test_agent":
+        if b.get("fallback", "none") != "test_agent":
             return backend
         if not (os.environ.get("AGORA_APP_ID") and os.environ.get("AGORA_APP_CERTIFICATE")):
             print("[mochi] no fallback: Mochi's own agent needs AGORA_APP_ID and AGORA_APP_CERTIFICATE in .env",

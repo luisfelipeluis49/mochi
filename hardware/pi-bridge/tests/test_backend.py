@@ -332,6 +332,16 @@ class FallbackConfigTest(unittest.TestCase):
         with patch.dict(os.environ, {"AGORA_APP_ID": "a", "AGORA_APP_CERTIFICATE": "c"}):
             self.assertIsInstance(make_backend(cfg), MochiBackend)
 
+    def test_off_when_the_config_does_not_say(self):
+        import os
+        from unittest.mock import patch
+
+        from mochi_device.backends import make_backend
+        cfg = self._cfg()
+        del cfg["backend"]["fallback"]
+        with patch.dict(os.environ, {"AGORA_APP_ID": "a", "AGORA_APP_CERTIFICATE": "c"}):
+            self.assertIsInstance(make_backend(cfg), MochiBackend)
+
     def test_available_when_switched_on(self):
         import os
         from unittest.mock import patch
@@ -396,6 +406,19 @@ class WithFallbackTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await both.start("hi mochi")).channel, "mochi-test")
         self.assertEqual(backend.calls, [("start", "hi mochi"), "stop"])
         self.assertEqual(own.calls, [("start", "hi mochi")])
+
+    async def test_a_start_cancelled_in_flight_can_still_be_stopped(self):
+        backend, own = Runner("mochi-demo"), Runner("mochi-test")
+
+        async def never(wake_phrase=None):
+            await asyncio.sleep(3600)
+        backend.start = never
+        both = WithFallback(backend, own)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(both.start("hi mochi"), 0.1)
+        await both.stop()
+        self.assertEqual(backend.calls, ["stop"])  # its POST may have gone through
+        self.assertEqual(own.calls, [])
 
     async def test_both_are_told_whose_voices_are_known(self):
         backend, own = Runner("a"), Runner("b")
