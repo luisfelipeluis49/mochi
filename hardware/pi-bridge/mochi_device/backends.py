@@ -367,7 +367,8 @@ class MochiBackend:
     STATUS_EVERY_S = 1.0  # how often the volume and temperature are read while a session runs
 
     def __init__(self, base_url: str, device_id: str, device: Device | None = None, on_event=None,
-                 poll_interval_s: float = 0.15, session_id: str = "demo"):
+                 poll_interval_s: float = 0.15, session_id: str = "demo", device_key: str | None = None):
+        self.device_key = device_key or None  # sent as a Bearer token on status and voices; never logged
         self.base = base_url.rstrip("/")
         self.device_id = device_id
         self.device = device
@@ -383,10 +384,16 @@ class MochiBackend:
         self._told = None  # the last status the backend was given
         self._status_failing = False
 
-    def _req(self, method: str, path: str, timeout: float = 10, body: dict | None = None) -> dict:
+    def __repr__(self) -> str:
+        return f"MochiBackend({self.base!r}, {self.device_id!r})"  # no device key
+
+    def _req(self, method: str, path: str, timeout: float = 10, body: dict | None = None,
+             auth: bool = False) -> dict:
         payload = json.dumps(body or {}).encode() if method == "POST" else None
-        req = urllib.request.Request(self.base + path, method=method,
-                                     headers={"Content-Type": "application/json"}, data=payload)
+        headers = {"Content-Type": "application/json"}
+        if auth and self.device_key:
+            headers["Authorization"] = f"Bearer {self.device_key}"
+        req = urllib.request.Request(self.base + path, method=method, headers=headers, data=payload)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             reply = r.read()
             return json.loads(reply) if reply else {}
@@ -418,13 +425,18 @@ class MochiBackend:
         """Learning a voice ended; the backend has Mochi say so."""
         body = {"name": name, "language": "pt" if lang == "pt" else "en", "learned": learned}
         try:
-            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/voices", 5, body)
+            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/voices", 5, body, True)
         except Exception as e:
             print(f"[mochi] backend voices: {e!r}"[:300], flush=True)
 
     async def _report(self) -> None:
         """Tell the backend the volume, temperature and voices, if any of them changed."""
-        volume, temp = await asyncio.to_thread(read_status, self.device) if self.device else (None, None)
+        try:
+            volume, temp = await asyncio.to_thread(read_status, self.device) if self.device else (None, None)
+        except Exception as e:  # a mixer that does not answer: report what we can, and go on
+            if not self._status_failing:
+                print(f"[mochi] reading volume and temperature: {e!r}"[:300], flush=True)
+            volume, temp = None, None
         known, speaker = self._voices
         status = {"volume": volume, "temperature": temp, "voices": known, "speaker": speaker}
         told = self._told
@@ -432,7 +444,7 @@ class MochiBackend:
                 and not _moved((volume, temp), (told["volume"], told["temperature"])):
             return
         try:
-            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, status)
+            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, status, True)
             self._status_failing = False
         except Exception as e:  # not worth a session: Mochi just knows a little less about itself
             if not self._status_failing:
@@ -445,39 +457,76 @@ class MochiBackend:
             if command.get("command_id") in self._done:
                 continue
             self._done.add(command.get("command_id"))
-            await self.body.act(str(command.get("kind", "")).lower(), str(command.get("value", "")))
+            try:
+                await self.body.act(str(command.get("kind", "")).lower(), str(command.get("value", "")))
+            except Exception as e:  # carried out once: a failure is not retried, nor does it block the rest
+                print(f"[mochi] command {command.get('kind')!r} failed: {e!r}"[:300], flush=True)
 
     async def _mute(self, muted: bool) -> None:
         if muted != self._muted:
-            self._muted = muted
             if self.device:
                 await asyncio.to_thread(self.device.set_muted, muted)
+            self._muted = muted  # only once it worked: a failed mixer call is tried again
+
+    async def _sleep(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
 
     async def _poll(self) -> None:
-        """While the session runs: follow the device state, and keep the backend up to date."""
-        failing, since_status = False, 0.0
-        while True:
-            await asyncio.sleep(self.poll_interval_s)
-            since_status += self.poll_interval_s
-            try:
-                state = await asyncio.to_thread(self._state, 3)
-            except Exception as e:  # a failed poll must not end the session; say so once
-                if not failing:
-                    print(f"[mochi] backend state: {e!r}"[:300], flush=True)
-                    failing = True
-                continue
-            if failing:
-                print("[mochi] backend state: reachable again", flush=True)
-                failing = False
-            if not (state.get("capturing") and state.get("agora")):
-                self._stopped_by_backend = True
-                self.on_event("stopped", "backend stopped capturing")
-                return
-            await self._mute(bool(state.get("speaker_muted")))
-            await self._obey(state.get("commands") or [])
-            if since_status >= self.STATUS_EVERY_S:
-                since_status = 0.0
-                await self._report()
+        """While the session runs: follow the device state, and keep the backend up to date.
+
+        Each step is guarded on its own: one failure (a mixer that times out, a bad command) is
+        logged once and the loop goes on, so Stop is always noticed. If the loop must end anyway,
+        the supervisor is told, so the bridge stops sending audio."""
+        failing: set[str] = set()
+
+        def fail(step: str, e: BaseException) -> None:
+            if step not in failing:
+                print(f"[mochi] backend {step}: {e!r}"[:300], flush=True)
+                failing.add(step)
+
+        def ok(step: str) -> None:
+            if step in failing:
+                failing.discard(step)
+                if step == "state":
+                    print("[mochi] backend state: reachable again", flush=True)
+
+        since_status = 0.0
+        try:
+            while True:
+                await self._sleep(self.poll_interval_s)
+                since_status += self.poll_interval_s
+                try:
+                    state = await asyncio.to_thread(self._state, 3)
+                except Exception as e:  # a failed poll must not end the session; say so once
+                    fail("state", e)
+                    continue
+                ok("state")
+                if not (state.get("capturing") and state.get("agora")):
+                    self._stopped_by_backend = True
+                    self.on_event("stopped", "backend stopped capturing")
+                    return
+                try:
+                    await self._mute(bool(state.get("speaker_muted")))
+                    ok("speaker")
+                except Exception as e:
+                    fail("speaker", e)
+                try:
+                    await self._obey(state.get("commands") or [])
+                    ok("commands")
+                except Exception as e:
+                    fail("commands", e)
+                if since_status >= self.STATUS_EVERY_S:
+                    since_status = 0.0
+                    try:
+                        await self._report()
+                        ok("report")
+                    except Exception as e:
+                        fail("report", e)
+        except asyncio.CancelledError:
+            raise
+        except BaseException as e:  # the poller cannot go on: do not leave the microphone streaming
+            print(f"[mochi] backend poller ended: {e!r}"[:300], flush=True)
+            self.on_event("stopped", "backend poller failed")
 
     async def stop(self) -> None:
         if self._poller:
@@ -487,7 +536,10 @@ class MochiBackend:
             except BaseException:
                 pass
             self._poller = None
-        await self._mute(False)  # never leave the speaker silent after a session
+        try:
+            await self._mute(False)  # never leave the speaker silent after a session
+        except Exception as e:  # a mixer that does not answer must not skip the stop below
+            print(f"[mochi] unmuting the speaker: {e!r}"[:300], flush=True)
         if self._stopped_by_backend:
             # It is already stopped there. Asking again could end a session someone has just started.
             self._stopped_by_backend = False
@@ -507,13 +559,16 @@ class WithFallback:
         self.active = None  # whoever runs the current session
 
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
+        self.active = self.backend  # from the first moment: a cancelled start can still be stopped
         try:
-            join = await self.backend.start(wake_phrase)
-            self.active = self.backend
-            return join
+            return await self.backend.start(wake_phrase)
         except Exception as e:
             print(f"[mochi] the backend could not start a session ({e!r}); Mochi's own agent takes this one"[:300],
                   flush=True)
+            try:  # its POST may have succeeded before it failed: end that session before starting another
+                await self.backend.stop()
+            except Exception as stop_error:
+                print(f"[mochi] backend stop: {stop_error!r}"[:300], flush=True)
         self.active = self.own_agent
         return await self.own_agent.start(wake_phrase)
 
@@ -538,8 +593,9 @@ def make_backend(cfg: dict, on_event=None):
     if b["kind"] == "mochi_backend":
         device = Device(cfg["audio"])
         backend = MochiBackend(b["mochi_backend_url"], b["device_id"], device, on_event,
-                               float(b.get("poll_interval_s", 0.3)))
-        if b.get("fallback", "test_agent") != "test_agent":
+                               float(b.get("poll_interval_s", 0.3)),
+                               device_key=os.environ.get("MOCHI_DEVICE_KEY") or b.get("device_key"))
+        if b.get("fallback", "none") != "test_agent":
             return backend
         if not (os.environ.get("AGORA_APP_ID") and os.environ.get("AGORA_APP_CERTIFICATE")):
             print("[mochi] no fallback: Mochi's own agent needs AGORA_APP_ID and AGORA_APP_CERTIFICATE in .env",

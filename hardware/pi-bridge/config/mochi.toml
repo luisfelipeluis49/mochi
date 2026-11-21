@@ -31,6 +31,9 @@ ignore = ["mochila"]
 inactivity_timeout_s = 30
 # Hard limit for one session, in seconds (protects Agora credits).
 max_session_s = 600
+# Giving up on a wake-up that has not produced a session after this many seconds (backend or Agora
+# not answering): whatever was half-started is stopped and Mochi listens for the wake phrase again.
+start_timeout_s = 25
 
 [audio]
 device = "plughw:CARD=M1A,DEV=0"
@@ -52,9 +55,18 @@ device_id = "home_pi_01"
 # Seconds between two reads of the device state during a session.
 poll_interval_s = 0.15
 # With kind = "mochi_backend": what happens when the backend cannot start a session (it is down or
-# cannot be reached). "test_agent": Mochi's own agent ([test_agent] below) takes that session, so
-# Mochi always answers when called. "none": the session does not start.
-fallback = "test_agent"
+# cannot be reached).
+#   "none" (the default): the session does not start. The Pi never decides anything (AGENTS.md section 4)
+#                         and holds no Agora App Certificate.
+#   "test_agent":         Mochi's own agent ([test_agent] below) takes that session, so Mochi always
+#                         answers when called. THE SWITCH: set it here or in config/mochi.local.toml.
+#                         It needs AGORA_APP_ID and AGORA_APP_CERTIFICATE on the Pi and the agent then
+#                         decides on the device: use it for demos without a reachable backend only.
+fallback = "none"
+# Shared key the backend asks for on POST /api/devices/{id}/status and /voices (sent as
+# "Authorization: Bearer <key>"). Prefer the environment variable MOCHI_DEVICE_KEY (in .env); a value
+# here is used only when the variable is not set. Never printed to the log.
+# device_key = ""
 
 [test_agent]
 channel = "mochi-test"

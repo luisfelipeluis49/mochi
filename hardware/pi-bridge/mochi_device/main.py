@@ -58,6 +58,8 @@ class Supervisor:
         self.state = "IDLE"
         self.quit = asyncio.Event()
         self._start_task: asyncio.Task | None = None
+        # one wake-up may take this long (backend, Agora, bridge); then it is given up and Mochi listens again
+        self.start_timeout_s = float(cfg.get("session", {}).get("start_timeout_s", 25))
         self.session_started = self.last_speech = 0.0
         self.agent_voice_at = self.heard_at = self.bye_until = 0.0
         self.enrol_lang = "en"
@@ -206,18 +208,26 @@ class Supervisor:
         try:
             if hasattr(self.backend, "set_voices"):
                 self.backend.set_voices(self.kws.known_voices, None)
-            join = await self.backend.start(wake_phrase)
-            await self.bridge.start(join)
+            join = await asyncio.wait_for(self._bring_up(wake_phrase), self.start_timeout_s)
             self.state = "ACTIVE"
             self.last_speech = time.monotonic()
             log(f"session active in channel {join.channel!r} after {self.last_speech - t0:.1f} s; "
                 f"say {self.cfg['goodbye']['phrases'][0]!r} to end")
-        except Exception as e:
-            log(f"could not start session: {e}")
-            await self.backend.stop()
+        except Exception as e:  # includes the timeout
+            log(f"could not start session: {e!r}")
+            for stop in (self.bridge.stop, self.backend.stop):  # whatever got half-started
+                try:
+                    await stop()
+                except Exception as stop_error:
+                    log(f"cleanup after a failed start: {stop_error!r}")
             self.state = "IDLE"
             self.kws.reset()
             self._chime(rising=False)
+
+    async def _bring_up(self, wake_phrase: str):
+        join = await self.backend.start(wake_phrase)
+        await self.bridge.start(join)
+        return join
 
     async def end_session(self, reason: str) -> None:
         if self.state == "IDLE":

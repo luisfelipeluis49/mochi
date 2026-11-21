@@ -17,6 +17,7 @@ class Device:
         # never so quiet that "louder" can no longer be confirmed out loud
         self.min_volume = int(audio_cfg.get("min_volume", 20))
         self._level_before_mute: int | None = None
+        self._muted = False  # silenced by set_muted(True) and not yet brought back
 
     def _amixer(self, *args: str) -> str:
         return subprocess.run(["amixer", "-c", self.card, *args], capture_output=True, text=True, timeout=5).stdout
@@ -29,11 +30,19 @@ class Device:
     def set_volume(self, percent: int) -> int | None:
         """Sets the speaker level (kept within min_volume..100) and returns what it now is."""
         percent = max(self.min_volume, min(100, int(percent)))
+        if self._muted:
+            # The level is remembered and applied, but the speaker stays silent until set_muted(False).
+            if self._level_before_mute is not None:  # no mute switch: the level is parked at 0
+                self._level_before_mute = percent
+                return percent
+            self._amixer("sset", self.control, f"{percent}%")  # no "unmute"
+            return self.volume()
         self._amixer("sset", self.control, f"{percent}%", "unmute")
         return self.volume()
 
     def set_muted(self, muted: bool) -> None:
         """Silences the speaker, or brings it back at the level it had."""
+        self._muted = muted
         if muted:
             if "[off]" not in self._amixer("sset", self.control, "mute"):
                 # a mixer without a mute switch: turn the level down instead, and remember it
