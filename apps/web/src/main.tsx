@@ -51,7 +51,7 @@ function App({ who }: { who: Who }) {
       {/* /me?user=... → "My conversations" (the person's analytics); /m?user=... → the phone page */}
       {who.kind === "user" && insights && <InsightsView user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />}
       {who.kind === "user" && !insights && (
-        <MobileView user={who.user} state={state} lang={lang} connected={connected} backend={backend} />
+        <MobileView user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />
       )}
       {who.kind === "audience" && <AudienceView state={state} now={now} lang={lang} />}
       {rejected && <p className="fatal" role="alert">Connection refused by the backend: {rejected}</p>}
