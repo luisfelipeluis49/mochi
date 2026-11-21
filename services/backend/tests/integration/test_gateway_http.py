@@ -297,3 +297,40 @@ def test_websocket_rejects_a_bad_query_with_4400_and_a_reason(query: str) -> Non
     ):
         socket.receive_text()
     assert closed.value.code == 4400 and "expected one of" in closed.value.reason
+
+
+def test_websocket_glasses_get_session_and_hints_only() -> None:
+    client, _ = _client()
+    client.post("/api/sessions/demo/start")
+    with client.websocket_connect("/ws?user=ana&surface=ar") as glasses:
+        assert glasses.receive_json()["type"] == "session.state.changed"
+        client.post("/dev/sessions/demo/turn", json={"text": "I need to adiar my meeting"})
+        assert glasses.receive_json()["type"] == "hint.created"  # no card, no activity state
+
+
+def test_websocket_unknown_surface_closes_4400_naming_it() -> None:
+    client, _ = _client()
+    with (
+        client.websocket_connect("/ws?user=ana&surface=vr") as socket,
+        pytest.raises(WebSocketDisconnect) as closed,
+    ):
+        socket.receive_text()
+    assert closed.value.code == 4400 and "'vr'" in closed.value.reason
+
+
+@pytest.mark.parametrize("user", ["sophie", "x" * 200])
+def test_websocket_bad_user_closes_4400_with_the_allowed_values_and_a_legal_reason(
+    user: str,
+) -> None:
+    client, _ = _client()
+    with (
+        client.websocket_connect(f"/ws?user={user}&surface=ar") as socket,
+        pytest.raises(WebSocketDisconnect) as closed,
+    ):
+        socket.receive_text()
+    reason = closed.value.reason
+    assert closed.value.code == 4400
+    assert "user=ana|ben" in reason and "device=home_pi_01" in reason and "view=audience" in reason
+    assert (
+        len(reason.encode()) <= 123
+    )  # a longer close reason is a protocol error (client sees 1006)
