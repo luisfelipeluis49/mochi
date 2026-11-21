@@ -37,7 +37,10 @@ def fold(phones: str) -> str:
 # anything else can be given in config under [listening.sounds].
 SOUNDS = {
     "mochi": ["motSi"],
-    "oi": ["oi"], "hi": ["hai"], "hey": ["hei"], "hello": ["helo", "həlo"], "ola": ["ola"], "alo": ["alo"],
+    # a Brazilian "oi" is heard with a rounded start and an open end ("uei", "uai"), and "olá" often
+    # without its l: without these, four in ten Portuguese greetings were taken for "hey" or "hi"
+    "oi": ["oi", "uei", "uai", "uoi", "oei"], "ola": ["ola", "oa", "ua"],
+    "hi": ["hai"], "hey": ["hei"], "hello": ["helo", "həlo"], "alo": ["alo"],
     "e": ["i"], "ai": ["ai"], "bom": ["bo"], "dia": ["dZia"],
     "bye": ["bai"], "goodbye": ["gudbai"], "adeus": ["adeus"], "ate": ["ate"], "logo": ["logu"],
     "tchau": ["tSau", "tSiau", "tSia"],  # "tchau mochi" runs together as "tSianmotSi"
@@ -210,6 +213,10 @@ class PhraseMatcher:
         if cue[0] in VOWELS | {"h"} and start > 0 and before[start - 1] not in VOWELS:
             if len(before) - start == 1:
                 return None
+            cost += self.c.glued_consonant
+        elif cue[0] == "h" and 0 < start < len(before) and before[start] != "h" and before[start - 1] in "uo":
+            # a rounded vowel in front of a "hey" whose h was not heard is a Brazilian "oi", which
+            # arrives as "uei" or "uai": the same sounds, but not the same greeting
             cost += self.c.glued_consonant
         return cost / len(cue) + gap, cost, len(before) - start + (1 if gap else 0)
 

@@ -87,6 +87,19 @@ def test_what_counts_as_asking_to_hear_a_word() -> None:
         assert not wants_to_hear(ordinary), ordinary
 
 
+def test_telling_someone_that_one_asked_is_not_asking() -> None:
+    """Seen live: said to the partner half a minute after the hint "café", this made Mochi say
+    "café. café." into their conversation."""
+    told = (
+        "Nada aconteceu. Porque nesse caso, eu perguntei explicitamente como se pronuncia.",
+        "I asked how it is pronounced and nothing happened.",
+        "She said can you pronounce it, but it did not.",
+    )
+    for sentence in told:
+        assert not wants_to_hear(sentence), sentence
+    assert wants_to_hear("Como se pronuncia?") and wants_to_hear("Can you pronounce it?")
+
+
 # ---- two more things the same conversation showed ----
 
 

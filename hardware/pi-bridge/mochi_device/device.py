@@ -2,10 +2,37 @@
 from __future__ import annotations
 
 import re
+import socket
 import subprocess
 from pathlib import Path
 
 THERMAL = Path("/sys/class/thermal/thermal_zone0/temp")  # millidegrees Celsius
+# Where to look for the internet: well-known addresses that answer from anywhere. Nothing is sent.
+LOOK_AT = ("1.1.1.1:443", "8.8.8.8:53")
+
+
+def cpu_temperature() -> float | None:
+    """Processor temperature in degrees Celsius, or None when it cannot be read."""
+    try:
+        return int(THERMAL.read_text()) / 1000
+    except (OSError, ValueError):
+        return None
+
+
+def reachable(hosts=LOOK_AT, timeout: float = 2.0, connect=socket.create_connection) -> bool:
+    """True when Mochi has a connection: one of `hosts` ("address:port") lets a connection open.
+
+    Only the connection is opened and closed again; no data goes out. Being on a Wi-Fi network is
+    not enough (a phone hotspot without signal is one): the session needs the internet behind it.
+    """
+    for host in hosts:
+        address, _, port = host.rpartition(":")
+        try:
+            connect((address, int(port)), timeout=timeout).close()
+            return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 class Device:
@@ -56,7 +83,4 @@ class Device:
 
     def temperature(self) -> float | None:
         """Processor temperature in degrees Celsius."""
-        try:
-            return int(THERMAL.read_text()) / 1000
-        except (OSError, ValueError):
-            return None
+        return cpu_temperature()

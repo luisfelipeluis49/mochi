@@ -21,6 +21,7 @@ from mochi_contracts import Language
 QUIET = "[quiet]"
 LISTEN = "[listen]"  # Mochi was asked to only watch: from now on it helps silently
 CHAT = "[chat]"  # Mochi was asked back into the talk
+PLAY = "[play]"  # Mochi was asked to host Describe & Guess: the two people talk to each other
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
 SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
@@ -53,10 +54,15 @@ class MochiTalk:
         """Swap the model that writes the lines."""
         self._model = model
 
-    def begin(self, woken: bool) -> None:
+    def begin(self, woken: bool, language: Language | None = None) -> None:
         """A session starts. `woken`: someone called Mochi on the device to talk to it, so the
-        next sentence is for it; otherwise two people talk and Mochi waits for its name."""
+        next sentence is for it; otherwise two people talk and Mochi waits for its name.
+
+        `language`: the one it was greeted in. Until Mochi has answered something, that is the
+        tie-breaker for a sentence that could be either language, not the last session's.
+        """
         self._history, self._until, self._attentive = [], None, woken
+        self.language = language or self.language
         if woken:
             self.called()
 
@@ -122,10 +128,11 @@ class MochiTalk:
         """What Mochi wrote can change how it listens from now on.
 
         `[listen]`: it only watches; it shows hints and speaks when someone says its name.
+        `[play]`: it hosts a round, and the same holds: the describing is not said to Mochi.
         `[chat]`: it is part of the talk again.
         """
         written = line.lower()
-        if LISTEN in written:
+        if LISTEN in written or PLAY in written:
             self._attentive, self._until = False, None  # no "the next sentence is for me" either
         elif CHAT in written:
             self._attentive = True

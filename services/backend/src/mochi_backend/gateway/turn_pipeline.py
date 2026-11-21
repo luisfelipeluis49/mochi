@@ -5,6 +5,7 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
@@ -65,6 +66,10 @@ def used_card(event: LearningEvent) -> str:
     return json.dumps(card, ensure_ascii=False)
 
 
+PLAY = "[play]"  # Mochi was asked for a game: a round starts with this turn
+RoundStarter = Callable[[], Awaitable[Speak | None]]  # starts a round, returns the host's line
+
+
 def silent_decision() -> Decision:
     """IGNORE with nothing attached."""
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
@@ -108,6 +113,14 @@ class TurnPipeline:
         self._commit = deps.commit_lock
         self._voices = deps.voices
         self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
+        self._start_round: RoundStarter | None = None
+
+    def play_with(self, start_round: RoundStarter) -> None:
+        """Give the pipeline the way to start a round when Mochi writes `[play]`.
+
+        Example: `pipeline.play_with(activity.start_in_turn)`.
+        """
+        self._start_round = start_round
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -150,7 +163,7 @@ class TurnPipeline:
         if self._superseded(decision, generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
-        decision = self._without_secret(decision)
+        decision = await self._with_round(self._without_secret(decision))
         await self._publish_results(decision)
         reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
@@ -166,6 +179,27 @@ class TurnPipeline:
             return decision
         self._logger.log("secret_leak_blocked", {"channel": channel})
         return silent_decision()
+
+    async def _with_round(self, decision: Decision) -> Decision:
+        """Mochi wrote `[play]`: start the round now, and let the host's line follow its own.
+
+        Example: "[play] Let's play!" is said as "Let's play! Ben describes. Ana guesses!".
+        """
+        speak = decision.speak
+        if speak is None or PLAY not in speak.text.lower() or self._start_round is None:
+            return decision
+        host = await self._start_round()
+        if host is None:
+            return decision
+        if leaked_channel(decision, self._store.round_secrets) is not None:
+            # Mochi's line was written before the word was drawn, and can hold it by chance (a
+            # word it just taught is the likeliest pick): only the host's line is said then.
+            self._logger.log("secret_leak_blocked", {"channel": "play"})
+            return silent_decision().model_copy(
+                update={"decision": DecisionKind.SPEAK, "speak": host}
+            )
+        both = speak.model_copy(update={"text": f"{speak.text} {host.text}"})
+        return decision.model_copy(update={"speak": both})
 
     def _superseded(self, decision: Decision, generation: int) -> bool:
         """True when Stop/Reset came while deciding, or a round started (wake phrases may speak)."""

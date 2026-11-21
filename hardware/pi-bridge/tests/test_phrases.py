@@ -27,6 +27,21 @@ class PhraseMatcherTest(unittest.TestCase):
                       "ojmoʃi", "ainmutɕi", "ojmɔtʃ"):                                   # moshi, stray n, lost final i
             self.assertEqual(self.group(heard), "wake", heard)
 
+    def test_the_greeting_says_which_language_mochi_was_called_in(self):
+        """The phrase reported decides the language Mochi greets in. A Brazilian "oi" is heard with a
+        rounded start and an open end, the same sounds as "hey" and "hi" after it: on the test clips
+        four in ten Portuguese greetings were answered in English before these were told apart."""
+        def cue(heard):
+            return self.m.match(heard).phrase.split()[0]
+        for heard in ("ojmɔtɕi", "ueimuotʃi", "uaimuotʃi", "uoueimuoʃi", "hueimuotʃi", "tueimuoʃi",   # oi
+                      "olamotʃi", "poamotʃi", "tuamuotʃi"):                                             # olá
+            self.assertIn(cue(heard), ("oi", "ola"), heard)
+        for heard in ("haɪmoʊtʃi", "heɪmoʊtʃi", "emoʊtʃi", "aɪmotʃi", "heloumoutʃi", "əloumoutʃi"):
+            self.assertIn(cue(heard), ("hi", "hey", "hello"), heard)
+
+    def test_you_like_mochi_is_not_ola_mochi(self):
+        self.assertIsNone(self.group("duiulaikmoutʃiaizkrim"))      # "Do you like Mochi ice cream?"
+
     def test_goodbye(self):
         for heard in ("baɪmoʊtʃi", "gʊdbaɪmoʊtʃi", "tʃaumotʃi", "ʃaumuatʃi", "ɕianmuotɕi", "tabõtʃaumɔtʃi"):
             self.assertEqual(self.group(heard), "goodbye", heard)

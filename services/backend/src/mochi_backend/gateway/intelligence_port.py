@@ -6,6 +6,7 @@ from mochi_contracts import (
     ActivityCommand,
     ActivityResult,
     Decision,
+    Language,
     LearningEvent,
     SessionContext,
     Turn,
@@ -35,8 +36,11 @@ class IntelligencePort(Protocol):
         """Clear saved words and any game."""
         ...
 
-    def session_started(self, woken: bool) -> None:
-        """A session begins. `woken`: Mochi was called on the device; it listens for an answer."""
+    def session_started(self, woken: bool, language: Language | None = None) -> None:
+        """A session begins. `woken`: Mochi was called on the device; it listens for an answer.
+
+        `language`: the one it was called in and greeted in, when known ("oi Mochi" is pt-BR).
+        """
         ...
 
     def device_status(

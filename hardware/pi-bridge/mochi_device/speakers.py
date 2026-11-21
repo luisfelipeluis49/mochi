@@ -7,10 +7,19 @@ anyone else. Works the same in English and Portuguese: it listens to the voice, 
 
 VoiceTracker is fed the same 32 ms windows and voice-activity flags as the wake-phrase listener
 (wakeword.py) and reports:
-    ("speaker", name | None, score)      who is talking: None as someone starts, then a name after
-                                         ~0.8 s of speech and again at each pause (if recognised)
+    ("speaker", name, score)             a known person is talking: said as soon as it is clear
+                                         (from ~0.8 s of speech on) and again at each pause
+    ("speaker", None, score)             a stranger is talking: said at a pause, and only after
+                                         enough speech to be sure it is nobody known
+    ("unsure", None, score)              listened, and could not tell yet: whoever was talking
+                                         before is still taken to be talking (for the log)
     ("enrolled", name, seconds)          finished learning a voice
     ("enroll_failed", name, seconds)     gave up: not enough speech
+
+Between those reports nothing changes: a new sentence does not make the speaker unknown again. The
+agent is told who is talking over the network, which takes longer than a short sentence lasts, so
+"unknown until proven again" made Mochi answer "I don't recognise you" to someone whose name was
+already on its screen.
 """
 from __future__ import annotations
 
@@ -129,10 +138,12 @@ class VoiceTracker:
     """Follows the microphone window by window and says who is talking. Not thread-safe: it lives on
     the listener's thread; start_enroll / forget arrive there as commands."""
 
-    EARLY = 0.8 * RATE       # first guess after this much speech in an utterance
+    EARLY = (0.8, 1.5, 2.5)  # seconds of speech in an utterance after which a guess is made, until one names someone
     PAUSE = 0.25 * RATE      # a pause this long: decide on the whole utterance
     END = 0.7 * RATE         # silence this long: the next speech is a new utterance
     KEEP = 8 * RATE          # an utterance is judged on its last 8 s at most
+    STRANGER = 1.5 * RATE    # speech needed before "nobody I know" is believed (shorter stretches score low for anyone)
+    CLEARLY_NOT = 0.10       # this far under min_score, a whole utterance outweighs a name guessed from its start
     ENROLL = 7 * RATE        # speech wanted to learn a voice ("talk for ten seconds" has pauses)...
     ENROLL_MIN = 4 * RATE    # ...and the least that will do once they have stopped for a moment
     ENROLL_QUIET = 1.5 * RATE
@@ -143,21 +154,46 @@ class VoiceTracker:
         self.on = False        # only while a session is active
         self.hold = False      # Mochi itself is speaking: do not listen to that
         self.enrolling: str | None = None
-        self.said: str | None = None  # the last name reported
         self.reset()
 
     def reset(self) -> None:
         self.utt: list[np.ndarray] = []
         self.voiced = self.silence = 0
-        self.guessed = False
+        self.guesses = 0       # early guesses made in this utterance
+        self.named = False     # someone was recognised in this utterance
 
     def start_enroll(self, name: str) -> None:
         self.enrolling, self.enroll_audio, self.enroll_waited, self.enroll_quiet = name, [], 0, 0
         self.reset()
 
-    def _say(self, name: str | None, score: float) -> tuple:
-        self.said = name
-        return "speaker", name, score
+    CALL = int(1.2 * RATE)   # a wake phrase is about a second long
+
+    def calling(self, audio: np.ndarray) -> list[tuple]:
+        """Who said the wake phrase, if their voice is known: the session then starts knowing them.
+
+        audio ends with the phrase; only its end is compared, because what came before it in the
+        same breath may be someone else's sentence.
+        """
+        name, score = self.voices.identify(audio[-self.CALL:])
+        return [("speaker", name, score)] if name else []
+
+    def _listen(self, final: bool) -> list[tuple]:
+        """Compare the utterance so far with the known voices.
+
+        A name is reported as soon as it is found. "Nobody known" is reported only at a pause and
+        after enough speech. A name already found in this utterance is taken back only by a score
+        clearly under the bar: a score just under it must not undo a recognition, but the first
+        0.8 s must not outweigh the whole sentence either.
+        """
+        name, score = self.voices.identify(self._audio())
+        if name:
+            self.named = True
+            return [("speaker", name, score)]
+        clearly_not = score < self.voices.min_score - self.CLEARLY_NOT
+        if final and self.voiced >= self.STRANGER and (clearly_not or not self.named):
+            self.named = False
+            return [("speaker", None, score)]
+        return [("unsure", None, score)]
 
     def _enroll_step(self, w: np.ndarray, speech: bool) -> list[tuple]:
         """Collect the learner's speech; finish when there is enough, or they have stopped."""
@@ -188,21 +224,20 @@ class VoiceTracker:
                 self.reset()
             return events
         if speech:
-            if not self.utt and self.said is not None:
-                events.append(self._say(None, 0.0))  # someone starts talking: not known who, yet
             self.utt.append(w)
             self.voiced += WINDOW
             self.silence = 0
-            if not self.guessed and self.voiced >= self.EARLY and not self.enrolling:
-                self.guessed = True
-                events.append(self._say(*self.voices.identify(self._audio())))
+            due = self.guesses < len(self.EARLY) and self.voiced >= self.EARLY[self.guesses] * RATE
+            if due and not self.named and not self.enrolling:
+                self.guesses += 1
+                events += self._listen(final=False)
         else:
             self.silence += WINDOW
             if not self.utt:
                 return events
             self.utt.append(w)
             if self.silence == int(self.PAUSE) // WINDOW * WINDOW and self.voiced >= 0.5 * RATE and not self.enrolling:
-                events.append(self._say(*self.voices.identify(self._audio())))
+                events += self._listen(final=True)
             if self.silence >= self.END:
                 self.reset()
         return events

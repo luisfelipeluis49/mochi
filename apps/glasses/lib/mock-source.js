@@ -12,8 +12,10 @@ import { STATUS } from './connection.js';
 
 const HINT_MS = 8000;
 
-// Offsets in ms from the start of one loop.
-const SCRIPT = [
+// Offsets in ms from the start of one loop. Every hint is aimed at nobody (target_user_id null),
+// which the contract shows to everyone: the glasses only show hints for their wearer, and the
+// demo has to work whoever that is.
+export const SCRIPT = [
   {
     at: 0,
     type: 'session.state.changed',
@@ -26,7 +28,7 @@ const SCRIPT = [
     at: 3000,
     type: 'hint.created',
     payload: {
-      hint_id: 'hint_101', target_user_id: 'ana', target_language: 'en',
+      hint_id: 'hint_101', target_user_id: null, target_language: 'en',
       expression: 'although', meaning: 'embora', example: null, reason: 'trails_off',
       context: 'I wanted to go, but',
       candidates: [
@@ -40,7 +42,7 @@ const SCRIPT = [
     at: 16000,
     type: 'hint.created',
     payload: {
-      hint_id: 'hint_102', target_user_id: 'ben', target_language: 'pt-BR',
+      hint_id: 'hint_102', target_user_id: null, target_language: 'pt-BR',
       expression: 'infelizmente', meaning: 'unfortunately', example: null, reason: 'trails_off',
       context: 'Eu queria ir, mas',
       candidates: [
@@ -54,7 +56,7 @@ const SCRIPT = [
     at: 29000,
     type: 'hint.created',
     payload: {
-      hint_id: 'hint_103', target_user_id: 'ana', target_language: 'en',
+      hint_id: 'hint_103', target_user_id: null, target_language: 'en',
       expression: 'postpone', meaning: 'adiar',
       example: 'I need to postpone my meeting.', reason: 'code_switch',
     },

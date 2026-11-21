@@ -7,6 +7,7 @@ from mochi_contracts import (
     ActivityCommand,
     ActivityResult,
     Decision,
+    Language,
     LearningEvent,
     SessionContext,
     Turn,
@@ -43,9 +44,9 @@ class GatedIntelligence:
         """Delegate."""
         self._inner.reset()
 
-    def session_started(self, woken: bool) -> None:
+    def session_started(self, woken: bool, language: Language | None = None) -> None:
         """Delegate."""
-        self._inner.session_started(woken)
+        self._inner.session_started(woken, language)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
