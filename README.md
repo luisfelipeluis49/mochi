@@ -94,9 +94,9 @@ is the repo root. The image runs **one worker** (all state is in memory).
 ## Render
 
 `render.yaml` is a Blueprint: Render dashboard > New > Blueprint > pick this repo, fill the secrets
-(`sync: false`), then set `MOCHI_PUBLIC_URL` to the service URL. It uses a paid `starter` plan on purpose:
-a free web service spins down after 15 minutes of silence and takes about a minute to wake, which would
-break a live demo. `numInstances: 1`. WebSockets work behind Render's proxy with a single instance.
+(`sync: false`), then set `MOCHI_PUBLIC_URL` to the service URL. It uses the `free` plan (the budget is $0): the
+service spins down after 15 minutes of silence and takes about a minute to wake, so an uptime check must ping
+`/healthz` before a demo. `numInstances: 1`. WebSockets work behind Render's proxy with a single instance.
 
 ## Demo-day checklist
 

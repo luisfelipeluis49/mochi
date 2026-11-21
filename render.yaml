@@ -9,7 +9,7 @@ services:
     runtime: docker
     dockerfilePath: ./services/backend/Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     numInstances: 1 # all state is in memory: exactly one instance, one worker
     healthCheckPath: /healthz
     envVars:
