@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type { ConversationContext, Language, LearningState, MistakeKind, SessionMode } from "../contracts.ts";
+import type { MicProblem } from "./phoneMic.ts";
 
 // ---- ENGLISH texts. Things like (d: string) => `...` are small functions that put a name in the sentence.
 const en = {
@@ -48,7 +49,12 @@ const en = {
     USED_INDEPENDENTLY: "Great. Keep using it.",
   } as Record<LearningState, string>,
   requestFailed: "Could not reach Mochi. Try again.",
-  micFailed: "Could not turn on this phone's microphone. Allow it, and open the https:// link.",
+  micProblem: {
+    unsupported: "This page can't use a microphone. Open the https:// link (not http://).",
+    denied: "The microphone is blocked. Allow it (iPhone: Settings > Apps > Safari > Microphone), then tap Start again.",
+    "no-agora": "Mochi did not send the audio details. Tap Stop, then Start again.",
+    agora: "Could not connect this phone's audio to Mochi. Check the internet and try again.",
+  } as Record<MicProblem, string>,
   // ---- New product vision: modes, hints for someone, session summary ----
   choosing: "What do you want to do today?",
   modeName: { together: "Company", activity: "Play", practice: "Practice", choosing: "Choosing" } as Record<SessionMode, string>,
@@ -162,7 +168,12 @@ const ptBR: Copy = {
     USED_INDEPENDENTLY: "Ótimo. Continue usando.",
   },
   requestFailed: "Não foi possível falar com o Mochi. Tente de novo.",
-  micFailed: "Não foi possível ligar o microfone do celular. Permita o acesso e abra o link https://.",
+  micProblem: {
+    unsupported: "Esta página não consegue usar o microfone. Abra o link https:// (não http://).",
+    denied: "O microfone está bloqueado. Permita o acesso (iPhone: Ajustes > Apps > Safari > Microfone) e toque em Iniciar de novo.",
+    "no-agora": "O Mochi não mandou os dados do áudio. Toque em Parar e depois em Iniciar.",
+    agora: "Não foi possível ligar o áudio do celular ao Mochi. Confira a internet e tente de novo.",
+  },
   choosing: "O que você quer fazer hoje?",
   modeName: { together: "Companhia", activity: "Jogar", practice: "Praticar", choosing: "Escolhendo" },
   modeFace: { together: "Ouvindo", activity: "Hora do jogo", practice: "Praticando", choosing: "Ouvindo" },

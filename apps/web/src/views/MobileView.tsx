@@ -99,7 +99,7 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
   const [busy, setBusy] = useState(false);              // true while a button request is on its way (buttons are disabled)
   const [error, setError] = useState<string | null>(null); // error message if the backend could not be reached
   const capturing = state.session?.capturing ?? false;  // is Mochi listening right now?
-  const { here, startHere, stopHere } = usePhoneMic(capturing, () => setError(t.micFailed)); // this phone's mic
+  const { here, startHere, stopHere } = usePhoneMic(capturing, (problem) => setError(t.micProblem[problem])); // this phone's mic
   const live = showLive(capturing, here);               // false while a session started on the Pi runs
   const hint = live ? liveHint(state, now) : null;      // the hint for this person, while it is on screen
   const words = wordsNewestFirst(state);                // saved words, newest first
