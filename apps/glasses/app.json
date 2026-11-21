@@ -1,0 +1,13 @@
+{
+  "agentName": "Mochi AR",
+  "agentDesc": "Fluency Helper: when you hesitate in a conversation, shows one to three suggested words or phrases with their meanings, privately in your view.",
+  "pages": [
+    "pages/fluency/index"
+  ],
+  "permissions": [
+    "INTERNET"
+  ],
+  "window": {
+    "navigationBarTitleText": "Mochi AR"
+  }
+}

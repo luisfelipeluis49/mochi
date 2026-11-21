@@ -1,0 +1,7 @@
+/* Shared tokens: Rokid's single-green display, by luminance level. */
+:root {
+  --mochi-green: #40ff5e;
+  --mochi-green-72: rgba(64, 255, 94, 0.72);
+  --mochi-green-48: rgba(64, 255, 94, 0.48);
+  --mochi-green-24: rgba(64, 255, 94, 0.24);
+}
