@@ -1,4 +1,8 @@
-"""`POST /agora/llm/demo/chat/completions`: the turn endpoint Agora's cloud calls."""
+"""`POST /agora/llm/{session}/chat/completions`: the turn endpoint Agora's cloud calls.
+
+Each session's agent is started with its own session in the path, so a sentence reaches the
+session it was said in (DECISIONS D-41).
+"""
 
 import hmac
 import time
@@ -94,7 +98,7 @@ def hang_up_signal(request: Request) -> Gone:
     return hung_up
 
 
-@router.post("/agora/llm/demo/chat/completions", response_model=None)
+@router.post("/agora/llm/{session_id}/chat/completions", response_model=None)
 async def chat_completions(
     body: ChatCompletionRequest,
     container: ContainerDep,
@@ -113,7 +117,9 @@ async def chat_completions(
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
     gone = hang_up_signal(request) if container.settings.mochi_cancel_stale_turns else None
     said, position = last_user_text(body.messages), last_user_position(body.messages)
-    outcome = await container.pipeline.handle_heard(said, position, arrived, gone, body.stream)
+    # An id nobody started is a 404 (the registry never creates a session here).
+    runtime = container.registry.runtime(str(request.path_params["session_id"]))
+    outcome = await runtime.pipeline.handle_heard(said, position, arrived, gone, body.stream)
     return _answer(outcome, body.stream, container, arrived)
 
 

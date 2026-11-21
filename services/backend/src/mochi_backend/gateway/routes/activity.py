@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from mochi_backend.gateway.routes.dependencies import ContainerDep
+from mochi_backend.gateway.routes.dependencies import ContainerDep, SessionIdPath
 from mochi_contracts import Activity, RoundResult
 
 router = APIRouter()
@@ -15,13 +15,15 @@ class ResultBody(BaseModel):
     result: RoundResult
 
 
-@router.post("/api/sessions/demo/activity/start")
-async def start_activity(container: ContainerDep) -> Activity:
+@router.post("/api/sessions/{session_id}/activity/start")
+async def start_activity(session_id: SessionIdPath, container: ContainerDep) -> Activity:
     """Start a round."""
-    return await container.activity.start()
+    return await container.registry.runtime(session_id).activity.start()
 
 
-@router.post("/api/sessions/demo/activity/result")
-async def finish_activity(body: ResultBody, container: ContainerDep) -> Activity:
+@router.post("/api/sessions/{session_id}/activity/result")
+async def finish_activity(
+    session_id: SessionIdPath, body: ResultBody, container: ContainerDep
+) -> Activity:
     """Record how the round ended."""
-    return await container.activity.finish(body.result)
+    return await container.registry.runtime(session_id).activity.finish(body.result)

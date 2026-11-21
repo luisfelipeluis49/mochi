@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
+from mochi_backend.gateway.roster import SESSION_ID
 from mochi_contracts import (
     EventPayload,
     EventType,
@@ -20,6 +21,7 @@ class ConnectionTarget:
     kind: TargetKind
     user_id: str | None = None
     device_id: str | None = None
+    session_id: str = SESSION_ID  # the session it follows (Mochi's own screen: the device's)
 
 
 def is_recipient(

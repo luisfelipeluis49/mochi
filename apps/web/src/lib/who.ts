@@ -8,7 +8,8 @@
 
 /** The three kinds of connection. */
 export type Who =
-  | { kind: "user"; user: string }        // a phone:         /m?user=ana  (also /me?user=ana, "My conversations")
+  | { kind: "user"; user: string; session?: string } // a phone: /m?user=ana  (also /me?user=ana, "My conversations");
+                                                     // session: ?session=demo follows the Pi's session
   | { kind: "device"; device: string }    // Mochi's screen:  /home?device=home_pi_01
   | { kind: "audience" };                 // the projector:   /audience
 
@@ -19,7 +20,8 @@ export function whoFromUrl(pathname: string, search: string): Who | null {
   if (pathname.startsWith("/audience")) return { kind: "audience" };
   if (pathname.startsWith("/m")) {
     const user = q.get("user");
-    return user ? { kind: "user", user } : null; // a phone page needs ?user=
+    const session = q.get("session") ?? undefined;
+    return user ? { kind: "user", user, ...(session ? { session } : {}) } : null; // a phone page needs ?user=
   }
   return null;
 }
@@ -44,6 +46,7 @@ export function indexLinks(): { href: string; label: string }[] {
     { href: "/m?user=ana", label: "Mobile view: Ana" },
     { href: `/m?user=${SECOND_USER}`, label: `Mobile view: ${SECOND_USER[0].toUpperCase()}${SECOND_USER.slice(1)}` },
     { href: "/m?user=ben", label: "Mobile view: Ben (backend roster)" },
+    { href: "/m?user=ana&session=demo", label: "Operator: Ana's phone controls the Pi's session (no phone mic)" },
     { href: "/me?user=tasnim&mock=1", label: "My conversations (analytics of real conversations)" },
     { href: "/audience", label: "Audience view (projector)" },
   ];
