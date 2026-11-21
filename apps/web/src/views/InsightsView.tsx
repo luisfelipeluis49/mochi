@@ -93,6 +93,10 @@ function RecordCard({ state, now, lang, backend }: Pick<Props, "state" | "now" |
         <>
           <div className="record-status"><span className="rec-dot" /> {t.recording} · {stopwatch(startedAt ? now - startedAt : 0)}</div>
           <p className="record-hint">{t.onlyYou}</p>
+          {/* Notice: the numbers of this session show on the analytics page (/m), same person and options */}
+          <p className="record-notice">
+            {t.analyticsNotice} <a href={`/m${window.location.search}`}>{t.openAnalytics}</a>
+          </p>
           <button className="btn stop" disabled={busy} onClick={() => send(stopHere)}>{t.stopRecording}</button>
         </>
       ) : (
