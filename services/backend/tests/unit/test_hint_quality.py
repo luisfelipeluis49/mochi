@@ -33,7 +33,8 @@ UMBRELLA = "I forgot my guarda-chuva at the office."
 
 def _hint(**fields: object) -> ModelSuggestion:
     base = {"decision": "SHOW_HINT", "reason": "code_switch", "expression": "fork"}
-    return ModelSuggestion.model_validate({**base, "meaning": "garfo", **fields})
+    sure = {"confidence": 0.9}  # a hint without a stated confidence is never shown
+    return ModelSuggestion.model_validate({**base, **sure, "meaning": "garfo", **fields})
 
 
 async def _decided(

@@ -76,7 +76,11 @@ async def test_unconfigured_or_ignoring_model_keeps_clear_cases_working() -> Non
 async def test_the_model_looks_at_every_real_sentence_while_mochi_only_watches() -> None:
     """A word outside the lexicon carries no mark the rules could find: only the model can."""
     fork = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="fork", meaning="garfo"
+        decision="SHOW_HINT",
+        reason=Reason.CODE_SWITCH,
+        expression="fork",
+        meaning="garfo",
+        confidence=0.9,
     )
     model = FakeHintModel(fork)
     decision = await _brain(model).decide(
@@ -114,7 +118,11 @@ async def test_with_the_wide_look_switched_off_ordinary_talk_never_reaches_the_m
 async def test_a_hint_is_the_word_they_needed_not_the_one_they_said() -> None:
     """Seen with a real model: it returned the spoken word ("garfo") as the hint."""
     swapped = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.CODE_SWITCH, expression="garfo", meaning="fork"
+        decision="SHOW_HINT",
+        reason=Reason.CODE_SWITCH,
+        expression="garfo",
+        meaning="fork",
+        confidence=0.9,
     )
     decision = await _brain(FakeHintModel(swapped)).decide(
         make_turn("Can you pass me the garfo, please?"), make_context()
@@ -156,7 +164,11 @@ def test_the_word_a_question_names_is_found() -> None:
 async def test_an_explicit_question_is_answered_for_the_word_it_names() -> None:
     """Seen live: the turn also held "adiar", and the hint came out as "postpone"."""
     fork = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="fork", meaning="garfo"
+        decision="SHOW_HINT",
+        reason=Reason.SAYS_UNKNOWN,
+        expression="fork",
+        meaning="garfo",
+        confidence=0.9,
     )
     model = FakeHintModel(fork)
     decision = await _brain(model).decide(
@@ -198,7 +210,11 @@ async def test_i_mean_at_the_start_of_a_turn_is_not_a_self_correction() -> None:
 async def test_a_question_split_by_a_pause_is_read_as_one() -> None:
     """Seen live: "Como se fala..." then "Carteira em inglês." were two turns, both meaningless."""
     wallet = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="wallet", meaning="carteira"
+        decision="SHOW_HINT",
+        reason=Reason.SAYS_UNKNOWN,
+        expression="wallet",
+        meaning="carteira",
+        confidence=0.9,
     )
     model = FakeHintModel(wallet)
     first = make_turn("Como se fala...", 0)
@@ -215,7 +231,13 @@ async def test_a_question_split_by_a_pause_is_read_as_one() -> None:
 async def test_a_reason_the_model_made_up_does_not_cost_the_answer() -> None:
     """Seen with a real model: "reason": "asked_about" for an explicit question."""
     content = json.dumps(
-        {"decision": "SHOW_HINT", "reason": "asked_about", "expression": "fork", "meaning": "garfo"}
+        {
+            "decision": "SHOW_HINT",
+            "reason": "asked_about",
+            "expression": "fork",
+            "meaning": "garfo",
+            "confidence": 0.9,
+        }
     )
     body = json.dumps({"choices": [{"message": {"content": content}}]})
     http = FakeHttpClient([HttpResponse(200, body), HttpResponse(200, body)])
@@ -236,7 +258,11 @@ async def test_a_reason_the_model_made_up_does_not_cost_the_answer() -> None:
 async def test_a_question_that_names_the_language_gets_its_hint_in_that_language() -> None:
     """Seen in a replay: "wallet" for "...carteira em inglês" was labelled Portuguese."""
     wallet = ModelSuggestion(
-        decision="SHOW_HINT", reason=Reason.SAYS_UNKNOWN, expression="wallet", meaning="carteira"
+        decision="SHOW_HINT",
+        reason=Reason.SAYS_UNKNOWN,
+        expression="wallet",
+        meaning="carteira",
+        confidence=0.9,
     )
     model = FakeHintModel(wallet)
     decision = await _brain(model).decide(

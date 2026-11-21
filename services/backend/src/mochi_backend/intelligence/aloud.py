@@ -11,14 +11,26 @@ from mochi_backend.intelligence.tokens import lowered, normalized
 from mochi_backend.platform.clock import parse_iso_z
 from mochi_contracts import Hint, SessionContext, Turn
 
-# About the sound of a word, or "say it for me". Not "say that again": people say that to each
-# other when they did not catch something.
+# An explicit request to HEAR a word or the shown hint said: "how do you pronounce X", "say it for
+# me", "fala de novo". Not ordinary talk that merely contains "pronounce" or "fala pra mim":
+# "Fala pra mim como foi a viagem" asks for a story. Not "say that again": people say that to
+# each other when they did not catch something.
+_OBJECT = r"(?:it|that|this|the word|that word)"
+_PEDIDO = r"(?:isso|ela|a palavra|essa palavra)"
 _WANTS_TO_HEAR = re.compile(
-    r"\bpronounc\w*|\bpronunciation\b|\bpron[uú]nci\w*|"
-    r"\bsay (?:it|that|this|the word) (?:out loud|aloud|for me|for us)\b|"
-    r"\blet me hear (?:it|that)\b|\bhow does (?:it|that) sound\b|\bem voz alta\b|"
-    r"\b(?:fala|falar|diz|dizer|repete|repetir)\b[^?.!]{0,40}"
-    r"\b(?:para|pra) (?:mim|n[oó]s|a gente)\b"
+    r"\bhow (?:do|does|would|should|can|could) (?:you|i|we|one|it|that|this)\b[^?.!]{0,12}"
+    r"\bpronounc\w*|\bhow (?:is|are) [^?.!]{1,30}\bpronounced\b|"
+    rf"\b(?:can|could|would|will) you (?:please )?pronounce\b|\bpronounce {_OBJECT}\b|"
+    r"\bwhat(?:'s| is) the pronunciation\b|\bhow does (?:it|that) sound\b|"
+    rf"\bsay (?:it|that|this|the word) (?:out loud|aloud|for me|for us)\b|"
+    r"\bsay the word again\b|\blet me hear (?:it|that)\b|\bem voz alta\b|"
+    r"\bcomo (?:se pronuncia|pronuncia|pronunciar)\b|"
+    r"\b(?:como [e\u00e9]|qual [e\u00e9]) a pron[u\u00fa]nci\w+|"
+    r"\b(?:pode|poderia|consegue|sabe) pronunciar\b|\bpronuncia (?:isso|ela|a palavra)\b|"
+    rf"\b(?:fala|falar|diz|dizer|repete|repetir) (?:{_PEDIDO} )?(?:de novo|novamente|outra vez)\b|"
+    rf"\b(?:repete|repetir) {_PEDIDO}\b|"
+    r"\b(?:fala|falar|diz|dizer|repete|repetir)\b[^?.!]{0,30}"
+    r"\b(?:para|pra) (?:mim|n[o\u00f3]s|a gente)\s*(?:de novo|novamente|outra vez)?\s*[?.!]*\s*$"
 )
 # A word the recogniser put in quotes: "Você pode falar 'reunião' para mim?"
 _QUOTED = re.compile(r"[\"“]([^\"”]{2,40})[\"”]|(?<!\w)['‘]([^'’]{2,40})['’](?!\w)")
