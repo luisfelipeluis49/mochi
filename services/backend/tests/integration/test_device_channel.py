@@ -8,7 +8,7 @@ from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.client_port import AgentStartRequest, SpeechTuning
 from mochi_backend.gateway.agora.rest_client import join_body
 from mochi_backend.gateway.device_commands import split_commands
-from mochi_backend.settings import load_settings
+from mochi_backend.settings import DEV_DEVICE_KEY, load_settings
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.harness import HOME, Harness, make_harness
 
@@ -16,6 +16,7 @@ ADIAR = "I need to adiar my meeting tomorrow."
 ASK_WORD = "Oi Mochi, what's the word for fila?"
 ASK_LOUDER = "Hi Mochi, can you speak a bit louder?"
 STATE = "/api/devices/home_pi_01/state"
+KEY = {"Authorization": f"Bearer {DEV_DEVICE_KEY}"}
 
 
 def _client(*lines: str | None) -> tuple[TestClient, Harness]:
@@ -141,8 +142,10 @@ def test_the_device_reports_itself_and_mochi_knows() -> None:
     harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
     client = TestClient(create_app(harness.container))
     report = {"volume": 80, "temperature": 52.4, "voices": ["Ana"], "speaker": "Ana"}
-    assert client.post("/api/devices/home_pi_01/status", json=report).status_code == 204
-    assert client.post("/api/devices/pi_99/status", json=report).status_code == 404
+    assert (
+        client.post("/api/devices/home_pi_01/status", json=report, headers=KEY).status_code == 204
+    )
+    assert client.post("/api/devices/pi_99/status", json=report, headers=KEY).status_code == 404
     client.post("/api/sessions/demo/start")
     client.post("/dev/sessions/demo/turn", json={"text": "Hi Mochi, how hot are you?"})
     status = mochi.requests[0].status
@@ -159,13 +162,17 @@ def test_a_learned_voice_is_confirmed_out_loud_in_its_language() -> None:
     client, harness = _client()
     client.post("/api/sessions/demo/start")
     learned = {"name": "Ana", "language": "pt", "learned": True}
-    assert client.post("/api/devices/home_pi_01/voices", json=learned).status_code == 204
+    assert (
+        client.post("/api/devices/home_pi_01/voices", json=learned, headers=KEY).status_code == 204
+    )
     failed = {"name": "Ben", "language": "en", "learned": False}
-    assert client.post("/api/devices/home_pi_01/voices", json=failed).status_code == 204
+    assert (
+        client.post("/api/devices/home_pi_01/voices", json=failed, headers=KEY).status_code == 204
+    )
     lines = [text for _agent, text in harness.agora.spoken]
     assert lines[0] == "Pronto, Ana! Agora eu conheço a sua voz."
     assert lines[1].startswith("Sorry, Ben, I didn't hear enough.")
-    assert client.post("/api/devices/pi_99/voices", json=learned).status_code == 404
+    assert client.post("/api/devices/pi_99/voices", json=learned, headers=KEY).status_code == 404
 
 
 def test_woken_by_its_wake_phrase_mochi_greets_in_that_language_and_listens() -> None:

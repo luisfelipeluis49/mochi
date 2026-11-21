@@ -8,14 +8,16 @@ card (`word`, `language`, `meaning`, `example`).
 """
 
 import re
+from datetime import datetime, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 _COMMAND = re.compile(
     r"\[\s*(volume|mood|show|temp|enroll|forget|bye)\b\s*:?\s*([^\]]*?)\s*\]", re.IGNORECASE
 )
 _BRACKETS = re.compile(r"\[[^\]]*\]")
 QUEUE_LIMIT = 20
+COMMAND_LIFETIME = timedelta(seconds=30)  # a restarted device must not replay old orders
 
 Written = tuple[str, str]  # (kind, value) as found in a reply
 
@@ -26,6 +28,7 @@ class DeviceCommand(BaseModel):
     command_id: str
     kind: str
     value: str
+    at: datetime | None = Field(default=None, exclude=True)  # when queued; never on the wire
 
 
 def split_commands(text: str) -> tuple[str, list[Written]]:
