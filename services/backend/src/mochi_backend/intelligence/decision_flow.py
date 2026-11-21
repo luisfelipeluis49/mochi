@@ -168,6 +168,8 @@ class DecisionFlow:
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
         context = session_context.model_copy(update={"focus": spoken})
+        # The round's word is the newest one Mochi taught: it is not reminded of it now (D-38).
+        self._talk.playing = round_is_active(context)
         # The wake phrase beats every quiet rule (AGENTS 7.2); a thank-you does not in a round.
         if has_wake_phrase(turn.text, round_is_active(context)):
             return await self._answer_mochi(turn, context)

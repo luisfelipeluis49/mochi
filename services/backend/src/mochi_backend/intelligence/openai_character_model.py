@@ -18,6 +18,13 @@ WORD_NOTE = (
     "The word or expression they are looking for is: {word} (it means: {meaning}). "
     "Teach exactly this one, and show it."
 )
+# Only real words from this talk go in here, and only a goodbye may use them (D-38).
+GIVEN_NOTE = (
+    "If the next sentence is a goodbye, your goodbye names one thing they learned from you today: "
+    "{words}. Say it in a few words, as something they learned or used well today; that one word "
+    "stays as it is, whatever language you are speaking. If the next sentence is not a goodbye, "
+    "ignore this note."
+)
 # No example words in these notes: the model repeats an example given this close to the sentence.
 LANGUAGE_NOTES = {
     Language.EN: (
@@ -96,6 +103,9 @@ def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:
         note = IN_TALK_NOTE if request.woken else OVERHEARD_NOTE
         messages.append({"role": "system", "content": note})
     messages.append({"role": "system", "content": LANGUAGE_NOTES[request.language]})
+    if request.given and not request.word:  # last, next to the sentence: it was ignored higher up
+        note = GIVEN_NOTE.format(words=", ".join(request.given))
+        messages.append({"role": "system", "content": note})
     messages.append({"role": "user", "content": request.text})
     return messages
 

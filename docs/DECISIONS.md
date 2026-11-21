@@ -656,6 +656,14 @@ seconds. Measured on the Pi's backend (real Agora, a question and 0.9 s later a 
   again); react and ask one question; talk at the person's level; a challenge to use a word only right after
   giving it; no praise for ordinary sentences; a goodbye that names one thing from the talk. Compared with
   the real model on three scripted conversations.
+- **`append` while two people talk** (Mochi only watching, empty replies), two runs: every sentence was
+  heard and decided, nothing was spoken, nothing was lost. `render.yaml` and `.env.example` now carry it.
+- **The goodbye names a word.** The history holds four exchanges, so a goodbye after a longer talk had
+  forgotten the word. `MochiTalk` keeps the last three words Mochi handed over in the session (the word it
+  was told to teach, or one it wrote in `[show]`), `CharacterRequest.given` carries them, and a note next
+  to the sentence offers them for a goodbye only. Real model, 3 of 3: "Bye! You used postpone well today.";
+  no mention of the word in the turns between. When Mochi taught a word without `[show]`, nothing is kept.
+  While a round is on the words are withheld: the round's secret is the newest word Mochi taught.
 - **Not solved:** a voice in the room is still answered when its sentence is clear, and when it follows
   within the end-of-speech pause Agora joins it to the person's own sentence. That needs who is speaking.
 

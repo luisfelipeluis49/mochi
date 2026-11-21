@@ -220,6 +220,16 @@ def test_without_a_model_key_the_ears_are_ares_with_the_lexicon_as_keywords() ->
     assert len(harness.agora.attempts) == 1
 
 
+def test_the_setting_that_lets_mochi_finish_its_answer_reaches_agora_with_either_ears() -> None:
+    for extra in ({}, {"MODEL_API_KEY": "sk-test"}):
+        client, harness = _client({"MOCHI_INTERRUPTION": "append", **extra})
+        client.post("/api/sessions/demo/start")
+        assert harness.agora.started[0].tuning.interruption == "append"
+    client, harness = _client()
+    client.post("/api/sessions/demo/start")
+    assert harness.agora.started[0].tuning.interruption == ""  # Agora's default, as before
+
+
 def test_with_a_model_key_the_ears_are_openai_transcription_with_a_prompt() -> None:
     client, harness = _client({"MODEL_API_KEY": "sk-test"})
     client.post("/api/sessions/demo/start")

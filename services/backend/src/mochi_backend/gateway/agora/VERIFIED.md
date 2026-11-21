@@ -34,7 +34,7 @@ header `X-Mochi-Key` through `llm.headers`. **Unverified:** that `llm.headers` v
 4. **Semantic end-of-speech** supports en/zh only per the docs (the page contradicts itself); we use VAD with `MOCHI_END_OF_SPEECH_SILENCE_MS`.
 5. **Which uid the `properties.token` must be built for.** We build it for the agent uid.
 6. **Finished-speaking signal.** Webhooks carry no "speaking finished" event; the client toolkit has `AGENT_SPEAKING_CHANGED` (needs RTM, client side only). So the mute fallback ends its window by the word-count formula.
-7. **Barge-in:** `properties.interruption` (`enable`, default true) exists; not tuned.
+7. **Barge-in:** `properties.interruption` (`enable`, default true; `mode` `start_of_speech` | `keywords`; with `enable` false, `disabled_config.strategy` `append` | `ignore`), join page read 2026-11-21. `MOCHI_INTERRUPTION=append` sends `{"enable": false, "disabled_config": {"strategy": "append"}}`; **tested live 2026-11-21** (accepted; see D-38): by default a sentence that follows a question drops the answer under way, with `append` both answers are spoken in order, and while two people talk (empty replies) no sentence is lost. The docs do not say what happens to an in-flight custom-LLM answer; the above is what was measured.
 
 ## Tested against real Agora (2026-11-20, from a local backend in real mode)
 
