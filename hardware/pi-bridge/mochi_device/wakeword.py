@@ -177,6 +177,7 @@ class KeywordSpotter:
         self._voice_out: queue.Queue = queue.Queue()
         self._voice_flags = {"track": False, "hold": False}
         self.known_voices: list[str] = []
+        self.exported: dict[str, dict] = {}  # every voice with its vector; replaced as a whole, never edited
         threads = cfg.get("listening", {}).get("threads", 2)
         self._thread = threading.Thread(target=self._run, args=(threads,), daemon=True)
         self._thread.start()
@@ -194,6 +195,7 @@ class KeywordSpotter:
                     voices = speakers.Voices(self._voices_cfg)
                     listener.tracker = speakers.VoiceTracker(voices)
                     self.known_voices = sorted(voices.people)
+                    self.exported = voices.export()
                 else:
                     print(f"[mochi] voices off: {speakers.MODEL} missing (scripts/fetch-wake-model.sh)", flush=True)
         except BaseException as e:  # missing model files: surface it in the caller's thread
@@ -218,7 +220,9 @@ class KeywordSpotter:
                     elif what == "enroll":
                         listener.tracker.start_enroll(arg)
                     elif what == "forget" and voices.forget(arg):
-                        self.known_voices = sorted(voices.people)
+                        self.known_voices, self.exported = sorted(voices.people), voices.export()
+                    elif what == "merge" and voices.merge(arg):
+                        self.known_voices, self.exported = sorted(voices.people), voices.export()
                 continue
             # if recognition fell behind (busy CPU), catch up on everything queued in one go
             frames = [item]
@@ -243,7 +247,7 @@ class KeywordSpotter:
                 self.last_voice = time.monotonic()
             for event in listener.voice_events:
                 if event[0] == "enrolled":
-                    self.known_voices = sorted(voices.people)
+                    self.known_voices, self.exported = sorted(voices.people), voices.export()
                 self._voice_out.put(event)
             listener.voice_events = []
             for hit in hits:  # after the voice events: who said a wake phrase is there when the hit is read
@@ -272,6 +276,14 @@ class KeywordSpotter:
 
     def forget(self, name: str) -> None:
         self._in.put(("forget", name))
+
+    def voiceprints(self) -> dict[str, dict]:
+        """name -> {"voiceprint", "saved"} for every voice known now (a snapshot; safe from any thread)."""
+        return self.exported
+
+    def merge_voices(self, profiles: list[dict]) -> None:
+        """Add voices from the backend that this Pi lacks (done on the listener's thread)."""
+        self._in.put(("merge", profiles))
 
     def voice_events(self) -> list[tuple]:
         """("speaker", name | None, score), ("unsure", None, score), ("enrolled", name, seconds),

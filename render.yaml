@@ -1,6 +1,6 @@
 # Render Blueprint. Deploy: Render dashboard > New > Blueprint > select this repo.
-# Plan: NOT free. A free web service spins down after 15 minutes without traffic (~1 minute to wake),
-# which would break a live demo. See https://render.com/docs/free
+# Plan: free (see below). A free web service spins down after 15 minutes without traffic (~1 minute to
+# wake), and its Postgres expires after 30 days: upgrade both before a live demo. See https://render.com/docs/free
 # Field names checked against https://render.com/docs/blueprint-spec for healthCheckPath and
 # numInstances; dockerfilePath and dockerContext were NOT re-verified (check on first deploy).
 services:
@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./services/backend/Dockerfile
     dockerContext: .
     plan: free
-    numInstances: 1 # the session is in memory (words are in Postgres): exactly one instance, one worker
+    numInstances: 1 # the session is in memory (words and voices are in Postgres): one instance, one worker
     healthCheckPath: /healthz
     envVars:
       - key: MOCHI_AGORA_MODE

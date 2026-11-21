@@ -12,6 +12,7 @@ from mochi_device.speakers import RATE, WINDOW, Voices, VoiceTracker
 class FakeVoices(Voices):
     def __init__(self, store):
         self.min_score, self.min_margin, self.store, self.people = 0.35, 0.08, store, {}
+        self.saved = {}
 
     def embed(self, audio):  # level 0.1 -> one direction, 0.2 -> another, 0.3 -> a third
         v = np.zeros(8, np.float32)
@@ -151,3 +152,33 @@ class VoiceTrackerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceSharingTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.voices = FakeVoices(Path(self.dir.name) / "voices.json")
+        self.voices.people["Ana"] = np.array([1, 0, 0], np.float32)
+
+    def test_export_gives_every_voice_with_its_vector(self):
+        self.assertEqual(self.voices.export(), {"Ana": {"voiceprint": [1.0, 0.0, 0.0], "saved": None}})
+
+    def test_merge_adds_only_voices_that_are_missing_and_saves_them(self):
+        added = self.voices.merge([{"name": "ana", "voiceprint": [0, 1, 0]},
+                                   {"name": "Ben", "voiceprint": [0, 1, 0], "saved": "2026-11-21 15:00"}])
+        self.assertEqual(added, ["Ben"])
+        self.assertEqual(list(self.voices.people["Ana"]), [1, 0, 0])  # never replaced
+        self.assertEqual(self.voices.saved["Ben"], "2026-11-21 15:00")
+        self.assertTrue(self.voices.store.exists())
+
+    def test_merge_skips_a_vector_that_cannot_be_used(self):
+        bad = [{"name": "Ben", "voiceprint": [0, 1]}, {"name": "Cy", "voiceprint": [float("nan"), 0, 0]},
+               {"name": "Di", "voiceprint": None}, {"name": "", "voiceprint": [0, 1, 0]}]
+        self.assertEqual(self.voices.merge(bad), [])
+        self.assertEqual(list(self.voices.people), ["Ana"])
+        self.assertFalse(self.voices.store.exists())
+
+    def test_forgetting_a_voice_forgets_when_it_was_saved_too(self):
+        self.voices.saved["Ana"] = "2026-11-21 15:00"
+        self.assertTrue(self.voices.forget("ana"))
+        self.assertEqual(self.voices.saved, {})

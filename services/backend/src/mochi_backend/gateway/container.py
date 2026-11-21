@@ -1,5 +1,6 @@
 """The object routes read their collaborators from (attached to the app in `create_app`)."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from starlette.requests import HTTPConnection
@@ -32,6 +33,7 @@ class AppContainer:
     voices: VoiceDirectory
     intelligence_name: str
     storage_name: str = "memory"
+    storage_unsaved: Callable[[], int] = lambda: 0  # noqa: E731 - a default, not a name to reuse
 
 
 def get_container(connection: HTTPConnection) -> AppContainer:

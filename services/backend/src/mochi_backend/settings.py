@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     mochi_device_key: str = ""
     model_api_key: str = ""
     database_url: str = ""  # Postgres; empty = memory only (lost on restart). See D-32
+    mochi_local_data: str = ""  # a JSON file for saved words and voices; fake mode only. See D-33
     mochi_public_url: str = "http://localhost:8000"
     mochi_agora_mode: Literal["fake", "real"] = "real"
     mochi_silence_strategy: Literal["empty_reply", "mute_speaker"] = "empty_reply"
@@ -98,6 +99,11 @@ class Settings(BaseSettings):
             self.mochi_turn_key = self.mochi_turn_key or "dev-turn-key"
             self.mochi_device_key = self.mochi_device_key or DEV_DEVICE_KEY
             return self
+        if self.mochi_local_data:
+            raise ValueError(
+                "MOCHI_LOCAL_DATA is for MOCHI_AGORA_MODE=fake only; a deployed container's disk "
+                "is wiped on every deploy. Use DATABASE_URL"
+            )
         missing = [name.upper() for name in _REAL_MODE_REQUIRED if not getattr(self, name)]
         if missing:
             raise ValueError(

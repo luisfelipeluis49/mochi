@@ -26,7 +26,8 @@ class Readiness(BaseModel):
     model_configured: bool
     intelligence: str
     silence_strategy: str
-    storage: str  # `postgres` (words survive restarts) or `memory` (they do not)
+    storage: str  # `postgres` or `local_file` (words survive restarts), or `memory` (they do not)
+    storage_unsaved: int  # writes that failed and wait for a retry; above 0 means the DB is failing
 
 
 @router.get("/healthz")
@@ -48,4 +49,5 @@ async def readyz(container: ContainerDep) -> Readiness:
         intelligence=container.intelligence_name,
         silence_strategy=settings.mochi_silence_strategy,
         storage=container.storage_name,
+        storage_unsaved=container.storage_unsaved(),
     )

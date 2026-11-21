@@ -18,3 +18,6 @@ build/
 .claude/settings.local.json
 node_modules/
 *.log
+
+# Local saved words and voices (MOCHI_LOCAL_DATA, scripts/start-dev.sh); holds voiceprints
+.local/

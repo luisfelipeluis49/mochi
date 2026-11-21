@@ -141,10 +141,18 @@ Mochi can learn a voice by being asked, in either language, during a session:
 
 From then on the Pi recognises who is talking (`mochi_device/speakers.py`: 3D-Speaker CAM++
 embeddings through sherpa-onnx, about 50 ms per check), shows the name on the screen and tells the
-agent, which then knows whether it is talking to Ana or Ben. Voiceprints never leave the Pi: they
-are in `data/voices.json` (delete it to forget everyone), and anything else that has a recording,
-such as a phone app later, can enrol through the same `Voices.learn(name, audio)`. Tolerances are
-under `[voices]` in the config.
+agent, which then knows whether it is talking to Ana or Ben. The Pi keeps its voiceprints in
+`data/voices.json`. Anything else that has a recording, such as a phone app later, can enrol through
+the same `Voices.learn(name, audio)`. Tolerances are under `[voices]` in the config.
+
+**Sharing voiceprints with the backend** (`[voices] share_with_backend`, on by default; with
+`kind = "mochi_backend"`): the Pi sends each voiceprint to the backend's database after learning it
+(`PUT .../voices/{name}/voiceprint`, device key required). At the start of each session it adds the
+voices the backend has and it lacks, so a replaced or reflashed Pi gets its voices back, and sends
+the ones the backend lacks. It only ever adds: a failed or empty answer never deletes anything
+here. To forget someone for good, ask Mochi ("forget my voice"): that deletes both copies; deleting
+`data/voices.json` alone only forgets them until the next session. A voiceprint is biometric data:
+with `share_with_backend = false` none leaves this Pi and none is fetched.
 
 How it decides (changed 2026-11-21, after "the name was on the screen and Mochi still said it did
 not know me"):
@@ -211,7 +219,7 @@ Mochi's voice comes back through the M1A's own microphone, faint but recognisabl
 recogniser then writes down sentences nobody said. While Mochi's voice is playing, and for 0.6 s
 after, the supervisor therefore sends silence instead of the microphone (`[audio]
 hear_while_speaking = false`). The cost is that talking over Mochi does not interrupt it; "tchau
-Mochi" still does, because the Pi hears that itself. See `docs/DECISIONS.md` D-34.
+Mochi" still does, because the Pi hears that itself. See `docs/DECISIONS.md` D-35.
 
 ## Mochi's face
 

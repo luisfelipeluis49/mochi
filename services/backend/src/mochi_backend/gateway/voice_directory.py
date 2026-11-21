@@ -1,8 +1,10 @@
 """The voices Mochi has learned and whose they are. Biometric data: only device-key routes use it.
 
-The Pi still keeps its own copy (`data/voices.json`). This one lets a replaced or reflashed Pi get
-its voices back, and links each voice name to a user. Reads come from memory; writes are queued to
-storage by `WriteBehindStorage`.
+The Pi keeps its own copy (`data/voices.json`) and, after learning a voice, sends the vector
+here (`PUT .../voiceprint`). At each session start it adds the voices it lacks from
+`GET .../voices`, so a replaced or reflashed Pi gets its voices back. A voice that was only linked
+(`POST .../voices`) has no vector yet. Each voice name is linked to a user. Reads come from memory;
+writes are queued to storage by `WriteBehindStorage`.
 """
 
 import math

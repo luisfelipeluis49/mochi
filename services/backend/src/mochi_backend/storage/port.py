@@ -45,6 +45,10 @@ class Storage(Protocol):
         """Forget one voice, vector included. No error when it is not there."""
         ...
 
+    def unsaved_writes(self) -> int:
+        """Writes that failed and still wait for another try (0 when everything is saved)."""
+        ...
+
 
 class NullStorage:
     """No database: everything stays in memory, as before. Used when `DATABASE_URL` is not set."""
@@ -75,3 +79,7 @@ class NullStorage:
 
     def delete_voice(self, name: str) -> None:
         """Nothing to do."""
+
+    def unsaved_writes(self) -> int:
+        """Nothing is ever waiting."""
+        return 0
