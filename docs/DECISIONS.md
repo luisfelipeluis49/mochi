@@ -441,8 +441,9 @@ scope; Kauê's `memory_store.py` and Matheus's contracts are touched, additively
   `storage_memory_only` / `storage_unavailable` logged. `/readyz` shows `storage: postgres|memory`.
 - **Voiceprints are biometric.** Only device-key routes read or write them (`GET /api/devices/home_pi_01/voices`,
   `PUT .../voices/{name}/voiceprint`, `DELETE .../voices/{name}`); they never appear in an event, a log line or
-  a non-device response. The Pi keeps its own copy; **the Pi must call DELETE when it forgets someone** (not
-  done: hardware is out of this change), otherwise the server copy stays. `POST .../voices` with
+  a non-device response. The Pi keeps its own copy. Mochi's written `[forget NAME]` (`turn_pipeline`) also
+  deletes the server copy; **a forget that starts on the Pi itself still needs the Pi to call DELETE** (not
+  done: hardware is out of this change). `POST .../voices` with
   `learned: true` links the name to a user; `learned: false` stores nothing.
 - **Reset** (`/api/demo/reset`) clears learning events only; users and voices survive.
 - **Speaker-based word ownership is not changed** (AGENTS 7.3): the Pi's `speaker` is not used yet.
