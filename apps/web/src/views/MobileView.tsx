@@ -1,11 +1,11 @@
 // =============================================================================
 // MobileView.tsx  —  LANGUAGE: TypeScript + JSX (React)
 // -----------------------------------------------------------------------------
-// A PERSON'S PHONE.  URL: /m?user=ana  (or /m?user=sophie)
+// A PERSON'S PHONE.  URL: /m?user=ana  (or /m?user=ben)
 // "Mochi Mobile": the ANALYTICS page — a place to reflect after talking, not during.
 // (The vision slides: "Sem celular. Só conversa." Hints and the game live on Mochi itself.)
 // Shows, from top to bottom:
-//   1. Start / Stop (the Operator uses these) + the current mode
+//   1. Start / Stop (the Operator uses these) + the current mode + "Start a game"
 //   2. "Your progress": new words, used with help, recalled in a game, minutes practiced
 //   3. "Your last session": the summary card (PROPOSED v0.5)
 //   4. "Sessions": minutes per session, as bars
@@ -22,7 +22,7 @@ import { type ClientState, wordsNewestFirst } from "../lib/store.ts";
 
 // The inputs this screen receives from main.tsx.
 interface Props {
-  user: string;                        // "ana" or "sophie"
+  user: string;                        // "ana" or "ben" (the backend roster)
   state: ClientState;                  // all data received from the backend
   lang: Language;                      // "en" or "pt-BR"
   connected: boolean;                  // is the connection to the backend open?
@@ -136,6 +136,11 @@ export function MobileView({ user, state, lang, connected, backend }: Props) {
           <button className="btn stop" disabled={busy} onClick={() => run((b) => b.stop())}>{t.stop}</button>
         ) : (
           <button className="btn start" disabled={busy} onClick={() => run((b) => b.start())}>{t.start}</button>
+        )}
+        {/* Start a Describe & Guess round (the Operator's phone). Shown while Mochi listens and no round is
+            running. Until the backend can start a round by voice ("Bora jogar!"), this is the only way in the UI. */}
+        {capturing && state.activity?.state !== "ACTIVE_ROUND" && (
+          <button className="btn secondary" disabled={busy} onClick={() => run((b) => b.activityStart())}>{t.startGame}</button>
         )}
         {error && <p className="error">{error}</p>}
       </section>

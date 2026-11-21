@@ -11,7 +11,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MochiEvent } from "../contracts.ts";
-import type { Who } from "../lib/who.ts";
+import { SECOND_USER, type Who } from "../lib/who.ts";
+import { displayName } from "../lib/i18n.ts";
 import { MockGateway } from "./demoScript.ts";
 
 // Run the whole scripted demo very fast (x500) and collect what one page receives.
@@ -27,7 +28,7 @@ async function run(who: Who): Promise<MochiEvent[]> {
 }
 
 const ana: Who = { kind: "user", user: "ana" };
-const sophie: Who = { kind: "user", user: "sophie" };
+const sophie: Who = { kind: "user", user: SECOND_USER }; // the second demo person (ben in the backend roster today)
 const home: Who = { kind: "device", device: "home_pi_01" };
 const audience: Who = { kind: "audience" };
 
@@ -53,7 +54,7 @@ test("each person gets only their own words and summary", async () => {
   assert.deepEqual(words(a), ["postpone", "umbrella"]);
   assert.deepEqual(words(s), ["me queimei", "protetor solar"]);
   assert.deepEqual(summaries(a), ["ana", "ana"]);       // yesterday + today
-  assert.deepEqual(summaries(s), ["sophie", "sophie"]);
+  assert.deepEqual(summaries(s), [SECOND_USER, SECOND_USER]);
   assert.equal(summaries(await run(audience)).length, 0);
 });
 
@@ -63,7 +64,7 @@ test("the story: Oi Mochi → Companhia → game → Mochi congratulates → sto
   assert.ok(modes.includes("choosing") && modes.includes("together") && modes.includes("activity"));
   const said = events.flatMap((e) => (e.type === "agent.speak.requested" ? [e.payload.text] : []));
   assert.ok(said.includes("Protetor solar."));
-  assert.ok(said.includes("Correct! Sophie, your turn to describe."));
+  assert.ok(said.includes(`Correct! ${displayName(SECOND_USER)}, your turn to describe.`));
   const last = events.filter((e) => e.type === "session.state.changed").at(-1);
   assert.equal(last?.type === "session.state.changed" && last.payload.capturing, false);
 });

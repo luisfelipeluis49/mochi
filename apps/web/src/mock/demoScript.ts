@@ -28,7 +28,7 @@ import {
   type ConversationReport, type PayloadByType, type RoundResult, type Session, type SessionSummary,
 } from "../contracts.ts";
 import { displayName } from "../lib/i18n.ts";
-import type { Who } from "../lib/who.ts";
+import { SECOND_USER, type Who } from "../lib/who.ts";
 
 /** Who receives which event (AGENTS.md §6.2 "Sent to"). Copied here ONLY so the mock behaves like
  *  the real backend; in real life Luís's gateway decides this, never the browser. */
@@ -258,7 +258,7 @@ export class MockGateway {
   private readonly b: string; // learns Portuguese (Sophie in the slides; e.g. "matheus")
 
   constructor(who: Who, deliver: (e: MochiEvent) => void, speed = 1, clock: () => number = () => Date.now(),
-    people: [string, string] = ["ana", "sophie"], scenario: "demo" | "recording" = "demo") {
+    people: [string, string] = ["ana", SECOND_USER], scenario: "demo" | "recording" = "demo") {
     this.who = who;
     this.deliver = deliver;
     this.speed = speed;

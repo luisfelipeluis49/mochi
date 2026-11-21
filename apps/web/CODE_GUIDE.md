@@ -57,6 +57,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 | `src/lib/store.test.ts` | duplicates ignored, hints expire, word order, debug list |
 | `src/lib/analytics.test.ts` | the progress numbers, session order, bar sizes |
 | `src/lib/insights.test.ts` | the "My conversations" numbers |
+| `src/lib/contract.test.ts` | the app against the OFFICIAL contract in `packages/contracts`: every example event, every field the screens read, the learning states |
 | `src/lib/home.test.ts` | the mode question, hint options, Mochi speaking, every game step, text size |
 | `src/mock/demoScript.test.ts` | the secret word only reaches Mochi's screen; words and summaries only reach their owner; the story runs in order |
 
@@ -78,6 +79,7 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 |---|---|
 | `package.json` | The project's name, its libraries (`react`, `vite`, ...) and its commands: `npm run dev`, `npm test`, `npm run build`. JSON can't hold comments, so here is what it does. |
 | `tsconfig.json` | How strict TypeScript is. This one allows comments. |
+| `vercel.json` | Settings to host the app on Vercel (build command, output folder, every address opens the app) |
 
 ## 6. Markdown (documentation)
 

@@ -34,7 +34,7 @@ const insights = window.location.pathname.startsWith("/me");      // the "My con
 const mockPeople = peopleFromUrl(window.location.search) ?? undefined; // ?people=tasnim,matheus: names in the mock demo
 
 // --- App: the page shown when the URL is one of our 3 screens -----------------
-// "who" says which connection this is: the Mochi device, a user (ana/sophie), or the projector.
+// "who" says which connection this is: the Mochi device, a user (ana/ben, or anyone in the backend roster), or the projector.
 function App({ who }: { who: Who }) {
   // useMochi opens the connection and gives back:
   //   state     = everything received so far (session, hint, game, words)

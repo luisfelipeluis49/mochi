@@ -120,3 +120,19 @@ test("parseEvent with another schema_version still returns the event and warns o
   assert.equal(parseEvent(raw("0.4", 3))?.sequence, 3);
   assert.equal(warn.mock.callCount(), 1);
 });
+
+test("a wrong device clock does not hide or stretch hints (Pi without a clock battery)", async () => {
+  const { hintLifetimeMs } = await import("./store.ts");
+  const hint = { hint_id: "h1", target_user_id: "ana", target_language: "en" as const, expression: "postpone",
+    meaning: null, example: null, reason: "code_switch" as const, expires_at: "2026-11-19T16:00:12.700Z" };
+  const sent = { schema_version: "0.4", event_id: "e1", type: "hint.created", session_id: "demo",
+    emitted_at: "2026-11-19T16:00:04.700Z", sequence: 901, payload: hint } as Parameters<typeof applyEvent>[1];
+  for (const skew of [-30_000, 0, 30_000]) {           // device 30 s behind, right, 30 s ahead
+    const arrived = Date.parse("2026-11-19T16:00:04.800Z") + skew;
+    const s = applyEvent(initialState, sent, arrived);
+    assert.equal(liveHint(s, arrived + 7_900)?.expression, "postpone", `skew ${skew}`);
+    assert.equal(liveHint(s, arrived + 8_100), null, `skew ${skew}`);
+  }
+  assert.equal(hintLifetimeMs("bad", "2026-11-19T16:00:04.700Z"), 8000);
+  assert.equal(hintLifetimeMs("2026-11-19T17:00:00.000Z", "2026-11-19T16:00:00.000Z"), 60000);
+});

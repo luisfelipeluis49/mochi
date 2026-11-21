@@ -22,7 +22,11 @@ export interface ClientState {
   activity: Activity | null;        // the game state (IDLE / ACTIVE_ROUND / ROUND_RESULT)
   /** the time (ms) when the current game state arrived, to show the result for a few seconds */
   activityReceivedAt: number;
-  hint: Hint | null;                // the latest hint (it hides itself at expires_at)
+  hint: Hint | null;                // the latest hint
+  /** client clock (ms) until which the hint is shown. Worked out from the SERVER's own times
+   *  (expires_at − emitted_at) counted from when it arrived, so a wrong device clock (a Pi has no
+   *  clock battery) cannot hide or stretch hints. */
+  hintShownUntil: number;
   privatePrompt: PrivatePrompt | null; // the SECRET word (only Mochi's screen receives this)
   words: Record<string, LearningEvent>; // saved words, by their id
   speaking: { speak: Speak; receivedAt: number } | null; // Mochi talking out loud
@@ -40,6 +44,7 @@ export const initialState: ClientState = {
   activity: null,
   activityReceivedAt: 0,
   hint: null,
+  hintShownUntil: 0,
   privatePrompt: null,
   words: {},
   speaking: null,
@@ -72,9 +77,11 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
     case "session.state.changed":   // Start/Stop pressed, or mode changed
       next.session = event.payload;
       break;
-    case "hint.created":            // a new hint word
+    case "hint.created": {          // a new hint word
       next.hint = event.payload;
+      next.hintShownUntil = now + hintLifetimeMs(event.payload.expires_at, event.emitted_at);
       break;
+    }
     case "hint.cleared":            // backend says "remove this hint" (only if it is the one on screen)
       if (state.hint?.hint_id === event.payload.hint_id) next.hint = null;
       break;
@@ -108,7 +115,19 @@ export function applyEvent(state: ClientState, event: MochiEvent, now: number): 
 /** The hint to show right now, or null if there is none or its time ran out. */
 export function liveHint(state: ClientState, now: number): Hint | null {
   if (!state.hint) return null;
-  return Date.parse(state.hint.expires_at) > now ? state.hint : null;
+  return now < state.hintShownUntil ? state.hint : null;
+}
+
+/** Default and maximum time a hint stays, if the server's times are missing or odd. */
+export const HINT_DEFAULT_MS = 8000;
+export const HINT_MAX_MS = 60000;
+
+/** How long a hint should stay, from the SERVER's own two times (both on the server's clock),
+ *  so the device's clock never matters. Falls back to 8 s if a time is missing; never over 60 s. */
+export function hintLifetimeMs(expiresAt: string, emittedAt: string): number {
+  const ms = Date.parse(expiresAt) - Date.parse(emittedAt);
+  if (!Number.isFinite(ms) || ms <= 0) return HINT_DEFAULT_MS;
+  return Math.min(ms, HINT_MAX_MS);
 }
 
 /** A hint can hold up to 3 options separated by " · " ("me queimei · tomei muito sol").
