@@ -96,6 +96,7 @@ def test_ordinary_talk_does_not_ask_to_hear_a_word(ordinary: str) -> None:
         "Could you please pronounce that for me?",
         "What's the pronunciation?",
         "Can you say the word again?",
+        "Can you say it again?",
         "Como se pronuncia recibo?",
         "Como é a pronúncia de queue?",
         "Você pode pronunciar isso?",
@@ -197,3 +198,21 @@ async def test_a_good_hint_call_logs_nothing() -> None:
     body = json.dumps({"choices": [{"message": {"content": '{"decision": "IGNORE"}'}}]})
     assert await _model(HttpResponse(200, body), logger).suggest(REQUEST) is not None
     assert logger.lines == []
+
+
+async def _hint_model_said(confidence: str) -> Decision:
+    content = json.dumps({**FORK.model_dump(), "confidence": json.loads(confidence)})
+    body = json.dumps({"choices": [{"message": {"content": content}}]})
+    http = FakeHttpClient([HttpResponse(200, body)])
+    model = OpenAiHintModel(http, "https://llm.example/v1", "m", "k", 2.0)
+    brain = Intelligence(clock=FakeClock(), ids=SequentialIdGenerator(), model=model)
+    return await brain.decide(make_turn(GARFO, 60), make_context())
+
+
+@pytest.mark.parametrize("confidence", ['"high"', "true", "null", '"0.95"'])
+async def test_a_confidence_that_is_not_a_number_is_not_a_certainty(confidence: str) -> None:
+    assert (await _hint_model_said(confidence)).decision is DecisionKind.IGNORE
+
+
+async def test_a_numeric_confidence_from_the_real_adapter_is_shown() -> None:
+    assert (await _hint_model_said("95")).decision is DecisionKind.SHOW_HINT

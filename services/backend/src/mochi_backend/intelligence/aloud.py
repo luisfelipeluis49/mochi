@@ -23,7 +23,7 @@ _WANTS_TO_HEAR = re.compile(
     rf"\b(?:can|could|would|will) you (?:please )?pronounce\b|\bpronounce {_OBJECT}\b|"
     r"\bwhat(?:'s| is) the pronunciation\b|\bhow does (?:it|that) sound\b|"
     rf"\bsay (?:it|that|this|the word) (?:out loud|aloud|for me|for us)\b|"
-    r"\bsay the word again\b|\blet me hear (?:it|that)\b|\bem voz alta\b|"
+    r"\bsay (?:the word|it) again\b|\blet me hear (?:it|that)\b|\bem voz alta\b|"
     r"\bcomo (?:se pronuncia|pronuncia|pronunciar)\b|"
     r"\b(?:como [e\u00e9]|qual [e\u00e9]) a pron[u\u00fa]nci\w+|"
     r"\b(?:pode|poderia|consegue|sabe) pronunciar\b|\bpronuncia (?:isso|ela|a palavra)\b|"
