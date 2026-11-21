@@ -69,7 +69,7 @@ Also driven in headless Chrome at 480×320, 390×844 and 1280×720 through the w
 **Fixed in this round:**
 - Hints are timed from the server's own times (`expires_at − emitted_at`), counted on the device from arrival, so a Pi with a wrong clock no longer hides them (integration review item 6).
 - The demo's second person is `SECOND_USER` in `src/lib/who.ts` = `ben`, the backend roster; the mock and links follow it.
-- "Start a game" is back on the Operator's phone (`/m`), until the backend can start a round by voice.
+- "Start a game" is back on the Operator's phone (`/m`). Team decision: the demo starts the game with this button.
 - `vercel.json` + the Hosting section above.
 - `src/lib/contract.test.ts` checks the app against `packages/contracts` on every CI run.
 

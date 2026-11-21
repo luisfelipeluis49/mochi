@@ -32,8 +32,9 @@ export function wsQuery(who: Who): string {
 }
 
 /** The second demo person. It must be in the backend roster (services/backend/.../gateway/roster.py),
- *  which today is ana + ben; any other name is refused with close code 4400. The product deck calls
- *  her Sophie: if the team renames ben → sophie in the backend, change this ONE line too.
+ *  which today is ana + ben; any other name is refused with close code 4400.
+ *  Team decision (2026-11-21): rename ben → sophie. Change this ONE line to "sophie" in the same
+ *  change that renames the backend roster, never before (Sophie's phone would be refused).
  *  The mock demo, the start-page links and the tests all follow this constant. */
 export const SECOND_USER = "ben";
 

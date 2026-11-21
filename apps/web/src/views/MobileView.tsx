@@ -137,8 +137,8 @@ export function MobileView({ user, state, lang, connected, backend }: Props) {
         ) : (
           <button className="btn start" disabled={busy} onClick={() => run((b) => b.start())}>{t.start}</button>
         )}
-        {/* Start a Describe & Guess round (the Operator's phone). Shown while Mochi listens and no round is
-            running. Until the backend can start a round by voice ("Bora jogar!"), this is the only way in the UI. */}
+        {/* Start a Describe & Guess round from the Operator's phone. Team decision (2026-11-21): for the demo
+            the game starts with this button, not by voice. Shown while Mochi listens and no round is running. */}
         {capturing && state.activity?.state !== "ACTIVE_ROUND" && (
           <button className="btn secondary" disabled={busy} onClick={() => run((b) => b.activityStart())}>{t.startGame}</button>
         )}
