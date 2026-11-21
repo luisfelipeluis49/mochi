@@ -36,27 +36,44 @@ export type HomeScreen =
   | { kind: "game_waiting"; roundId: string; describer: string; guesser: string } // result sent, waiting
   | { kind: "game_result"; word: string | null; guesser: string; result: RoundResult | null }; // "Ana got it!"
 
+/** Is the round result still on screen? Counted from the arrival time of the event, for Home and Audience alike. */
+export function resultVisible(state: ClientState, now: number): boolean {
+  return state.activity?.state === "ROUND_RESULT" && now - state.activityReceivedAt < RESULT_SHOW_MS;
+}
+
+/** The result request failed. A 409 means the round already ended on the server: stop revealing and
+ *  follow the server (waiting for / showing the result). Any other failure: show the word again to retry. */
+export function afterResultFailure(local: HomeLocal, roundId: string, status: number | null): HomeLocal {
+  void local;
+  if (status === 409) return { revealedRoundId: null, sentRoundId: roundId };
+  return { revealedRoundId: roundId, sentRoundId: null };
+}
+
 /** Decide the screen. Checked in order: game, choosing a mode, speaking, hint, then the face. */
 export function homeScreen(state: ClientState, local: HomeLocal, now: number): HomeScreen {
   const a = state.activity;
+  // The backend may send null for these fields (AGENTS.md 6.2 example, item 12): use "" so the screens still work.
+  const roundId = a?.round_id ?? "";
+  const describer = a?.describer_user_id ?? "";
+  const guesser = a?.guesser_user_id ?? "";
 
   // 1) A game round is running.
   if (a?.state === "ACTIVE_ROUND") {
     // The secret word, but only if it belongs to THIS round.
     const secret = state.privatePrompt?.round_id === a.round_id ? state.privatePrompt.secret_word : null;
-    if (local.revealedRoundId === a.round_id && secret) {
-      return { kind: "game_revealed", roundId: a.round_id, word: secret, guesser: a.guesser_user_id };
+    if (local.revealedRoundId === roundId && secret) {
+      return { kind: "game_revealed", roundId, word: secret, guesser };
     }
-    if (local.sentRoundId === a.round_id) {
-      return { kind: "game_waiting", roundId: a.round_id, describer: a.describer_user_id, guesser: a.guesser_user_id };
+    if (local.sentRoundId === roundId) {
+      return { kind: "game_waiting", roundId, describer, guesser };
     }
-    return { kind: "game_hidden", roundId: a.round_id, describer: a.describer_user_id };
+    return { kind: "game_hidden", roundId, describer };
   }
 
   // 2) The round just ended: show the result for RESULT_SHOW_MS, then fall through to the face.
-  if (a?.state === "ROUND_RESULT" && now - state.activityReceivedAt < RESULT_SHOW_MS) {
+  if (a?.state === "ROUND_RESULT" && resultVisible(state, now)) {
     const word = a.revealed_word ?? (state.privatePrompt?.round_id === a.round_id ? state.privatePrompt.secret_word : null);
-    return { kind: "game_result", word, guesser: a.guesser_user_id, result: a.result };
+    return { kind: "game_result", word, guesser, result: a.result };
   }
 
   // 3) Someone said "Oi, Mochi!": ask which mode (PROPOSED v0.5). This wins over "speaking",

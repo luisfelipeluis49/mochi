@@ -26,6 +26,7 @@ export interface Backend {
 export interface BackendHandlers {
   onEvent(e: MochiEvent): void;          // an event arrived
   onConnected(connected: boolean): void; // the connection opened (true) or closed (false)
+  onRejected?(reason: string): void;     // the backend closed it with 4400: we stop retrying; this says why
 }
 
 /** The backend address. Empty = same address as the page (Vite forwards /api and /ws in development).
@@ -41,6 +42,21 @@ function wsUrl(who: Who): string {
   return `${base.replace(/^http/, "ws")}/ws?${wsQuery(who)}`; // http → ws, https → wss
 }
 
+/** A failed POST, with the HTTP status (HomeView needs to tell 409 from the rest). */
+export class HttpError extends Error {
+  status: number;
+  constructor(path: string, status: number) {
+    super(`${path} → ${status}`);
+    this.status = status;
+  }
+}
+
+/** Should the page reconnect after the socket closed with this code? 4400 = the backend rejected
+ *  this connection (bad ?user= ...): retrying can never work. */
+export function shouldRetry(code: number): boolean {
+  return code !== 4400;
+}
+
 /** Send one POST request. Throws an error if the backend answers with a failure. */
 async function post(path: string, body?: unknown): Promise<void> {
   const res = await fetch(`${baseUrl()}${path}`, {
@@ -48,7 +64,7 @@ async function post(path: string, body?: unknown): Promise<void> {
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new HttpError(path, res.status);
 }
 
 /** Connect to the REAL backend. */
@@ -66,8 +82,13 @@ export function connectReal(who: Who, h: BackendHandlers): Backend {
       const e = parseEvent(String(m.data));            // text → event (or null if broken)
       if (e) h.onEvent(e);
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       h.onConnected(false);
+      if (!shouldRetry(ev.code)) {
+        closed = true; // no retry loop
+        h.onRejected?.(ev.reason || `closed (${ev.code})`);
+        return;
+      }
       if (!closed) retry = setTimeout(open, 2000);
     };
   };
