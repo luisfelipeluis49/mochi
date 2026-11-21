@@ -50,6 +50,11 @@ class MochiTalk:
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
+    @property
+    def character(self) -> CharacterModel:
+        """The model that writes the lines now."""
+        return self._model
+
     def use(self, model: CharacterModel) -> None:
         """Swap the model that writes the lines."""
         self._model = model

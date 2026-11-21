@@ -40,6 +40,7 @@ class Intelligence:
     ) -> None:
         book = lexicon or Lexicon.load()
         tuning = settings or IntelligenceSettings()
+        self._parts = (clock, ids, model, book, tuning)
         factory = HintFactory(clock, ids, tuning.hint_ttl_seconds)
         self._memory = MemoryStore()
         self._rounds = RoundEngine(clock, ids, book)
@@ -51,6 +52,19 @@ class Intelligence:
             minds=Minds(model, self._talk),
             settings=tuning,
         )
+
+    def another_conversation(self) -> "Intelligence":
+        """A fresh conversation (own Mochi talk, rounds and device status) over the same words.
+
+        Each session has one, so a phone's chat never changes the Pi's; the saved words are the
+        one thing they share. Example: `brain.another_conversation().words_for("ana")` is the same
+        list as `brain.words_for("ana")`.
+        """
+        clock, ids, model, book, tuning = self._parts
+        other = Intelligence(clock=clock, ids=ids, model=model, lexicon=book, settings=tuning)
+        other._memory = self._memory  # noqa: SLF001 - the same class sharing its saved words
+        other._talk.use(self._talk.character)  # noqa: SLF001
+        return other
 
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide what Mochi does with one turn. Example: "I need to adiar my meeting" -> hint."""

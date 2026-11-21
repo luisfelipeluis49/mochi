@@ -2,8 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Path
 
 from mochi_backend.gateway.container import AppContainer, get_container
+from mochi_backend.gateway.session_registry import SESSION_ID_PATTERN
 
 ContainerDep = Annotated[AppContainer, Depends(get_container)]
+
+# The session in the path: `demo` is the Pi's; any other id is a session a client opened.
+SessionIdPath = Annotated[str, Path(pattern=SESSION_ID_PATTERN)]

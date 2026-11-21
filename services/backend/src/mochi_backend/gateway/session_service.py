@@ -1,8 +1,10 @@
 """Start and stop the session (and with it the Agora agent)."""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
+
+from pydantic import BaseModel
 
 from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
@@ -14,7 +16,8 @@ from mochi_backend.gateway.agora.client_port import (
     SpeechTuning,
 )
 from mochi_backend.gateway.core import GatewayCore
-from mochi_backend.gateway.errors import UpstreamError
+from mochi_backend.gateway.errors import ConflictError, UpstreamError
+from mochi_backend.gateway.roster import SESSION_ID
 from mochi_contracts import (
     EventType,
     GameState,
@@ -23,6 +26,15 @@ from mochi_contracts import (
     SessionState,
     SessionStatus,
 )
+
+
+class AgoraJoin(BaseModel):
+    """Where and how a client joins a session's channel."""
+
+    app_id: str
+    channel: str
+    uid: int
+    token: str
 
 
 @dataclass(frozen=True)
@@ -41,6 +53,23 @@ class SessionConfig:
     fallback_tuning: SpeechTuning | None = None  # other ears, if Agora refuses the first ones
     greeting_en: str = ""
     greeting_pt: str = ""
+
+    def for_session(self, session_id: str) -> "SessionConfig":
+        """This config for another session: its own channel and its own turn endpoint.
+
+        The demo session (the Pi's) keeps the configured channel. Another session joins
+        `<channel>-<id>`, so its audio never meets the Pi's, and Agora's cloud calls
+        `/agora/llm/<id>/chat/completions`, so its sentences reach its own session.
+        Example: `for_session("p-1").channel` is `"mochi-demo-p-1"`.
+        """
+        if session_id == SESSION_ID:
+            return self
+        demo_path, own_path = f"/agora/llm/{SESSION_ID}/", f"/agora/llm/{session_id}/"
+        return replace(
+            self,
+            channel=f"{self.channel}-{session_id}",
+            llm_url=self.llm_url.replace(demo_path, own_path, 1),
+        )
 
 
 # First words of a wake phrase that are Portuguese ("oi Mochi", "olá Mochi", "e aí Mochi").
@@ -132,6 +161,17 @@ class SessionService:
         if agent_id is not None:
             await self._stop_agent(agent_id)  # after local capture is off: the Pi sees false now
         return state
+
+    def join_info(self) -> AgoraJoin:
+        """Where a phone joins this session's channel (its own, never the Pi's)."""
+        if not self._store.capturing:
+            raise ConflictError("session is not capturing; start it first")
+        return AgoraJoin(
+            app_id=self._config.app_id,
+            channel=self._config.channel,
+            uid=self._config.pi_uid,
+            token=self._issue(self._config.pi_uid),
+        )
 
     def _begin(self, agent_id: str) -> None:
         expires = self._clock.now() + timedelta(seconds=self._config.token_ttl_seconds)

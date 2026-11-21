@@ -101,6 +101,9 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()
-    adapters = Adapters(clock, ids, scheduler, logger, agora, tokens, brain, "rules", start)
+    own = brain.another_conversation if isinstance(brain, Intelligence) else None
+    adapters = Adapters(
+        clock, ids, scheduler, logger, agora, tokens, brain, "rules", start, brain_factory=own
+    )
     container = build_container(settings, adapters)
     return Harness(container, clock, scheduler, agora, tokens, logger, gate)

@@ -1,4 +1,8 @@
-"""`POST /agora/llm/demo/chat/completions`: the turn endpoint Agora's cloud calls."""
+"""`POST /agora/llm/{session}/chat/completions`: the turn endpoint Agora's cloud calls.
+
+Each session's agent is started with its own session in the path, so a sentence reaches the
+session it was said in (DECISIONS D-37).
+"""
 
 import hmac
 from collections.abc import Iterator
@@ -9,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from mochi_backend.gateway.openai_sse import completion_json, sse_events
-from mochi_backend.gateway.routes.dependencies import ContainerDep
+from mochi_backend.gateway.routes.dependencies import ContainerDep, SessionIdPath
 
 router = APIRouter()
 KEY_HEADER = "x-mochi-key"  # set through llm.headers when the agent is started
@@ -68,8 +72,9 @@ def presented_key(x_mochi_key: str | None, authorization: str | None) -> str:
     return token.strip() if scheme.lower() == "bearer" else ""
 
 
-@router.post("/agora/llm/demo/chat/completions", response_model=None)
+@router.post("/agora/llm/{session_id}/chat/completions", response_model=None)
 async def chat_completions(
+    session_id: SessionIdPath,
     body: ChatCompletionRequest,
     container: ContainerDep,
     x_mochi_key: Annotated[str | None, Header()] = None,
@@ -79,7 +84,8 @@ async def chat_completions(
     expected = container.settings.mochi_turn_key.encode()
     if not hmac.compare_digest(presented_key(x_mochi_key, authorization).encode(), expected):
         raise HTTPException(status_code=401, detail=f"missing or wrong {KEY_HEADER} header")
-    outcome = await container.pipeline.handle_heard(
+    runtime = container.registry.runtime(session_id)
+    outcome = await runtime.pipeline.handle_heard(
         last_user_text(body.messages), last_user_position(body.messages)
     )
     created = int(container.core.clock.now().timestamp())
