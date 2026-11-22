@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from mochi_backend.intelligence.model_port import ModelRequest, NullHintModel
+from mochi_backend.intelligence.model_port import ModelRequest, NullHintModel, Suspect
 from mochi_backend.intelligence.openai_hint_model import OpenAiHintModel
 from mochi_backend.platform.http_client import HttpResponse, HttpTransportError
 from mochi_contracts import Language
@@ -56,3 +56,22 @@ async def test_openai_model_returns_none_on_any_failure(
 
 async def test_null_model_never_answers() -> None:
     assert await NullHintModel().suggest(REQUEST) is None
+
+
+async def test_the_request_caps_how_long_an_answer_may_be() -> None:
+    http = FakeHttpClient([HttpResponse(200, GOOD)])
+    await OpenAiHintModel(http, "https://llm.example/v1", "tiny", "k", 2.0).suggest(REQUEST)
+    assert isinstance(http.posts[0].payload, dict)
+    assert http.posts[0].payload["max_completion_tokens"] == 400
+
+
+async def test_a_call_that_thinks_is_not_capped() -> None:
+    http = FakeHttpClient([HttpResponse(200, GOOD)])
+    model = OpenAiHintModel(http, "https://llm.example/v1", "tiny", "k", 2.0).thinking("none")
+    suspected = REQUEST.model_copy(
+        update={"suspect": Suspect(used="fabric", meant="factory", look_alike="tecido")}
+    )
+    await model.suggest(suspected)
+    assert isinstance(http.posts[0].payload, dict)
+    assert http.posts[0].payload["reasoning_effort"] == "low"  # a suspected false friend thinks
+    assert "max_completion_tokens" not in http.posts[0].payload

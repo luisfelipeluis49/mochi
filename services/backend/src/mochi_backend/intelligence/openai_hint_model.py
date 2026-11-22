@@ -160,6 +160,11 @@ Example, focus en, noticed ["stops_short"]: "Can you pass me the" -> {"decision"
 Example, focus en: "I need to go, ok? Tchau tchau!" -> {"decision": "IGNORE"}."""
 
 
+# Bounds the slowest tail: the JSON answer is about 100 tokens, so this is never reached by a good
+# one, and a runaway reply is cut and read as "no hint" instead of waiting out the timeout. Only for
+# a call that answers without thinking: reasoning tokens count against the cap, and a cut-off
+# false-friend check would silently lose its hint.
+MAX_ANSWER_TOKENS = 400
 NO_THINKING = "none"  # MOCHI_MODEL_REASONING_EFFORT for the gpt-5 family: answer at once
 SUSPECT_THINKING = "low"  # ... except to confirm a suspected false friend (see `_sampling`)
 
@@ -258,6 +263,12 @@ def _messages(request: ModelRequest) -> list[JsonValue]:
     return messages
 
 
+def _answer_cap(sampling: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """The token cap, unless the call thinks first (see `MAX_ANSWER_TOKENS`)."""
+    effort = sampling.get("reasoning_effort", NO_THINKING)
+    return {} if effort != NO_THINKING else {"max_completion_tokens": MAX_ANSWER_TOKENS}
+
+
 class _Message(BaseModel):
     content: str
 
@@ -324,9 +335,11 @@ class OpenAiHintModel:
         return self
 
     def _payload(self, request: ModelRequest) -> JsonValue:
+        sampling = self._sampling(request)
         return {
             "model": self._model_name,
-            **self._sampling(request),
+            **sampling,
+            **_answer_cap(sampling),
             "response_format": {"type": "json_object"},
             "messages": _messages(request),
         }

@@ -27,24 +27,37 @@ class MemoryStore:
     def __init__(
         self, restored: list[LearningEvent] | None = None, sink: EventSink | None = None
     ) -> None:
-        self._events: dict[str, LearningEvent] = {e.learning_event_id: e for e in restored or []}
+        self._events: dict[str, LearningEvent] = {}
+        self._by_user: dict[str, dict[str, LearningEvent]] = {}  # each person's, in save order
         self._sink = sink
+        for event in restored or []:
+            self._keep(event)
+
+    def _keep(self, event: LearningEvent) -> None:
+        """Store `event` under its id and in its person's index (a replaced one moves, if its
+        person changed). `words_for` runs on every turn, so it must not scan every event."""
+        earlier = self._events.get(event.learning_event_id)
+        if earlier is not None and earlier.user_id != event.user_id:
+            self._by_user.get(earlier.user_id or "", {}).pop(event.learning_event_id, None)
+        self._events[event.learning_event_id] = event
+        if event.user_id is not None:
+            self._by_user.setdefault(event.user_id, {})[event.learning_event_id] = event
 
     def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
         """Create or replace each event by id; return what is now stored, in input order."""
         for proposal in proposals:
-            self._events[proposal.learning_event_id] = proposal
+            self._keep(proposal)
             if self._sink is not None:
                 self._sink.save(proposal)
         return [self._events[p.learning_event_id] for p in proposals]
 
     def words_for(self, user_id: str) -> list[LearningEvent]:
         """That user's events, newest first (events with no user belong to nobody)."""
-        mine = [e for e in self._events.values() if e.user_id == user_id]
-        return list(reversed(mine))
+        return list(reversed(self._by_user.get(user_id, {}).values()))
 
     def reset(self) -> None:
         """Forget every saved word (and the durable copy)."""
         self._events.clear()
+        self._by_user.clear()
         if self._sink is not None:
             self._sink.clear()

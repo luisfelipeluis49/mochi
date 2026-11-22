@@ -1734,4 +1734,24 @@ tracker would send them):
 - What Mochi said for someone is not kept, and it is not marked in the transcript (the line shows what
   they said; `agent.speak.requested` carries what Mochi said).
 - `main`'s D-63 (one writer per client in the hub) arrived the same hour; this is the next number.
+- `main` then used D-64 for its own next entry (three performance changes); merged here, that one is D-66.
 
+## D-66: three smaller backend performance changes (2026-11-22)
+
+*Written on `main` as D-64 (commit 8da0696); renumbered when `main` was merged into `hardware`, where D-64 is
+speak for me and D-65 the name. The commit message on `main` still says D-64.*
+
+Found by reading the code, like D-63; none is measured yet.
+
+- **Saved words are indexed by person** (`intelligence/memory_store.py`). `words_for` ran on every turn
+  for every person and scanned every event; it now reads a per-person index with the same order
+  (newest first; a replaced event keeps its place, one that changes owner moves).
+- **The team view is added up on a worker thread** (`TeamService.insights_in_thread`, used by
+  `GET /api/companies/{id}/insights`). The facts are copied on the event loop first, so the thread
+  reads nothing a turn is changing. `insights` stays for callers that want it synchronous.
+- **The hint model's answer is capped at 400 tokens** (`MAX_ANSWER_TOKENS`), only for calls that answer without thinking: reasoning tokens count against the cap, and a cut-off false-friend check (`reasoning_effort: low`) would silently lose its hint. The JSON is about 100,
+  so a good answer never meets it; a runaway one is cut and read as "no hint". Trimming the fields
+  the model is asked for (`example`, `candidates`) would save more but changes behaviour: it needs
+  `scripts/eval-intelligence.sh` before and after, and Kauê's agreement.
+- **Not done:** indexes in `team/ledger.py` (its scans run at the end of a session or on an admin
+  request, not per turn) and a pool for Postgres connections (writes are already off the loop).
