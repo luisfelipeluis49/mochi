@@ -14,7 +14,6 @@ from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
-from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.secret_screen import leaked_channel
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -134,8 +133,9 @@ class TurnPipeline:
         self._start_round = start_round
 
     def build_context(self) -> SessionContext:
-        """The context for intelligence: history plus each person's saved words."""
-        words = {user: self._intelligence.words_for(user) for user in USER_IDS}
+        """The context for intelligence: history plus the saved words of this session's people."""
+        people = [participant.user_id for participant in self._store.participants]
+        words = {user: self._intelligence.words_for(user) for user in people}
         return self._store.context(words)
 
     async def handle_turn(self, text: str) -> TurnOutcome:
@@ -354,10 +354,13 @@ class TurnPipeline:
         await self.save_learning_events(decision.learning_events)
         if decision.hint is not None:
             await self._live_hint.show(decision.hint)
+            self._store.count_hint()
 
     async def save_learning_events(self, proposals: list[LearningEvent]) -> None:
         """`apply()` the proposals, then publish `created` (first state) or `updated`."""
-        for stored in self._intelligence.apply(proposals):
+        saved = self._intelligence.apply(proposals)
+        self._store.note_saved(saved)  # for the session record (D-42)
+        for stored in saved:
             first = len(stored.state_history) == 1
             kind = EventType.LEARNING_EVENT_CREATED if first else EventType.LEARNING_EVENT_UPDATED
             await self._hub.publish(kind, stored)

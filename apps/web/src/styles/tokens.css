@@ -1,0 +1,40 @@
+/* Design tokens. The ONLY place in the app with color values (lib/tokens.test.ts checks this).
+   Light only. Contrast ratios are checked in lib/contrast.test.ts. */
+:root {
+  color-scheme: light;
+
+  --color-bg: #FAF7F0;            /* off-white page */
+  --color-surface: #FFFFFF;       /* cards */
+  --color-surface-2: #F2EEE4;     /* sunken areas, chips */
+  --color-text: #1A1A17;          /* near-black: 16.3:1 on bg */
+  --color-text-muted: #5C5850;    /* 6.6:1 on bg, 6.1:1 on surface-2 */
+  --color-border: #8A8578;        /* 3.4:1 on bg (UI component contrast >= 3) */
+  --color-primary: #1F7A4D;       /* green: 5.0:1 as text on bg; white on it 5.3:1 */
+  --color-primary-strong: #17603C;/* hover/pressed; white on it 7.6:1 */
+  --color-primary-soft: #E3F1E8;  /* tint; primary-strong text on it 6.5:1 */
+  --color-on-primary: #FFFFFF;
+  --color-accent: #F08A3E;        /* orange: fills and highlights ONLY with --color-text on it (7.0:1); never white text on orange */
+  --color-accent-text: #A84E0E;   /* orange used as text: 5.2:1 on bg, 4.8:1 on accent-soft */
+  --color-accent-soft: #FDEBDC;
+  --color-danger: #B3261E;        /* 6.1:1 on bg */
+  --color-focus: #1F7A4D;         /* focus ring: 3px solid, offset 2px */
+
+  --radius-s: 8px; --radius-m: 14px; --radius-l: 24px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --text-s: 0.875rem; --text-m: 1rem; --text-l: 1.25rem; --text-xl: 1.75rem; --text-hint: clamp(2.5rem, 9vw, 6rem);
+  --shadow-card: 0 1px 2px rgb(26 26 23 / 0.06), 0 4px 16px rgb(26 26 23 / 0.06);
+
+  /* Mochi's face: the Pi's cream-and-ink look (hardware/pi-setup/face.html), mapped to the tokens above. */
+  --face-bg: var(--color-surface-2);
+  --face-ink: var(--color-text);
+  --face-blush: var(--color-accent);
+  --face-mouth: var(--color-text);
+  --face-tongue: var(--color-accent);
+  --face-shine: var(--color-surface);
+
+  --nav-phone-h: 64px;
+  --nav-rail-w: 88px;
+  --nav-side-w: 240px;
+  --dur-ui: 200ms;
+}

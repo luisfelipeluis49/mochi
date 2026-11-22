@@ -19,12 +19,19 @@ from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
-from mochi_backend.gateway.roster import DEMO_USERS, SESSION_ID
+from mochi_backend.gateway.roster import DEMO_USERS, GUEST_USER, SESSION_ID
+from mochi_backend.gateway.session_history import SessionHistory
 from mochi_backend.gateway.session_registry import SessionRegistry, SessionRuntime
 from mochi_backend.gateway.session_service import SessionConfig, SessionService
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
+from mochi_backend.gateway.user_directory import (
+    RandomSuffix,
+    SuffixSource,
+    UserDirectory,
+    voice_owners,
+)
 from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
@@ -66,6 +73,16 @@ class Adapters:
     # A new conversation over the same saved words, one per session. None: every session shares
     # `intelligence` (a fake in a test).
     brain_factory: Callable[[], IntelligencePort] | None = None
+    # The 6 random hex characters of a new web user's id (D-42).
+    suffixes: SuffixSource = field(default_factory=RandomSuffix)
+
+
+@dataclass(frozen=True)
+class SharedParts:
+    """What every session uses in common besides the hub: voices and finished-session records."""
+
+    voices: VoiceDirectory
+    history: SessionHistory
 
 
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
@@ -106,7 +123,8 @@ def default_adapters(settings: Settings) -> Adapters:
     clock, ids = SystemClock(), UuidIdGenerator()
     logger = configure_json_logging(settings.mochi_log_level)
     agora, tokens = _agora_for(settings, clock, ids, logger)
-    storage = storage_for(settings.database_url, logger, DEMO_USERS, settings.mochi_local_data)
+    seeded = [*DEMO_USERS, GUEST_USER]  # guest's words need its row (foreign key; D-42)
+    storage = storage_for(settings.database_url, logger, seeded, settings.mochi_local_data)
     brain = _brain_for(settings, (clock, ids, logger), storage)
     name = "rules+model" if settings.model_configured else "rules"
     name += "+character" if settings.character_configured else ""
@@ -307,17 +325,17 @@ def _game(core: GatewayCore, pipeline: TurnPipeline, agora: AgoraAgentClient) ->
 
 
 def _runtime(
-    session_id: str, settings: Settings, adapters: Adapters, hub: EventHub, voices: VoiceDirectory
+    session_id: str, settings: Settings, adapters: Adapters, hub: EventHub, shared: SharedParts
 ) -> SessionRuntime:
     """One session's parts. The demo session uses the main brain; another gets its own."""
     config = _session_config(settings).for_session(session_id)
     core = _core(settings, adapters, hub, _brain_of(session_id, adapters))
-    pipeline = _pipeline(settings, core, voices)
+    pipeline = _pipeline(settings, core, shared.voices)
     return SessionRuntime(
         session_id=session_id,
         core=core,
         pipeline=pipeline,
-        sessions=SessionService(core, adapters.agora, adapters.tokens, config),
+        sessions=SessionService(core, adapters.agora, adapters.tokens, config, shared.history),
         activity=_game(core, pipeline, adapters.agora),
         demo_reset=DemoReset(core),
     )
@@ -338,21 +356,23 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
     """
     hub = EventHub(adapters.clock, adapters.ids, adapters.logger)
     start = adapters.storage
-    voices = VoiceDirectory(start.storage, start.voices, start.users or DEMO_USERS)
-    demo = _runtime(SESSION_ID, settings, adapters, hub, voices)
-    others = partial(_other_runtime, settings, adapters, hub, voices)
+    # Voices belong to the Pi's people only: a web user called "Ana" must not take Ana's voice.
+    voices = VoiceDirectory(start.storage, start.voices, voice_owners(start.users))
+    shared = SharedParts(voices, SessionHistory(start.storage, start.sessions))
+    demo = _runtime(SESSION_ID, settings, adapters, hub, shared)
+    others = partial(_other_runtime, settings, adapters, hub, shared)
     registry = SessionRegistry(demo, others)
-    return _assemble(settings, adapters, (demo, registry, voices), hub)
+    return _assemble(settings, adapters, (demo, registry, shared), hub)
 
 
 def _assemble(
     settings: Settings,
     adapters: Adapters,
-    parts: tuple[SessionRuntime, SessionRegistry, VoiceDirectory],
+    parts: tuple[SessionRuntime, SessionRegistry, SharedParts],
     hub: EventHub,
 ) -> AppContainer:
-    demo, registry, voices = parts
-    core = demo.core
+    demo, registry, shared = parts
+    core, start = demo.core, adapters.storage
     return AppContainer(
         settings=settings,
         core=core,
@@ -363,9 +383,11 @@ def _assemble(
         device_link=DeviceLink(core, adapters.agora),
         connections=ConnectionService(hub, adapters.intelligence, registry),
         demo_reset=demo.demo_reset,
-        voices=voices,
+        voices=shared.voices,
         intelligence_name=adapters.intelligence_name,
         registry=registry,
+        users=UserDirectory(start.storage, start.users, adapters.suffixes),
+        history=shared.history,
         storage_name=adapters.storage.name,
         storage_unsaved=adapters.storage.storage.unsaved_writes,
     )
@@ -375,8 +397,8 @@ def _other_runtime(
     settings: Settings,
     adapters: Adapters,
     hub: EventHub,
-    voices: VoiceDirectory,
+    shared: SharedParts,
     session_id: str,
 ) -> SessionRuntime:
     """A session opened by a client: its own hub view, store, brain and Agora channel."""
-    return _runtime(session_id, settings, adapters, hub.for_session(session_id), voices)
+    return _runtime(session_id, settings, adapters, hub.for_session(session_id), shared)

@@ -291,6 +291,24 @@ GET  /api/devices/home_pi_01/state   gains "commands": [ { "command_id", "kind",
 - `GET /ws?user=ana&surface=ar` (proposed, owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody, never cards, the private prompt or other users' hints; an unknown `surface` closes 4400.
 - **Hint** gains `candidates: [{ "expression", "meaning" }] | None` and `context: string | None` (owner: Kauê, docs/DECISIONS.md D-31), for Mochi AR (`apps/glasses/README.md`). Set only for trails_off, restarts and talks_around, where no single word is known; every other reason leaves both `null`, so today's Mobile and Home views are unaffected.
 
+**Web app users and sessions (proposed in v0.5, D-42).** Additive; nothing above changes.
+
+```text
+POST /api/users                      { "display_name", "comfortable_language"?, "target_language"? } -> 201 User (id = slug-xxxxxx)
+GET  /api/users/{user_id}            -> User | 404        ("guest" is reserved)
+GET  /api/users/{user_id}/words      -> [LearningEvent] newest first
+GET  /api/users/{user_id}/sessions   -> [SessionRecord] newest first (record_id, session_id, user_id, started_at,
+                                        ended_at, minutes, hint_count, learning_event_ids)
+POST /api/sessions/{id}/start        body gains "user_id": participants become [user, "guest"], focus = user's target
+                                      language; 409 on demo; 404 unknown user
+GET  /ws?user=<any registered user>&session=<id>   snapshot sends only that user's words
+```
+
+- A web session belongs to one person. Its second participant is `guest`, with the person's languages the other way
+  round, so the whose-word rule (7.3) still works. The guest's words are stored but shown to nobody.
+- A session started with a `user_id` leaves a session record when it ends (Stop, eviction, or the tab closing).
+  Records and users are saved in the database.
+
 ## 7. Behavior rules
 
 ### 7.1 Nine ways a person gets stuck on a word
@@ -394,12 +412,24 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 
 ### 9.4 Tasnim — `apps/web`
 
-- **First task (M0):** a page at `/home` and a page at `/m` that open the WebSocket and render a `hint.created` event. Keep a small mock source in the app that replays the example events from `packages/contracts`, for working when the backend is down.
-- **Home view (`/home?device=home_pi_01`):** 3.5-inch screen. A few static full-screen states with very large text and no animation: listening face, hint (the `expression` only), speaking, the game states in Section 7.5. Input is a tap anywhere and a long press.
-- **Mobile view (`/m?user=ana`):** Start and Stop; a live hint with meaning and example; "My words" cards with the state label, the state path, and a fixed next-step line.
-- **Audience view (`/audience`):** a large version of Mochi's screen for the projector that never shows a secret word before `ROUND_RESULT`.
-- **Also:** `?debug=1` on any view lists the last ten events received. English and Brazilian Portuguese copy.
-- **Do not:** implement AI, speech, or storage. Do not decide visibility in the browser.
+Rebuilt in November 2026 (D-42): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does
+on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
+
+- **Screens:**
+  - **Onboarding** (`/welcome`): asks for a name only and creates the user with `POST /api/users`. The id is kept in
+    `localStorage`.
+  - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's
+    microphone through Agora. Mochi's face, the hint card, what Mochi says and who is talking are all live.
+  - **Training** (`/training`): spaced recall of the person's saved words, answered by typing or speaking.
+  - **Digest** (`/digest`): a recap of the last session.
+  - **Analytics** (`/analytics`): progress, each word's state path, and minutes per session.
+- **Microphone:** the browser asks for it on the first visit. Every way the microphone can fail has its own screen and
+  message, and so does a backend that cannot be reached.
+- **Not built:** Describe & Guess in the browser, because the secret word goes to the Home view only. The Home view
+  (`/home`) and the Audience view (`/audience`) of the old app are not in the new build. Mochi's own screen is
+  `hardware/pi-setup/face.html`.
+- **Do not:** implement AI or speech recognition, decide visibility in the browser, or store learning events. Training
+  progress is kept only in the browser.
 
 ## 10. Rules for coding agents
 
@@ -441,3 +471,5 @@ Do not write code that assumes these work. If your task depends on one, say so i
 - **v0.6 (proposed, 2026-11-21).** The revised vision in code: Mochi asks "What would you like to do today?" after its name; Play starts by voice and runs on Mochi's own screen (`round` command, `[play]`, spoken result, role swap); the Pi tells who is talking in time, shows its temperature and a lost connection and says both; the ears can be left untold of the lexicon. See 6.6, 7.5 and DECISIONS D-34 to D-39. Open for the team: the round's language, real names instead of `ana`/`ben`, and whether the Pi's own page or `apps/web` is the Home view.
 - **v0.5 (proposed, 2026-11-21), addition.** Many sessions at once (6.6, D-41): the phone's session no longer turns the Pi's off. Section 8 listed "multiple sessions" as out of scope; Luís asked for them.
 - **v0.5 (proposed, 2026-11-21).** Product vision from the deck (three modes, wake start, role swap); the privacy rule now allows local wake-phrase listening; 6.6 records the merged additions, now including `Hint.candidates`/`context` (D-31); the secret word is never allowed in a hint or a spoken reply during a round; a character reply cannot delay a hint. Open for the team: rename `ben` to `sophie`; grammar feedback in Praticar (listed out of scope in Section 8); Mobile summary and the AR/Watch add-ons (section 1 still lists Mochi AR as not part of the hackathon build, even though `apps/glasses` and the candidates it needs now exist on `main` — a team decision, not made here).
+- **v0.5 addition (proposed, 2026-11-21, D-42).** Web users and per-user sessions with session records (6.6); the web
+  app is rebuilt as Onboarding, Session, Training, Digest and Analytics (9.4).

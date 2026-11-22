@@ -1,43 +1,28 @@
-// =============================================================================
-// contracts.ts  —  LANGUAGE: TypeScript (types only)
-// =============================================================================
-// TEMPORARY copy of AGENTS.md Section 6 (contracts v0.4).
-// "Contracts" = the agreed shape of every message between backend and screens.
-// These are TypeScript TYPES only: they produce no code; they let the editor warn
-// you if you misspell a field (e.g. "expresion" instead of "expression").
-// packages/contracts (owner: Matheus) does not exist yet. When it lands,
-// delete this file and change every import of "./contracts.ts" to the
-// TypeScript types exported there. Do not add or rename fields here.
-//
-// Lines marked "PROPOSED v0.5" are NOT in AGENTS.md yet. They come from the new product
-// vision (Nov 2026) and are written up in PROPOSAL_contracts_v0.5.md for the team to approve.
-// Until then, only the mock (?mock=1) sends them. Everything else is v0.4 as agreed.
+// Types for the events and payloads of AGENTS.md section 6 (contracts v0.4) and for the REST shapes of
+// THE SHARED CONTRACT (User, SessionRecord, AgoraJoin; docs/DECISIONS.md D-42).
+// Do not add, rename or remove a field here: propose it to the owners (AGENTS.md rule 1).
+// The type guards accept unknown extra keys, because the backend may send optional fields
+// (the hint.created example carries "candidates" and "context").
 
 export const SCHEMA_VERSION = "0.4";
 
-// ---- Allowed values (the "canonical names" of AGENTS.md §6.3). A value outside these lists is an error.
 export type Language = "en" | "pt-BR";
 export type DetectionReason =
   | "code_switch" | "says_unknown" | "asks_partner" | "asks_mochi" | "trails_off"
   | "talks_around" | "restarts" | "look_alike" | "not_understood";
-export type SpeakReason =
-  | "asks_mochi" | "activity_host"
-  | "practice_partner"; // PROPOSED v0.5: Mochi talking as your partner in Praticar mode
+export type SpeakReason = "asks_mochi" | "activity_host";
 export type SessionStatus = "created" | "active" | "paused" | "ended";
-export type SessionMode =
-  | "together"   // Companhia: two people talk, Mochi listens and hints
-  | "activity"   // Jogar: Describe & Guess, Mochi hosts
-  | "choosing"   // PROPOSED v0.5: someone said "Oi, Mochi!" and Mochi asks which mode
-  | "practice";  // PROPOSED v0.5: Praticar, one person talks with Mochi
+export type SessionMode = "together" | "activity";
 export type GameState = "IDLE" | "ACTIVE_ROUND" | "ROUND_RESULT";
 export type RoundResult = "guessed" | "skipped";
 export type WordSource = "learning_event" | "stock";
 export type LearningState = "DISCOVERED" | "ASSISTED" | "REINFORCED" | "USED_INDEPENDENTLY";
 
-// ---- The payload of each event (AGENTS.md §6.2) ----
+export const LANGUAGES: readonly Language[] = ["en", "pt-BR"];
+export const LEARNING_STATES: readonly LearningState[] = ["DISCOVERED", "ASSISTED", "REINFORCED", "USED_INDEPENDENTLY"];
 
-// session.state.changed: is Mochi listening, and in which mode
-export interface Session {
+/** session.state.changed payload; also the answer of start and stop. */
+export interface SessionState {
   status: SessionStatus;
   mode: SessionMode;
   focus: Language;
@@ -45,9 +30,6 @@ export interface Session {
   participants: string[];
 }
 
-// hint.created: one word to help a stuck speaker.
-// Convention (no field change): `expression` may hold up to 3 options separated by " · ",
-// e.g. "me queimei · tomei muito sol". Screens show one option per line.
 export interface Hint {
   hint_id: string;
   target_user_id: string | null;
@@ -59,7 +41,6 @@ export interface Hint {
   expires_at: string;
 }
 
-// activity.state.changed: the public game state (never contains the secret word during a round)
 export interface Activity {
   activity_id: string;
   round_id: string | null;
@@ -72,7 +53,6 @@ export interface Activity {
   word_source: WordSource | null;
 }
 
-// activity.private_prompt: the SECRET word, sent only to Mochi's screen
 export interface PrivatePrompt {
   round_id: string;
   describer_user_id: string;
@@ -80,9 +60,11 @@ export interface PrivatePrompt {
   source_learning_event_id: string | null;
 }
 
-export interface StateHistoryEntry { learning_state: LearningState; at: string }
+export interface StateHistoryEntry {
+  learning_state: LearningState;
+  at: string;
+}
 
-// learning_event.created / .updated: one saved word for one person (a card in "My words")
 export interface LearningEvent {
   learning_event_id: string;
   user_id: string | null;
@@ -95,85 +77,14 @@ export interface LearningEvent {
   state_history: StateHistoryEntry[];
 }
 
-// agent.speak.requested: Mochi is about to say something out loud
-export interface Speak { text: string; language: Language; reason: SpeakReason }
-
-// Links each event name to its payload type
-// PROPOSED v0.5 — session.summary.created: the "after the session" card on that person's phone
-// (Mochi Mobile slide: practice time, strong point, to review, new expressions, next step).
-// Sent to that user's Mobile view only, when the session stops.
-export interface SessionSummary {
-  summary_id: string;
-  user_id: string;
-  target_language: Language;   // the language this person is practicing
-  speaking_minutes: number;    // minutes of speaking practice in this session
-  strengths: string[];         // "Ponto forte", e.g. ["Descrever objetos"]
-  to_review: string[];         // "Para revisar", e.g. ["Pretérito: fui, comprei"]
-  new_expressions: string[];   // "Expressões novas", e.g. ["apesar de", "na verdade"]
-  next_step: string | null;    // "Próximo passo", e.g. "Descreva e Adivinhe: histórias"
-  created_at: string;
-}
-
-// PROPOSED v0.5 — conversation.report.created: Mochi's analysis of ONE recording (Record → Stop) for ONE
-// person (a work meeting, a call, a chat with a friend). Only that person's own sentences are in it. Shown on that person's "Minhas conversas" page (/me).
-// Sent to that user's phone only, when the conversation (session) stops.
-export type MistakeKind =
-  | "grammar"       // e.g. "Yesterday I send" → "Yesterday I sent"
-  | "word_choice"   // e.g. "make a question" → "ask a question"
-  | "false_friend"; // e.g. "I pretend to" → "I intend to"
-export type ConversationContext = "meeting" | "conversation" | "practice";
-
-export interface Mistake {
-  kind: MistakeKind;
-  topic: string;      // a short group name, e.g. "Past tense", "Prepositions"
-  said: string;       // what the person said (one real example)
-  better: string;     // the corrected sentence
-  count: number;      // how many times in this conversation
-}
-
-export interface UnknownWord {
-  expression: string;        // the word they needed, e.g. "postpone"
-  meaning: string | null;    // in their comfortable language, e.g. "adiar"
-  said_instead: string | null; // what they actually said, e.g. "adiar", or "the thing for the rain"
-  times: number;             // how many times they needed it in this conversation
-}
-
-// One sentence the person said, in order. ONLY the owner's sentences: Mochi tells voices apart, and
-// what the other people in the conversation said is never sent to this person's page.
-export interface MySentence {
-  at: string;              // when it was said
-  text: string;            // exactly what the person said
-  better: string | null;   // the corrected sentence, when it had a mistake
-  topic: string | null;    // the mistake's group, e.g. "Past tense" (null when no mistake)
-}
-
-export interface ConversationReport {
-  report_id: string;
-  user_id: string;
-  target_language: Language;
-  title: string;                   // e.g. "Weekly sync"; "" = not named (the page shows the time instead)
-  context: ConversationContext;
-  started_at: string;              // when the person pressed "Record"
-  ended_at: string;                // when they pressed "Stop" — each recording is one conversation
-  my_sentences: MySentence[];      // what THIS person said (never the others)
-  speaking_minutes: number;        // minutes THIS person spoke
-  mistakes: Mistake[];
-  unknown_words: UnknownWord[];
-  strengths: string[];             // e.g. ["Explaining your work"]
-  focus_next: string[];            // e.g. ["Past tense: sent, went, made"]
-}
-
-// PROPOSED v0.5 — speaker.changed: whose voice Mochi hears right now. The Pi recognises the voices it
-// has learned (hardware/pi-bridge/mochi_device/speakers.py) and already reports `speaker` to the backend
-// (POST /api/devices/home_pi_01/status, AGENTS.md 6.6). The gateway would pass it on to the screens,
-// so the web Mochi shows the name like the device's own face.html does. Sent to every connection.
-export interface SpeakerChanged {
-  name: string | null;     // the name the voice was learned with, e.g. "Tasnim"; null = nobody recognised
-  user_id: string | null;  // the matching user id when known, e.g. "tasnim"
+export interface Speak {
+  text: string;
+  language: Language;
+  reason: SpeakReason;
 }
 
 export interface PayloadByType {
-  "session.state.changed": Session;
+  "session.state.changed": SessionState;
   "hint.created": Hint;
   "hint.cleared": { hint_id: string };
   "activity.state.changed": Activity;
@@ -181,27 +92,140 @@ export interface PayloadByType {
   "learning_event.created": LearningEvent;
   "learning_event.updated": LearningEvent;
   "agent.speak.requested": Speak;
-  "session.summary.created": SessionSummary; // PROPOSED v0.5
-  "conversation.report.created": ConversationReport; // PROPOSED v0.5
-  "speaker.changed": SpeakerChanged; // PROPOSED v0.5
+}
+export type EventType = keyof PayloadByType;
+export const EVENT_TYPES = [
+  "session.state.changed", "hint.created", "hint.cleared", "activity.state.changed",
+  "activity.private_prompt", "learning_event.created", "learning_event.updated", "agent.speak.requested",
+] as const satisfies readonly EventType[];
+
+interface EnvelopeBase<T extends EventType> {
+  schema_version: string;
+  event_id: string;
+  type: T;
+  session_id: string;
+  emitted_at: string;
+  sequence: number;
+  payload: PayloadByType[T];
+}
+export type MochiEvent = { [T in EventType]: EnvelopeBase<T> }[EventType];
+
+// ---- THE SHARED CONTRACT, C2-C6 -------------------------------------------------------
+
+export interface User {
+  user_id: string;
+  display_name: string;
+  comfortable_languages: Language[];
+  target_language: Language;
 }
 
-export type EventType = keyof PayloadByType;
+export interface NewUser {
+  display_name: string;
+  comfortable_language: Language;
+  target_language: Language;
+}
 
-// The full message (envelope + payload) as it arrives on the WebSocket (AGENTS.md §6.1)
-export type MochiEvent = {
-  [K in EventType]: {
-    schema_version: string;
-    event_id: string;
-    type: K;
-    session_id: string;
-    emitted_at: string;
-    sequence: number;
-    payload: PayloadByType[K];
-  };
-}[EventType];
+export interface SessionRecord {
+  record_id: string;
+  session_id: string;
+  user_id: string;
+  started_at: string;
+  ended_at: string;
+  minutes: number;
+  hint_count: number;
+  learning_event_ids: string[];
+}
 
-// The order of the steps on a word card's path
-export const LEARNING_STATE_ORDER: LearningState[] = [
-  "DISCOVERED", "ASSISTED", "REINFORCED", "USED_INDEPENDENTLY",
-];
+export interface AgoraJoin {
+  app_id: string;
+  channel: string;
+  uid: number;
+  /** The contract says a string; null is tolerated (an Agora project without a certificate needs no token). */
+  token: string | null;
+}
+
+// ---- Type guards -----------------------------------------------------------------------
+
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isStrOrNull = (v: unknown) => v === null || isStr(v);
+const isLang = (v: unknown): v is Language => v === "en" || v === "pt-BR";
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const oneOf = <T extends string>(list: readonly T[]) => (v: unknown): v is T => list.includes(v as T);
+
+const isReason = oneOf<DetectionReason>([
+  "code_switch", "says_unknown", "asks_partner", "asks_mochi", "trails_off",
+  "talks_around", "restarts", "look_alike", "not_understood",
+]);
+const isLearningState = oneOf(LEARNING_STATES);
+
+export function isSessionState(v: unknown): v is SessionState {
+  return isObj(v) && oneOf<SessionStatus>(["created", "active", "paused", "ended"])(v.status)
+    && oneOf<SessionMode>(["together", "activity"])(v.mode) && isLang(v.focus)
+    && typeof v.capturing === "boolean" && Array.isArray(v.participants) && v.participants.every(isStr);
+}
+
+export function isHint(v: unknown): v is Hint {
+  return isObj(v) && isStr(v.hint_id) && isStrOrNull(v.target_user_id) && isLang(v.target_language)
+    && isStr(v.expression) && isStrOrNull(v.meaning) && isStrOrNull(v.example) && isReason(v.reason)
+    && isStr(v.expires_at);
+}
+
+export function isActivity(v: unknown): v is Activity {
+  return isObj(v) && isStr(v.activity_id) && isStrOrNull(v.round_id)
+    && oneOf<GameState>(["IDLE", "ACTIVE_ROUND", "ROUND_RESULT"])(v.state)
+    && isStrOrNull(v.describer_user_id) && isStrOrNull(v.guesser_user_id) && isStrOrNull(v.public_instruction)
+    && (v.result === null || v.result === "guessed" || v.result === "skipped")
+    && isStrOrNull(v.revealed_word)
+    && (v.word_source === null || v.word_source === "learning_event" || v.word_source === "stock");
+}
+
+export function isPrivatePrompt(v: unknown): v is PrivatePrompt {
+  return isObj(v) && isStr(v.round_id) && isStr(v.describer_user_id) && isStr(v.secret_word)
+    && isStrOrNull(v.source_learning_event_id);
+}
+
+export function isLearningEvent(v: unknown): v is LearningEvent {
+  return isObj(v) && isStr(v.learning_event_id) && isStrOrNull(v.user_id) && isLang(v.target_language)
+    && isStr(v.expression) && isStrOrNull(v.meaning) && isReason(v.detection_signal) && isStrOrNull(v.hint_id)
+    && isLearningState(v.learning_state) && Array.isArray(v.state_history)
+    && v.state_history.every((h) => isObj(h) && isLearningState(h.learning_state) && isStr(h.at));
+}
+
+export function isSpeak(v: unknown): v is Speak {
+  return isObj(v) && isStr(v.text) && isLang(v.language) && (v.reason === "asks_mochi" || v.reason === "activity_host");
+}
+
+const PAYLOAD_GUARDS: { [T in EventType]: (v: unknown) => boolean } = {
+  "session.state.changed": isSessionState,
+  "hint.created": isHint,
+  "hint.cleared": (v) => isObj(v) && isStr(v.hint_id),
+  "activity.state.changed": isActivity,
+  "activity.private_prompt": isPrivatePrompt,
+  "learning_event.created": isLearningEvent,
+  "learning_event.updated": isLearningEvent,
+  "agent.speak.requested": isSpeak,
+};
+
+/** A full, known event with a payload of the right shape. Unknown event types are not events here. */
+export function isMochiEvent(v: unknown): v is MochiEvent {
+  if (!isObj(v) || !isStr(v.type) || !(v.type in PAYLOAD_GUARDS)) return false;
+  if (!isStr(v.schema_version) || !isStr(v.event_id) || !isStr(v.session_id) || !isStr(v.emitted_at) || !isNum(v.sequence)) return false;
+  return PAYLOAD_GUARDS[v.type as EventType](v.payload);
+}
+
+export function isUser(v: unknown): v is User {
+  return isObj(v) && isStr(v.user_id) && isStr(v.display_name) && Array.isArray(v.comfortable_languages)
+    && v.comfortable_languages.length > 0 && v.comfortable_languages.every(isLang) && isLang(v.target_language);
+}
+
+export function isSessionRecord(v: unknown): v is SessionRecord {
+  return isObj(v) && isStr(v.record_id) && isStr(v.session_id) && isStr(v.user_id) && isStr(v.started_at)
+    && isStr(v.ended_at) && isNum(v.minutes) && isNum(v.hint_count)
+    && Array.isArray(v.learning_event_ids) && v.learning_event_ids.every(isStr);
+}
+
+export function isAgoraJoin(v: unknown): v is AgoraJoin {
+  return isObj(v) && isStr(v.app_id) && isStr(v.channel) && isNum(v.uid) && isStrOrNull(v.token);
+}

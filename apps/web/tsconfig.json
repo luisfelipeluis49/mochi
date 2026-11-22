@@ -1,5 +1,3 @@
-// tsconfig.json  —  LANGUAGE: JSON with comments (settings for TypeScript)
-// Tells TypeScript how strict to be and which files to check. `npm run build` uses it.
 {
   "compilerOptions": {
     "target": "ES2022",
