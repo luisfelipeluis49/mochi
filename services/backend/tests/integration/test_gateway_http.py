@@ -344,3 +344,13 @@ def test_websocket_bad_user_closes_4400_with_the_allowed_values_and_a_legal_reas
     assert (
         len(reason.encode()) <= 123
     )  # a longer close reason is a protocol error (client sees 1006)
+
+
+def test_a_web_session_lets_the_person_cut_mochi_off_while_the_pi_keeps_append() -> None:
+    client, harness = _client({"MOCHI_INTERRUPTION": "append", "MODEL_API_KEY": "sk-test"})
+    client.post("/api/sessions/demo/start")
+    client.post("/api/sessions/w-1/start")
+    pi, web = harness.agora.started
+    assert pi.tuning.interruption == "append"  # the Pi keeps what D-40 chose
+    assert web.tuning.interruption == ""  # Agora's default: speaking over Mochi stops it (D-43)
+    assert len(harness.agora.attempts) == 2  # one attempt per session, no retry with other ears

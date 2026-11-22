@@ -5,10 +5,12 @@ from datetime import timedelta
 
 import pytest
 
+from mochi_backend.gateway.agora.client_port import SpeechTuning
 from mochi_backend.gateway.connections import parse_target
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.errors import ConflictError
 from mochi_backend.gateway.session_history import SessionHistory
+from mochi_backend.gateway.session_service import SessionConfig
 from mochi_backend.gateway.user_directory import (
     UserDirectory,
     is_web_user,
@@ -169,3 +171,24 @@ def test_history_is_per_user_newest_first_capped_and_saved() -> None:
     assert len(mine) == 50 and mine[0].ended_at > mine[1].ended_at
     assert [r.user_id for r in history.for_user("sam")] == ["sam"]
     assert len(storage.sessions) == 61  # the restored one was already stored
+
+
+def test_for_session_clears_interruption_on_both_tunings_but_not_for_the_demo() -> None:
+    base = SessionConfig(
+        app_id="a",
+        channel="c",
+        pi_uid=1,
+        agent_uid=2,
+        token_ttl_seconds=60,
+        llm_url="https://x/agora/llm/demo/chat/completions",
+        llm_key="k",
+        tuning=SpeechTuning(interruption="append"),
+        fallback_tuning=SpeechTuning(interruption="append"),
+    )
+    web = base.for_session("w-1")
+    assert (
+        web.tuning.interruption == ""
+        and web.fallback_tuning is not None
+        and web.fallback_tuning.interruption == ""
+    )
+    assert base.for_session("demo").tuning.interruption == "append"
