@@ -1,4 +1,4 @@
-"""Mochi shared contracts, draft v0.7 (Papear). Mirrors AGENTS.md 6; change only via a human."""
+"""Mochi shared contracts, draft v0.7. Mirrors AGENTS.md 6; change only via a human."""
 
 from mochi_contracts.enums import (
     DecisionKind,

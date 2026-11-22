@@ -50,11 +50,11 @@ Then join the channel Luís's Agora agent uses: speech into the M1A should show 
 ## Wake phrases (offline)
 
 `./scripts/mochi.sh` runs the supervisor: the Pi listens locally, starts an Agora session when it
-hears a wake phrase ("vamos papear", "let's chat"; `[wake]` in `config/mochi.toml`) and ends it on a goodbye
+hears a wake phrase ("oi Mochi", "hey Mochi"; `[wake]` in `config/mochi.toml`) and ends it on a goodbye
 phrase ("tchau Mochi", "bye Mochi") or a timeout.
 Phrases and tolerances are in `config/mochi.toml`.
 
-In Papear the device sits on the table in a company's meetings. A session it starts is a meeting
+The device sits on the table in a company's meetings. A session it starts is a meeting
 (meeting mode: Mochi listens, knows the voices it learned in advance, and shows a word when someone
 is stuck). The other mode, review, happens on a person's phone and never on the device.
 

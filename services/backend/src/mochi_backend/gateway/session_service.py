@@ -89,7 +89,7 @@ class SessionConfig:
         return replace(tuning, interruption="") if tuning else None
 
 
-# First words of a wake phrase that are Portuguese ("vamos papear", "oi Mochi", "e aí Mochi").
+# First words of a wake phrase that are Portuguese ("oi Mochi", "e aí Mochi", "vamos ...").
 PORTUGUESE_CUES = {"vamos", "vamo", "oi", "ola", "olá", "alo", "alô", "e", "ei", "bom", "boa"}
 
 

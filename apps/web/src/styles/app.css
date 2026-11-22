@@ -187,7 +187,7 @@ select { min-height: 44px; padding: var(--space-1) var(--space-3); border-radius
 .speech { margin: 0; }
 .speech:not(.is-speaking) blockquote { color: var(--color-text-muted); }
 
-/* ---------- Papear's presence panel (replaces the device's cartoon face on the web) ---------- */
+/* ---------- Mochi's presence panel (replaces the device's cartoon face on the web) ---------- */
 .presence { position: relative; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-m); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 .presence-head { display: flex; align-items: center; gap: var(--space-3); }
 .monogram { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-s); background: var(--color-text); color: var(--color-surface); font-weight: 800; font-size: var(--text-l); }
@@ -289,7 +289,7 @@ select { min-height: 44px; padding: var(--space-1) var(--space-3); border-radius
   .spinner { border-top-color: var(--color-border); border-style: dotted; }
 }
 
-/* ---------- how Papear listens (before Start) ---------- */
+/* ---------- how Mochi listens (before Start) ---------- */
 .mode-choice { border: 0; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); }
 .mode-choice legend { font-weight: 700; margin-bottom: var(--space-2); padding: 0; }
 .mode-option { display: grid; grid-template-columns: 24px 1fr; column-gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 2px solid var(--color-border); border-radius: var(--radius-m); background: var(--color-surface); cursor: pointer; min-height: 44px; }

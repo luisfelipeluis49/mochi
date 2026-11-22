@@ -1,4 +1,4 @@
-"""The company side of Papear: members, the team view and each person's own moments (D-45).
+"""The company side of Mochi: members, the team view and each person's own moments (D-45).
 
 `viewer` is the `user_id` of the person looking, as in `/ws?user=`: there is no sign-in yet.
 """

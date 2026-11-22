@@ -1,7 +1,7 @@
-# Papear (Mochi)
+# Mochi
 
-Papear is language learning for companies, in their own meetings (English and Brazilian
-Portuguese). **Mochi**, a small device on the meeting table or a phone with the app, listens during
+Mochi is language learning for companies, in their own meetings (English and Brazilian
+Portuguese). A small device on the meeting table, or a phone with the app, listens during
 a meeting people start, tells registered voices apart, shows a one-word hint when someone is stuck,
 and remembers the words each person needed. Later each person goes over their words with Mochi in a
 **review** on their phone, and the company's administrators see how the team is doing in a **team

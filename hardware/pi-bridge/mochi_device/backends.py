@@ -11,7 +11,7 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
   backend can end the session, silence the speaker, and move Mochi's body (the `commands` in the
   state: face, volume, temperature, voices, a hint for someone who is stuck). The Pi reports its
   volume, temperature, the voices it knows and who is talking (POST .../status, .../voices). A
-  session started here is a meeting (Papear's meeting mode); a review happens on a phone. No agent
+  session started here is a meeting (meeting mode); a review happens on a phone. No agent
   logic here: that stays in services/backend.
 """
 from __future__ import annotations

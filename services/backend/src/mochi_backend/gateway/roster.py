@@ -1,4 +1,4 @@
-"""Who Papear knows: the demo session and device, the seeded people, and the people added since.
+"""Who Mochi knows: the demo session and device, the seeded people, and the people added since.
 
 The two demo people (AGENTS 2) are always seeded, so the walkthrough and the tests keep working.
 A company adds its own through `POST /api/companies/{id}/members` (DECISIONS D-45).
@@ -25,7 +25,7 @@ DEMO_USERS: list[User] = [
     for p in DEMO_PARTICIPANTS
 ]
 # One company per deployment for now; every table carries `company_id` so that can change.
-DEMO_COMPANY = Company(company_id="demo", name="Papear Demo")
+DEMO_COMPANY = Company(company_id="demo", name="Mochi Demo")
 # Someone has to be able to open the team view: the first demo person is the administrator.
 DEMO_MEMBERS: list[Member] = [
     Member(

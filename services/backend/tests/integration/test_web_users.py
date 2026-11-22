@@ -274,8 +274,8 @@ def test_a_word_the_guest_would_own_reaches_the_person_in_the_language_they_prac
     assert client.get("/api/users/ana/words").json() == []
 
 
-def test_a_phrase_papear_teaches_becomes_something_to_practise() -> None:
-    # The person asks how to say a phrase; Papear answers with it and tags it, silently (D-61).
+def test_a_phrase_mochi_teaches_becomes_something_to_practise() -> None:
+    # The person asks how to say a phrase; Mochi answers with it and tags it, silently (D-61).
     line = (
         "[mood happy] You can say: my sneakers are nice."
         "[phrase: my sneakers are nice | meus tênis são bonitos] Now try it about your own shoes."

@@ -5,13 +5,12 @@
 # To see what the Pi hears when you speak:  scripts/wake-test.sh
 
 [wake]
-# What starts a session (a meeting). Since 2026-11-22: "vamos papear" and its English, "let's chat";
-# "let's papear" for someone who uses the product's name in English. On the test clips "vamos papear"
-# is heard about as often as "oi mochi" was (8 in 10, also in a noisy room) and nothing else woke it in
-# 2.3 hours of other speech; "let's chat" is heard 8 in 10 in quiet and 5 in 10 in noise, and
-# look-alikes such as "let's shut the door" can start a session. The greetings used until then still
-# work when they are put back: "oi mochi", "olá mochi", "hi mochi", "hey mochi", "hello mochi".
-phrases = ["vamos papear", "let's chat", "let's papear"]
+# What starts a session (a meeting): a greeting to Mochi, in Portuguese ("oi mochi", "olá mochi") or
+# in English ("hi mochi", "hey mochi", "hello mochi"). The product is called Mochi again (D-65), so
+# these replace "vamos papear" / "let's chat" / "let's papear" (D-48). A phrase without the name is
+# still understood when it is put here: "vamos papear" was heard 8 times in 10 on the test clips;
+# "let's chat" 5 in 10 in noise, and look-alikes such as "let's shut the door" started a session.
+phrases = ["oi mochi", "olá mochi", "hi mochi", "hey mochi", "hello mochi"]
 
 [goodbye]
 # Heard locally while a session is active; ends the session.

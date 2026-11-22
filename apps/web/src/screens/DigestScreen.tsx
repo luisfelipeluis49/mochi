@@ -1,4 +1,4 @@
-// Weekly digest (/digest): a wrap-up of everything the person did with Papear in one week, across all
+// Weekly digest (/digest): a wrap-up of everything the person did with Mochi in one week, across all
 // of their sessions. The view model is lib/digest.ts.
 import type { WeekView } from "../lib/digest.ts";
 import { minutes } from "../lib/format.ts";

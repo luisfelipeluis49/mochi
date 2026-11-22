@@ -194,7 +194,7 @@ class VoiceprintUpload(ContractModel):
 
 
 class Company(ContractModel):
-    """A company that uses Papear. PROPOSAL (v0.7, DECISIONS D-45)."""
+    """A company that uses Mochi. PROPOSAL (v0.7, DECISIONS D-45)."""
 
     company_id: str
     name: str

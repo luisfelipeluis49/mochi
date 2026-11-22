@@ -67,7 +67,7 @@ The walkthrough in AGENTS section 2 is English only. For two languages, a propos
 2. Help: Ana says sentences 1 and 2; Ben says sentences 4 and 5. Each hint is saved for the person who needed it.
 3. Remember: Ana's phone shows `umbrella - Hint shown`, `postpone - Used with help` (she said it right
    after the hint); Ben's shows `guarda-chuva` and `adiar` the same way.
-4. Review (Papear, D-44; replaces the two Play rounds, which were removed with the game, D-43): Ana starts
+4. Review (D-44; replaces the two Play rounds, which were removed with the game, D-43): Ana starts
    a review on her phone. Mochi asks for `umbrella` through its meaning, she says it, and the card reads
    `Recalled in a review`.
 5. The company sees (D-45): `GET /api/companies/demo/insights?viewer=ana` lists `postpone` and `umbrella`

@@ -1736,6 +1736,40 @@ tracker would send them):
 - `main`'s D-63 (one writer per client in the hub) arrived the same hour; this is the next number.
 - `main` then used D-64 for its own next entry (three performance changes); merged here, that one is D-66.
 
+## D-65: the name is Mochi again; a session starts with a greeting to Mochi (2026-11-22)
+
+**Asked** (Suhuai, for the team): the rebrand goes back to Mochi. Only the name changes, no feature; and
+the wake expressions change with it, in English and in Portuguese.
+
+- **The name.** The product, the web app and the companion are all **Mochi**. "Papear" (D-43, D-57) is gone
+  from what a person sees and from the documents people work from: the web app's texts in both languages,
+  its title, monogram (M) and icon; `AGENTS.md`, the READMEs, `docs/TEAM_VIEW.md`; the character prompt
+  (Mochi no longer says it belongs to Papear); the contracts' descriptions (the JSON Schemas were
+  regenerated). The sober look of D-57, the two listening modes, the digest and everything else stay.
+- **No contract change.** No field, event, route or enum value was renamed, added or removed. One example
+  value changed: the demo company is "Mochi Demo" (`roster.py`, the two example payloads).
+- **The wake phrases** (`[wake]` in `hardware/pi-bridge/config/mochi.toml`) are the greetings again:
+  "oi mochi", "olá mochi" (Portuguese) and "hi mochi", "hey mochi", "hello mochi" (English). "vamos papear",
+  "let's chat" and "let's papear" (D-48) no longer start a session. The web's Start already sent
+  "oi mochi" / "hey mochi" as `woken_by`, so the web and the backend are unchanged there.
+- **Kept from D-48:** the matcher still finds a phrase without the name by its last word, and "vamos" still
+  counts as Portuguese on the Pi and in the backend, so "vamos papear" or "let's chat" work again when
+  someone puts them in `[wake]`. Their tests stay (as a configurable phrase, not the shipped one).
+- **Not rewritten:** older entries here, the older changelog lines in `AGENTS.md`, `BUILD_LOG.md` and
+  `PROVENANCE.md` still say Papear. They are history.
+
+**Tried.** Backend `make verify` (1790 passed, 7 skipped; schema check clean; 1799 after the merge with `main` and D-67), the Pi bridge's tests (146),
+the web app's tests (210), type check and build. Nobody has said the greetings to the device since the
+change; their numbers are D-48's comparison row ("oi/olá mochi" 80 of 105 clean, 72 of 105 far; "hi/hey
+mochi" 115 of 126 and 97 of 126).
+
+**Open:**
+- A database that already has the demo company keeps the name "Papear Demo": the seed never overwrites a
+  company (`seed_company`). One `UPDATE` on the deployed Postgres, or leave it.
+- The deployed web app and backend say Papear until they are deployed again.
+- The owners' yes, as for D-43 to D-64: `apps/web` (Tasnim), `hardware/` and contracts (Matheus), gateway
+  (Luís), the character prompt (Kauê).
+
 ## D-66: three smaller backend performance changes (2026-11-22)
 
 *Written on `main` as D-64 (commit 8da0696); renumbered when `main` was merged into `hardware`, where D-64 is

@@ -81,11 +81,13 @@ if __name__ == "__main__":
 
 
 class StartPhrasesTest(unittest.TestCase):
-    """ "vamos papear" / "let's chat": a phrase is found by its own last word, not only by the name.
-    Phone strings are what the recogniser wrote for spoken test clips (2026-11-22)."""
+    """A phrase without the name ("vamos papear" / "let's chat", the wake phrases of D-48) is found by
+    its own last word. The shipped config wakes on greetings to Mochi again (D-65); these still work
+    when someone configures them. Phone strings are what the recogniser wrote for spoken test clips
+    (2026-11-22)."""
 
     def setUp(self):
-        self.m = PhraseMatcher({"wake": ["vamos papear", "let's chat", "let's papear"],
+        self.m = PhraseMatcher({"wake": ["vamos papear", "let's chat"],
                                 "goodbye": ["tchau mochi", "bye mochi", "goodbye mochi"]}, ignore=["mochila"])
 
     def hit(self, phones, **kw):
@@ -98,10 +100,9 @@ class StartPhrasesTest(unittest.TestCase):
                       "bondʒivomuspapje", "bondiwvomospapɛa"):                                    # after "bom dia,"
             self.assertEqual(self.hit(heard), ("wake", "vamos papear"), heard)
 
-    def test_lets_chat_and_lets_papear(self):
+    def test_lets_chat(self):
         for heard in ("lɛtstʃæt", "lɛtstʃɑt", "oʊkeɪlɛtstʃæt", "əkeɪlɛtstʃæt"):
             self.assertEqual(self.hit(heard), ("wake", "let s chat"), heard)
-        self.assertEqual(self.hit("lɛtspapiaɹ"), ("wake", "let s papear"))
 
     def test_other_things_people_say_do_not_start_a_session(self):
         for heard in ("vamospasjaɾamaja", "vamosparaporaki", "vamospagaɾakoanta",   # passear, parar, pagar
@@ -109,7 +110,7 @@ class StartPhrasesTest(unittest.TestCase):
                       "eogostodɛpapiakomɛlɐ", "aʒentʃifikowpapendateatadʒi",        # papear without "vamos"
                       "lɛtstʃɛkðənʌmbəz", "lɛtskætʃʌptumɑɹoʊ",                       # let's check, let's catch up
                       "wihædənaɪstʃætjɛstədeɪ",                                      # a chat, without "let's"
-                      "ojmɔtɕi", "haɪmoʊtʃi"):                                       # the greetings no longer wake
+                      "ojmɔtɕi", "haɪmoʊtʃi"):                                       # greetings wake only when configured
             self.assertIsNone(self.hit(heard), heard)
 
     def test_a_look_alike_of_lets_chat_can_still_start_one(self):
