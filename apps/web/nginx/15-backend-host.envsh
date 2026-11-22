@@ -3,6 +3,10 @@
 # /docker-entrypoint.d is sourced, so what it exports reaches 20-envsubst-on-templates.sh).
 # BACKEND_HOST defaults to the host part of BACKEND_URL, so nginx sends the right Host (and SNI)
 # to a Render https upstream: https://mochi-backend-xxxx.onrender.com -> mochi-backend-xxxx.onrender.com
+# A trailing slash would turn nginx's proxy_pass into "replace the matched prefix" and send /api/x to /x:
+# strip it, so https://mochi-backend-xxxx.onrender.com/ works like the same URL without the slash.
+while [ "${BACKEND_URL%/}" != "${BACKEND_URL:-}" ]; do BACKEND_URL="${BACKEND_URL%/}"; done
+export BACKEND_URL
 if [ -z "${BACKEND_HOST:-}" ]; then
     _mochi_rest="${BACKEND_URL#*://}"
     BACKEND_HOST="${_mochi_rest%%/*}"
