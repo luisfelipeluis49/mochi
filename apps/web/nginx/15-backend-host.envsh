@@ -1,0 +1,11 @@
+#!/bin/sh
+# Sourced by the nginx image's entrypoint before the envsubst step (every *.envsh in
+# /docker-entrypoint.d is sourced, so what it exports reaches 20-envsubst-on-templates.sh).
+# BACKEND_HOST defaults to the host part of BACKEND_URL, so nginx sends the right Host (and SNI)
+# to a Render https upstream: https://mochi-backend-xxxx.onrender.com -> mochi-backend-xxxx.onrender.com
+if [ -z "${BACKEND_HOST:-}" ]; then
+    _mochi_rest="${BACKEND_URL#*://}"
+    BACKEND_HOST="${_mochi_rest%%/*}"
+    unset _mochi_rest
+fi
+export BACKEND_HOST
