@@ -9,6 +9,7 @@ from mochi_backend.gateway.agora.client_port import SpeechTuning
 from mochi_backend.gateway.connections import parse_target
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.errors import ConflictError
+from mochi_backend.gateway.guest_reown import hand_guest_words_to_person
 from mochi_backend.gateway.session_history import SessionHistory
 from mochi_backend.gateway.session_service import SessionConfig
 from mochi_backend.gateway.user_directory import (
@@ -19,7 +20,7 @@ from mochi_backend.gateway.user_directory import (
     voice_owners,
 )
 from mochi_backend.storage.session_record import SessionRecord, SessionTally, build_record
-from mochi_contracts import Language, User
+from mochi_contracts import Decision, DecisionKind, Hint, Language, Reason, User
 from tests.fakes.fake_clock import START
 from tests.fakes.fake_storage import FakeStorage
 from tests.fakes.fake_suffixes import ScriptedSuffixes, SeededSuffixes
@@ -192,3 +193,22 @@ def test_for_session_clears_interruption_on_both_tunings_but_not_for_the_demo() 
         and web.fallback_tuning.interruption == ""
     )
     assert base.for_session("demo").tuning.interruption == "append"
+
+
+def test_a_guest_word_with_no_meaning_is_dropped_and_other_owners_are_left_alone() -> None:
+    hint = Hint(
+        hint_id="h1",
+        target_user_id="guest",
+        target_language=Language.EN,
+        expression="postpone",
+        meaning=None,
+        example=None,
+        reason=Reason.CODE_SWITCH,
+        expires_at="2026-11-22T00:00:08.000Z",
+    )
+    mine = hint.model_copy(update={"target_user_id": "sam-1", "meaning": "adiar"})
+    mixed = Decision(decision=DecisionKind.SHOW_HINT, hint=hint, speak=None, learning_events=[])
+    kept = mixed.model_copy(update={"hint": mine})
+    assert hand_guest_words_to_person(mixed, "sam-1", Language.PT_BR).hint is None
+    assert hand_guest_words_to_person(kept, "sam-1", Language.PT_BR).hint == mine
+    assert hand_guest_words_to_person(mixed, None, Language.PT_BR) == mixed  # no person: unchanged
