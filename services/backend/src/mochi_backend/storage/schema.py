@@ -37,6 +37,18 @@ CREATE_TABLES = (
         updated_at timestamptz NOT NULL DEFAULT now()
     )
     """,
+    # One finished web session of one person (D-56). `body` is the whole web SessionRecord
+    # (`storage/session_record.py`); the other columns are for looking at the table by hand.
+    """
+    CREATE TABLE IF NOT EXISTS session_records (
+        record_id text PRIMARY KEY,
+        user_id text REFERENCES users (user_id) ON DELETE CASCADE,
+        session_id text NOT NULL,
+        started_at timestamptz NOT NULL,
+        ended_at timestamptz NOT NULL,
+        body jsonb NOT NULL
+    )
+    """,
     # --- The company's learning history (DECISIONS D-45; docs/TEAM_VIEW.md) -------------------
     # One company per deployment today, but every row says whose it is, so that can change.
     """
@@ -57,10 +69,12 @@ CREATE_TABLES = (
         PRIMARY KEY (company_id, user_id)
     )
     """,
+    # Called `company_sessions`, not `session_records`: that name is the web app's table above,
+    # which was deployed first (D-58).
     # One row per session, Start to Stop: a meeting or a review. No sentence is kept here; `body`
     # (the SessionRecord) holds who was there and how many sentences each recognised voice said.
     """
-    CREATE TABLE IF NOT EXISTS session_records (
+    CREATE TABLE IF NOT EXISTS company_sessions (
         record_id text PRIMARY KEY,
         seq bigserial NOT NULL,
         company_id text NOT NULL REFERENCES companies (company_id) ON DELETE CASCADE,
@@ -72,8 +86,8 @@ CREATE_TABLES = (
     )
     """,
     """
-    CREATE INDEX IF NOT EXISTS session_records_by_company
-        ON session_records (company_id, started_at)
+    CREATE INDEX IF NOT EXISTS company_sessions_by_company
+        ON company_sessions (company_id, started_at)
     """,
     # The fact table of the analytics: one row per time someone needed a word (a hint shown or an
     # answer spoken). A learning event is one card per person and word; this is every occurrence.
@@ -181,12 +195,12 @@ SELECT_MEMBERS = (
     "SELECT company_id, user_id, role, team FROM company_members ORDER BY joined_at, user_id"
 )
 UPSERT_RECORD = """
-    INSERT INTO session_records
+    INSERT INTO company_sessions
         (record_id, company_id, session_id, mode, started_at, ended_at, body)
     VALUES (%s, %s, %s, %s, %s::timestamptz, %s::timestamptz, %s::jsonb)
     ON CONFLICT (record_id) DO UPDATE SET ended_at = EXCLUDED.ended_at, body = EXCLUDED.body
 """
-SELECT_RECORDS = "SELECT record_id, body::text FROM session_records ORDER BY seq"
+SELECT_RECORDS = "SELECT record_id, body::text FROM company_sessions ORDER BY seq"
 INSERT_MOMENT = """
     INSERT INTO word_moments
         (moment_id, company_id, record_id, user_id, expression, target_language, reason, at, body)
@@ -209,4 +223,9 @@ INSERT_REPORT = """
 SELECT_REPORTS = "SELECT report_id, body::text FROM conversation_reports ORDER BY seq"
 DELETE_REPORTS = "DELETE FROM conversation_reports"
 DELETE_MOMENTS = "DELETE FROM word_moments"
-DELETE_RECORDS = "DELETE FROM session_records"
+DELETE_RECORDS = "DELETE FROM company_sessions"
+INSERT_SESSION = """
+    INSERT INTO session_records (record_id, user_id, session_id, started_at, ended_at, body)
+    VALUES (%s, %s, %s, %s, %s, %s::jsonb) ON CONFLICT (record_id) DO NOTHING
+"""
+SELECT_SESSIONS = "SELECT record_id, body::text FROM session_records ORDER BY ended_at, record_id"

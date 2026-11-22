@@ -1,18 +1,15 @@
 <!doctype html>
-<!--
-  index.html  —  LANGUAGE: HTML
-  The only HTML page. It is almost empty on purpose: React (src/main.tsx)
-  draws every screen inside <div id="root">.
--->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport: fit phone screens and block pinch-zoom (Mochi's screen must not zoom on a tap) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Mochi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#FAF7F0" />
+    <meta name="description" content="Papear helps teams build language confidence from real conversations at work." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Papear</title>
   </head>
   <body>
-    <div id="root"></div> <!-- React puts the app here -->
-    <script type="module" src="/src/main.tsx"></script> <!-- start the app -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

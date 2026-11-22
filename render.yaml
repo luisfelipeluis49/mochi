@@ -82,3 +82,18 @@ services:
         value: "*"
       - key: MOCHI_LOG_LEVEL
         value: INFO
+  # The web app (apps/web): nginx serves it and proxies /api, /ws and /healthz to mochi-backend, so the
+  # browser only ever talks to this service's own origin (it needs https for the microphone).
+  # dockerfilePath and dockerContext are NOT re-verified (check on first deploy), like the backend's.
+  - type: web
+    name: mochi-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: ./apps/web
+    plan: free # spins down after 15 minutes without traffic, like the backend
+    healthCheckPath: /web-healthz
+    envVars:
+      # fromService (property: host) could fill this in, but it gives a host without https:// and was
+      # not verified here: set it by hand after the backend's first deploy.
+      - key: BACKEND_URL
+        sync: false # the https URL of mochi-backend, no trailing slash, e.g. https://mochi-backend-xxxx.onrender.com

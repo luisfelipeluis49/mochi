@@ -8,11 +8,11 @@ Papear is sold to companies. A company wants to know whether its people are gett
 
 | When | What is written | Kept where |
 |---|---|---|
-| A session starts (`POST /api/sessions/{id}/start`) | a **session record**: meeting or review, start time, who was there | `session_records` |
+| A session starts (`POST /api/sessions/{id}/start`) | a **session record**: meeting or review, start time, who was there | `company_sessions` |
 | A sentence is finished | an **utterance**: the sentence and the person whose registered voice said it (or nobody) | `utterances` |
 | A hint is shown or an answer is spoken | a **word moment**: who, which expression, why, when, and that person's own sentence; and, the first time, a **learning event** (the card) | `word_moments`, `learning_events` |
 | The person says the word afterwards | the card moves on: `ASSISTED` in a meeting, `REINFORCED` in a review | `learning_events` |
-| The session stops | every sentence's speaker is looked at once more (a report from the device can arrive after its sentence); the record is closed: end time and who said how much | `utterances`, `session_records` |
+| The session stops | every sentence's speaker is looked at once more (a report from the device can arrive after its sentence); the record is closed: end time and who said how much | `utterances`, `company_sessions` |
 | A code switch is hinted, or an idiom or technical term is explained (D-52, D-53) | a **mark** on that sentence: what was said and what it means | `utterances` (in `body`) |
 | A moment after the session stopped (D-54, D-55) | for each person who said three sentences or more, a **conversation report**: their sentences put right, the kinds of mistake, the words they needed; and a saved word they used with no hint moves to `USED_INDEPENDENTLY` | `conversation_reports`, `learning_events` |
 
@@ -36,7 +36,7 @@ companies                      company_members                     users (existi
                                  team        free text, nullable      target_language
                                  joined_at
 
-session_records                                 word_moments
+company_sessions                                word_moments
   record_id    PK                                 moment_id        PK
   seq          insertion order                    seq              insertion order
   company_id   FK companies                       company_id       FK companies
@@ -174,6 +174,8 @@ Whether an administrator should see per-person rows at all is a product decision
 Not built: `session.summary.created` from the same proposal (minutes practised, next step). A report's `strengths`, `focus_next` and `speaking_minutes` cover most of it.
 
 ## 6. For the web app: what v0.7 changes
+
+*Since D-56 to D-58 the web app is a new one (Onboarding, Session, Training, Digest, Analytics) with users and sessions of its own; it accepts the modes `meeting` and `review` and ignores events it does not know. The table below was written for the app it replaced; the second table ("Added on 2026-11-22") is what the new app can pick up. The company's table is `company_sessions`: `session_records` is the web app's own (one row per finished web session of a person, `GET /api/users/{id}/sessions`).*
 
 `apps/web` still speaks contracts v0.4 and was not touched. With this backend:
 

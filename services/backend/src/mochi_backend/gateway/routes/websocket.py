@@ -1,4 +1,8 @@
-"""`/ws`: Mobile (?user=), Home (?device=) and Audience (?view=) connections."""
+"""`/ws`: Mobile (?user=), Home (?device=) and Audience (?view=) connections.
+
+`?user=` is any person of the company, or one `POST /api/users` made; an unknown user or `guest`
+is accepted, then closed with 4400 (D-56).
+"""
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -9,7 +13,8 @@ BAD_QUERY_CLOSE_CODE = 4400
 GONE_CLOSE_CODE = 1011
 MAX_CLOSE_REASON_BYTES = 123  # RFC 6455: control frame payload 125 bytes, 2 taken by the code
 FALLBACK_REASON = (
-    "unknown query; expected one of user=ana|ben[&surface=ar], device=home_pi_01, view=audience"
+    "unknown query; expected one of user=ana|ben|<user_id>[&surface=ar], device=home_pi_01, "
+    "view=audience"
 )
 
 

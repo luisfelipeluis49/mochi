@@ -143,7 +143,7 @@ class TurnPipeline:
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
-        people = self._store.roster.user_ids()
+        people = [person.user_id for person in self._store.people()]
         words = {user: self._intelligence.words_for(user) for user in people}
         return self._store.context(words)
 
@@ -381,10 +381,13 @@ class TurnPipeline:
         await self.save_learning_events(decision.learning_events)
         if decision.hint is not None:
             await self._live_hint.show(decision.hint)
+            self._store.count_hint()
 
     async def save_learning_events(self, proposals: list[LearningEvent]) -> None:
         """`apply()` the proposals, then publish `created` (first state) or `updated`."""
-        for stored in self._intelligence.apply(proposals):
+        saved = self._intelligence.apply(proposals)
+        self._store.note_saved(saved)  # for the web session's record (D-56)
+        for stored in saved:
             first = len(stored.state_history) == 1
             kind = EventType.LEARNING_EVENT_CREATED if first else EventType.LEARNING_EVENT_UPDATED
             await self._hub.publish(kind, stored)

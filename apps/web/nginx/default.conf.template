@@ -1,0 +1,88 @@
+# nginx for the mochi-web container. Rendered at start by the nginx image's envsubst step: the only
+# variables replaced are PORT, BACKEND_URL and BACKEND_HOST (NGINX_ENVSUBST_FILTER in the Dockerfile),
+# so every nginx $variable below survives.
+#
+# Same origin (THE SHARED CONTRACT, C0): /api/*, /ws and /healthz go to the backend; everything else
+# is the single-page app.
+
+# Render terminates TLS in front of this container: pass its X-Forwarded-Proto on, or our own scheme.
+map $http_x_forwarded_proto $mochi_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+server {
+    listen ${PORT};
+    server_name _;
+    server_tokens off;
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Security headers. add_header in a location drops the server-level ones, so every location
+    # with its own add_header repeats this list.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "microphone=(self)" always;
+
+    # The container's own health check (Render healthCheckPath).
+    location = /web-healthz {
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $mochi_forwarded_proto;
+    }
+
+    location = /healthz {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $mochi_forwarded_proto;
+    }
+
+    location /ws {
+        proxy_pass ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $mochi_forwarded_proto;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        # The backend never pings: keep idle sockets open (nginx's default would drop them after 60 s).
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Hashed build files: cache for a year.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "microphone=(self)" always;
+        try_files $uri =404;
+    }
+
+    # The app page: always revalidate, so a new deploy shows at once.
+    location = /index.html {
+        add_header Cache-Control "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "microphone=(self)" always;
+    }
+
+    # SPA fallback: /session, /training, ... all serve index.html.
+    location / {
+        try_files $uri /index.html;
+    }
+}

@@ -1397,3 +1397,129 @@ be at most three minutes old.
 
 **Not built, from the same question:** translating a whole sentence said in the other language for the
 others; word-by-word captions; asking Mochi "what did she just say?".
+
+## D-56: the web app has its own users and sessions; session records (2026-11-21)
+
+*Written on `main` as D-42 (PR #22) while this file's D-42 to D-55 were being written on `hardware`; renumbered when the two were merged (D-58). `apps/web` and the commits of that PR still say D-42.*
+
+**Why.** Luís asked for `apps/web` to be rebuilt as one app that does in a browser what Mochi Home does on the
+Pi, for any person and not only `ana` and `ben`. That needs people the backend can create, a session that
+belongs to one person, and a record of each session that survives a restart (Render's free plan spins the
+backend down when idle). He also asked for the edits in `storage/` and in Tasnim's `apps/web`; the web side is
+made by a second builder, in its own commits, against the same written contract.
+- **New endpoints.** `POST /api/users` (`{display_name, comfortable_language = "pt-BR", target_language =
+  "en"}` -> 201 `User`; 422 for an empty, over-40-character or control-character name, an unknown language, or
+  two equal languages), `GET /api/users/{id}`, `GET /api/users/{id}/words` (newest first, the
+  `learning_event.created` payloads) and `GET /api/users/{id}/sessions` (newest first by `ended_at`, at most 50).
+  The id is `slug + "-" + 6 random hex` (NFKD to ASCII, lowercase, runs of anything else as one `-`, 20
+  characters at most, `user` when empty), so it always matches `^[a-z0-9-]{3,27}$` and is never `ana`, `ben` or
+  `guest`; a taken id is drawn again. `ana` and `ben` work on every endpoint; `guest` is 404 everywhere.
+- **Changed.** `POST /api/sessions/{id}/start` takes an optional `user_id`: 409 on `demo` (the Pi's), 404 for an
+  unknown or reserved user (checked **before** the session is opened, because opening can evict another
+  session), 409 for another user than the one a running session is for, 200 and the current state for the same
+  user or none. `/ws?user=` accepts any registered user (unknown users and `guest` still close 4400), and its
+  snapshot now sends only that user's saved words; the order is unchanged (session, activity, live hint,
+  words oldest first). Everything else in D-41 is unchanged; without a `user_id`, a Start is exactly as before.
+- **The guest and the focus (AGENTS 7.3).** A web session's participants are the user and `guest`, with the
+  user's languages the other way round, and `focus` is the user's target language. So exactly one participant
+  learns the spoken language, and a word from the user's own language is the user's. The participants, focus
+  and user live in the session's `SessionStore` (set when the Start succeeds, so a failed Start leaves nothing);
+  `build_context` and the round's secret check loop over them instead of `USER_IDS`. `guest` is seeded with
+  the demo users, so its learning events satisfy the foreign key; they are stored and shown to nobody.
+- **Voices stay with the Pi's people.** `VoiceDirectory` is given `ana` and `ben` first and never `guest` or a
+  web user, so a web user called "Ana" cannot take Ana's voice.
+- **Storage.** The port gains `save_user`, `load_sessions` and `save_session`, in all four storages and the
+  fake. `save_user` runs on the write-behind worker like every other write, so a user row is always written
+  before that user's first learning event (`learning_events.user_id` references `users`); a failed user write
+  holds the event behind it. Postgres has a new `session_records` table (`body` is the whole record as `jsonb`,
+  `ON DELETE CASCADE` with its user), the local file a `"sessions"` list. A demo reset deletes neither users
+  nor records.
+- **Session records.** `{record_id, session_id, user_id, started_at, ended_at, minutes, hint_count,
+  learning_event_ids}`: `minutes` rounded to one decimal, `hint_count` every `hint.created` the session
+  published, `learning_event_ids` the user's words created or updated in it (first order, once each; an id
+  may point at a word a later reset deleted). Written once, by `SessionService.stop()`, so a Stop, an eviction
+  and a `sendBeacon` stop all leave one; a session started without a user (`demo`, an old phone) leaves none.
+  `SessionRecord` is a gateway/storage model in `storage/session_record.py`, **proposed** to move to
+  `packages/contracts` (Matheus) in v0.5.
+- **Tests.** The existing tests pass unchanged, except `test_postgres_storage.py`'s fixture, which now also drops
+  `session_records` (the new table references `users`, so `DROP TABLE users` alone would fail). The 4400 close
+  reason still contains `user=ana|ben` (it now reads `user=ana|ben|<user_id>`). `FakeStorage` can fail one call
+  and check the foreign key. New: `tests/unit/test_web_users.py`, `tests/unit/test_session_storage.py`,
+  `tests/integration/test_web_users.py`, and a Postgres round trip (run against a throwaway `postgres:17`).
+- **Not built, for the team:**
+  - Training results stay in the browser, so nothing produces `USED_INDEPENDENTLY` yet.
+  - No game in a web session: the secret word goes to the Home view only.
+  - No sign-in. Anyone who knows a user id can read that user's words and sessions. Acceptable for the
+    hackathon; listed as a risk.
+  - Eviction can end another person's web session (8 live at most, D-41).
+  - The intelligence was not checked with a pt-BR focus (Kauê).
+  - `asks_partner` matches names only for `ana` and `ben`.
+- **Owners:** gateway and storage (Luís); web (Tasnim's directory, rebuilt at Luís's request).
+
+## D-57: Papear for companies: barge-in, a weekly digest, a sober look (2026-11-22)
+
+*Written on `main` as D-43 (PR #23); renumbered when it was merged with `hardware` (D-58). `apps/web` still says D-43.*
+
+**Why.** The web app (D-56) is now meant for companies, and a first round of use found four problems.
+- **Barge-in.** Web sessions inherited the Pi's `MOCHI_INTERRUPTION=append` (D-40): Papear finished its answer and
+  then answered the sentence that was meant to cut it off. `SessionConfig.for_session` now gives every non-demo
+  session Agora's default interruption (`""`), on the first and the fallback ears. The Pi's `demo` session keeps
+  `append`. Cost: the dropped-answer behaviour D-38 measured can return in a web session when someone speaks over a
+  question. Unverified: with laptop speakers (no headphones) the browser's echo cancellation must keep Papear's own
+  voice from cutting itself off; the mic track asks for it (`AEC`) but nobody has tried it on speakers.
+- **Training.** Not reproduced. A default user (pt-BR, learning English) gets words with a meaning and the right
+  owner (checked on the fake backend), and a Training round works end to end in a DOM (jsdom, typed answer, Check,
+  Next). What the code can do wrong, and now does not: Training used to refresh the words only on Digest and
+  Analytics; the word list was hidden when the sessions list failed or when one item was unknown; both are fixed.
+  Still possible and not fixed: a hint model that answers with `meaning: null` (such words are not trainable and the
+  screen says so in one small line), and words owned by the invented `guest` when the person speaks the guest's
+  language (the whose-word rule, AGENTS 7.3, is Kauê's; handing those words to the person would teach them words in
+  their own first language, so it was tried and left out). Needs the live `decision` log lines to settle.
+- **Digest is weekly.** `/digest` is a wrap-up of one calendar week (Monday to Sunday, the browser's time zone) across
+  all the person's sessions: sessions, minutes, active days, minutes per day, the change against the week before,
+  words by state, and what to practise next. It uses only data the backend already stores (D-56).
+- **Name and look.** The web product is **Papear**. The cartoon face became a sober status panel (monogram, state text,
+  audio meter); corners and shadows are flatter. The backend, the Pi and Mochi's own lines keep "Mochi": the wake phrase
+  and `asks_mochi` match only "Mochi", and the character prompt (`intelligence/`) still names itself Mochi. Whether
+  Papear should answer to its own name is a decision for Kauê and the team.
+- **Not built.** A company account (several people, an admin view, team totals) needs sign-in; today anyone who knows a
+  user id can read that person's words (D-56). The digest is per person, not per team.
+
+## D-58: `hardware` and `main` are one again: what was decided where they disagreed (2026-11-22)
+
+**What happened.** While D-43 to D-55 were built on `hardware`, `main` got a rebuilt web app and, in the
+backend, web users, per-user sessions and their records (PRs #22 and #23, D-56 and D-57). Both sides had
+changed the same 22 backend files, and three things could not both stay as they were. Suhuai asked for the
+two to be reconciled now; these are the choices, each one open to the owners' veto.
+
+- **Session modes.** The backend says `meeting` and `review` (D-43). The web app's type guard accepted only
+  `together` and `activity`, so its Start would have failed. `apps/web/src/contracts.ts` now also accepts
+  `meeting` and `review` (the type and the guard, nothing else: the app never reads the mode). That is the
+  only change made in `apps/web`. The game's events are still typed there and are simply never sent; the
+  web app never called the game's routes.
+- **Two tables called `session_records`.** The web's (one row per finished web session of a person) was
+  deployed first and keeps the name. The company's (one row per meeting or review, D-45) is now
+  `company_sessions`. Its contract is still called `SessionRecord`, and so is the web's Python class in
+  `storage/session_record.py`: two different shapes with one name. Files that need both import the web's
+  as `WebSessionRecord`. Renaming one of them for good is for Matheus and Luís.
+- **Who is in a meeting.** D-44 made a meeting's participants "everyone the backend knows". With web users
+  that would put every person who ever opened the web app, and `guest`, into the device's meetings. The
+  roster (meeting participants, voice owners) is now the company's members; the user directory (D-56)
+  knows everybody. A web user's session has its own two people (the user and `guest`), a review its one.
+  `/ws?user=`, `GET /api/users/{id}` and a review accept a person from either.
+- **`Storage.save_user`** replaces a user that exists (a member's languages or name can be changed, D-45);
+  on `main` it left an existing user alone. No caller on `main` relied on that (a new web user always gets
+  a fresh id), and the two tests that asserted it were changed.
+- **The snapshot on connect** sends only the connecting person's words (D-56) and newest reports (D-54),
+  no longer everyone's filtered by the hub. No `activity.state.changed` on connect: three tests of D-56
+  that waited for one were changed.
+- **A web user's session** is also written into the company's history (a `company_sessions` row, its
+  sentences and word moments) under the one company there is. The team view counts its moments in the
+  totals and the gaps; its member rows are members only. Whether a web user should belong to a company is
+  the question D-57 already asks ("a company account needs sign-in").
+- **Decision numbers.** `main`'s two entries were renumbered D-56 and D-57, because `hardware` had fourteen
+  entries and their references in code against two.
+
+**Checked:** the merged backend passes both sides' tests (1701) with lint, strict types and the schema
+check. **Not checked here:** the web app's own tests (no Node on the Pi; CI runs them), and every company
+table's SQL against a real Postgres (AGENTS 12.7), which now includes the renamed one.

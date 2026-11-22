@@ -1,204 +1,446 @@
-// =============================================================================
-// i18n.ts  —  LANGUAGE: TypeScript
-// -----------------------------------------------------------------------------
-// ALL THE TEXT shown on the screens, in English and Brazilian Portuguese.
-// ("i18n" is short for "internationalization": 18 letters between the i and the n.)
-// To change a sentence on any screen, change it HERE, in both languages.
-// Choose the language with ?lang=en or ?lang=pt-BR in the URL.
-// =============================================================================
+// Every visible string of the app, in English and Brazilian Portuguese, with the same keys.
+// The English object defines the keys; the Portuguese one is typed against it, so a missing or extra
+// key is a type error (and i18n.test.ts checks the same at run time). Placeholders look like {n}.
 
-import type { Language, LearningState, SessionMode } from "../contracts.ts";
-import type { MicProblem } from "./phoneMic.ts";
+import type { Language } from "../contracts.ts";
+import { type KV, localStore, safeGet, safeSet } from "./storage.ts";
 
-// ---- ENGLISH texts. Things like (d: string) => `...` are small functions that put a name in the sentence.
+export type UiLang = Language;
+
 const en = {
-  listening: "Listening",
-  sleeping: "Mochi is resting",
-  speaking: "Mochi is speaking",
-  turnAndTap: (d: string) => `${d}, turn me to you and tap`,
-  tapWhenGets: (g: string) => `Tap when ${g} gets it`,
-  longPressSkip: "Hold to skip",
-  waiting: "One moment…",
-  gotIt: (g: string) => `${g} got it!`,
-  skipped: "Skipped",
-  noWords: "Words you needed will show up here.",
-  describes: "describes",
-  guesses: "guesses",
-  word: "The word was",
-  connected: "connected",
-  disconnected: "reconnecting…",
-  // The label on each word card, one per learning state (AGENTS.md §6.3)
-  stateLabel: {
-    DISCOVERED: "Hint shown",
-    ASSISTED: "Used with help",
-    REINFORCED: "Recalled in a game",
-    USED_INDEPENDENTLY: "Used on your own",
-  } as Record<LearningState, string>,
-  // The fixed "next step" line at the bottom of each word card
-  nextStep: {
-    DISCOVERED: "Try using it in your next sentence.",
-    ASSISTED: "It may come back in a game.",
-    REINFORCED: "Next time, try it on your own.",
-    USED_INDEPENDENTLY: "Great. Keep using it.",
-  } as Record<LearningState, string>,
-  requestFailed: "Could not reach Mochi. Try again.",
-  micProblem: {
-    unsupported: "This page can't use a microphone. Open the https:// link (not http://).",
-    denied: "The microphone is blocked. Allow it (iPhone: Settings > Apps > Safari > Microphone), then tap Start again.",
-    "no-agora": "Mochi did not send the audio details. Tap Stop, then Start again.",
-    agora: "Could not connect this phone's audio to Mochi. Check the internet and try again.",
-  } as Record<MicProblem, string>,
-  // ---- New product vision: modes, hints for someone, session summary ----
-  choosing: "What do you want to do today?",
-  modeName: { together: "Company", activity: "Play", practice: "Practice", choosing: "Choosing" } as Record<SessionMode, string>,
-  // Small label under Mochi's face, by mode
-  modeFace: { together: "Listening", activity: "Game time", practice: "Practicing", choosing: "Listening" } as Record<SessionMode, string>,
-  forName: (n: string) => `for ${n}`,
-  progressTitle: "Your progress",
-  statWords: "new words",
-  statAssisted: "used with help",
-  statRecalled: "recalled in a game",
-  statMinutes: "minutes practiced",
-  lastSessionTitle: "Your last session",
-  sessionsTitle: "Sessions",
-  minutesLabel: "of speaking practice",
-  strengths: "Strong point",
-  toReview: "To review",
-  newExpressions: "New expressions",
-  nextStepTitle: "Next step",
-  noSummary: "When the session ends, your summary shows up here.",
-  languageName: { en: "English", "pt-BR": "Portuguese" } as Record<Language, string>,
-  consentNote: "Mochi only listens between Start session and Stop session. In meetings, let the others know it is listening.",
-  // ---- Company version: the Session tab and the Analytics tab on a person's phone ----
-  tabSession: "Session",
-  tabAnalytics: "Analytics",
-  tabsLabel: "Pages",
-  startSession: "Start session",
-  stopSession: "Stop session",
-  readyTitle: "Ready for your meeting",
-  readyText: "Mochi joins the conversation: it listens, shows a word when someone gets stuck, and answers when you call it (\"Hi Mochi\").",
-  sessionLive: "Session in progress",
-  analyticsTitle: "Analytics",
-  analyticsNotice: "Session in progress. Its analytics show up here when you stop.",
-  backToSession: "Back to the session",
-  wordsToLearn: "Words to learn",
-  // ---- Start page ("/") ----
-  startSubtitle: "Your conversations, noticed by Mochi",
-  firstTimeTitle: "First time on this phone",
-  firstTimeText: "Open your own link once. This phone will remember it and always open your page.",
-  yourName: "yourname",
-  screensTitle: "Mochi's screens",
-  screenDevice: "Mochi's screen (shows who is talking)",
-  screenProjector: "Projector",
-  mockTip: "No backend running? Add ?mock=1 to the address to see a demo.",
+  app_name: "Papear",
+  loading: "Loading…",
+  try_again: "Try again",
+  dismiss: "Dismiss",
+  nav_label: "Main navigation",
+  nav_session: "Session",
+  nav_training: "Training",
+  nav_digest: "Digest",
+  nav_analytics: "Analytics",
+  profile_open: "Open your profile ({name})",
+  lang_en: "English",
+  "lang_pt-BR": "Portuguese",
+  min_short: "{n} min",
+  hints_one: "1 hint",
+  hints_other: "{n} hints",
+  sessions_one: "1 session",
+  sessions_other: "{n} sessions",
+
+  // Microphone gate (section 5)
+  mic_wait_title: "Allow the microphone",
+  mic_wait_body: "Your browser is asking if Papear may use the microphone. Papear only listens while a session is running.",
+  mic_allow: "Allow microphone",
+  mic_continue_without: "Continue without microphone",
+  mic_open_secure: "Open the secure page",
+  mic_fix: "Fix microphone",
+  mic_insecure_title: "The microphone needs a secure link",
+  mic_insecure_body: "This page was opened with http://, and browsers only allow the microphone on https:// pages. Open Papear's https:// address.",
+  mic_unsupported_title: "This browser can't use a microphone",
+  mic_unsupported_body: "Open Papear in a recent Chrome, Edge, Firefox or Safari. Browsers inside other apps (chat or social apps) often block the microphone.",
+  mic_denied_title: "Microphone access is blocked",
+  mic_denied_body: "Papear needs to hear the conversation. Allow the microphone for this site: tap the lock or settings icon next to the address, set Microphone to Allow, then tap Try again.",
+  mic_policy_title: "The microphone is turned off for this page",
+  mic_policy_body: "This page is shown inside another site or app that does not allow the microphone. Open Papear directly in your browser.",
+  mic_no_device_title: "No microphone found",
+  mic_no_device_body: "Connect a microphone or a headset, or check that your device's microphone is on, then tap Try again.",
+  mic_busy_title: "The microphone is being used by something else",
+  mic_busy_body: "Another app or tab (a call, a recorder) is using the microphone. Close it, then tap Try again.",
+  mic_unknown_title: "The microphone didn't start",
+  mic_unknown_body: "Something unexpected stopped the microphone. Tap Try again; if it keeps happening, reload the page.",
+
+  // Backend and session problems (section 6)
+  problem_offline_title: "You are offline",
+  problem_offline_body: "Papear will reconnect when your internet is back.",
+  problem_waking_title: "Connecting to Papear…",
+  problem_waking_body: "The server was asleep. This takes up to a minute.",
+  problem_unreachable_title: "Can't reach Papear",
+  problem_unreachable_body: "Check your internet connection. Papear's server is not answering.",
+  problem_session_full_title: "Papear is busy right now",
+  problem_session_full_body: "Too many conversations are running. Try again in a minute.",
+  problem_agora_start_title: "Papear couldn't join the conversation",
+  problem_agora_start_body: "The voice service didn't start. Try again in a moment.",
+  problem_agora_sdk_title: "The voice connection didn't load",
+  problem_agora_sdk_body: "Something blocked Papear's voice library (an ad or privacy blocker, or a firewall). Allow download.agora.io and try again.",
+  problem_agora_join_title: "Couldn't connect your microphone to Papear",
+  problem_agora_join_body: "The voice channel refused the connection. Try again; if your network blocks calls (some office Wi-Fi does), try another network.",
+  problem_session_ended_title: "The session ended",
+  problem_session_ended_body: "Papear had to end this conversation to make room. Start again when you're ready.",
+  problem_profile_lost_title: "Papear forgot this device's profile",
+  problem_profile_lost_body: "Papear forgot this device's profile (the server restarted). Tell it your name again.",
+  problem_server_title: "Something went wrong",
+  problem_server_body: "Papear's server had a problem. Try again in a moment.",
+
+  // Onboarding (3.1)
+  welcome_title: "Welcome to Papear",
+  welcome_question: "Enter your name to set up your workspace.",
+  welcome_name_label: "Your name",
+  welcome_speak: "Your first language",
+  welcome_learn: "Language you practise",
+  welcome_submit: "Continue",
+  welcome_sending: "Saving…",
+  welcome_name_error: "Use 1 to 40 letters.",
+
+  // Session (3.2)
+  session_title: "Session",
+  session_start: "Start session",
+  session_start_line: "Papear listens through your microphone only while a session runs.",
+  session_waking: "Connecting…",
+  session_stop: "Stop session",
+  session_stopping: "Stopping…",
+  chip_asleep: "Asleep",
+  chip_waking: "Waking up",
+  chip_listening: "Listening",
+  chip_offline: "No connection",
+  session_elapsed: "Session time",
+  session_saved: "Session saved",
+  session_see_digest: "See your digest",
+  session_reload_banner: "Your session is still running, but this page is not listening.",
+  session_listen_again: "Listen again",
+  session_stop_short: "Stop",
+  session_this_session: "This session",
+  session_no_hints: "Words Papear shows appear here.",
+  session_volume: "Papear's voice",
+  session_volume_badge: "Volume {n}",
+  session_mic_needed: "Start needs the microphone: {reason}",
+  session_game: "Game",
+  session_said: "Papear said",
+  hint_region: "Hint",
+  hint_for_everyone: "For everyone",
+  hint_used: "Word used",
+  hint_time_left: "Time left for this hint",
+
+  // Face (aria labels)
+  face_sleeping: "Ready",
+  face_waking: "Connecting",
+  face_awake: "Listening",
+  face_hearing: "Hearing {name}",
+  face_thinking: "Processing",
+  face_speaking: "Speaking",
+  face_bye: "Session ended",
+  face_offline: "No connection",
+
+  // Training (3.4)
+  training_title: "Training",
+  "training_prompt_en": "How do you say this in English?",
+  "training_prompt_pt-BR": "How do you say this in Portuguese?",
+  training_answer_label: "Your answer",
+  training_check: "Check",
+  training_dont_know: "I don't know",
+  training_say_it: "Say it",
+  training_speech_note: "Uses your browser's speech service",
+  training_listening: "Listening…",
+  training_right: "Right!",
+  training_almost: "Almost! It's spelled “{word}”.",
+  training_wrong: "The word is “{word}”.",
+  training_next: "Next",
+  training_progress: "{i} / {n}",
+  training_done: "{right} right · {review} to review",
+  training_next_due: "Next word due {when}.",
+  training_again: "Train again",
+  training_caught_up: "All caught up! Next word due {when}.",
+  training_no_words: "Words you need in a session show up here.",
+  training_go_session: "Go to Session",
+  training_no_meaning_one: "1 word has no meaning yet and is not in training.",
+  training_no_meaning_other: "{n} words have no meaning yet and are not in training.",
+
+  // Digest (3.5)
+  digest_title: "Weekly digest",
+  digest_pick: "Week",
+  digest_this_week: "This week",
+  digest_sessions: "Sessions",
+  digest_minutes: "Minutes practised",
+  digest_active_days: "Active days",
+  digest_new_words: "New words",
+  digest_per_day: "Minutes per day",
+  digest_delta_up: "{n} min more than the week before",
+  digest_delta_down: "{n} min less than the week before",
+  digest_delta_same: "Same as the week before",
+  digest_new: "New words",
+  digest_assisted: "Used with help",
+  digest_reinforced: "Recalled in a game",
+  digest_no_words: "No new words this week.",
+  digest_practise_next: "Practise next",
+  digest_practise_now: "Practise these now",
+  digest_empty: "No sessions this week yet. Start a session and your weekly digest builds here.",
+  digest_go_session: "Start a session",
+
+  // Analytics (3.6)
+  analytics_title: "Analytics",
+  tile_words: "Words saved",
+  tile_assisted: "Used with help",
+  tile_reinforced: "Recalled in a game",
+  tile_independent: "Used on your own",
+  tile_independent_note: "Comes in a later version",
+  tile_sessions: "Sessions",
+  tile_minutes: "Total minutes",
+  tile_streak: "Day streak",
+  tile_accuracy: "Training accuracy",
+  tile_accuracy_note: "On this device",
+  chart_minutes: "Minutes per session",
+  chart_date: "Date",
+  chart_minutes_col: "Minutes",
+  chart_states: "Where your words are",
+  words_list: "Your words",
+  filter_all: "All",
+  state_path: "Progress",
+  state_DISCOVERED: "Hint shown",
+  state_ASSISTED: "Used with help",
+  state_REINFORCED: "Recalled in a game",
+  state_USED_INDEPENDENTLY: "Used on your own",
+  state_not_reached: "not yet",
+  analytics_empty: "Your progress appears after your first session.",
+
+  // Profile
+  profile_title: "Profile",
+  profile_speaks: "Speaks",
+  profile_learns: "Learning",
+  profile_ui_language: "Interface language",
+  switch_en: "English",
+  switch_pt: "Português",
+  profile_forget: "Forget me on this device",
+  profile_forget_note: "This only clears this device. Nothing is deleted on Papear's server, and your words stay there.",
 };
 
-// "Copy" = the shape of the English texts. Portuguese must have exactly the same keys,
-// so if you add a text in English and forget Portuguese, TypeScript shows an error.
-type Copy = typeof en;
+export type CopyKey = keyof typeof en;
+export type Copy = { [K in CopyKey]: string };
 
-// ---- BRAZILIAN PORTUGUESE texts (wording follows the team guide and the product vision slides)
 const ptBR: Copy = {
-  listening: "Ouvindo",
-  sleeping: "Mochi está descansando",
-  speaking: "Mochi está falando",
-  turnAndTap: (d) => `${d}, me vire para você e toque`,
-  tapWhenGets: (g) => `Toque quando ${g} acertar`,
-  longPressSkip: "Segure para pular",
-  waiting: "Um momento…",
-  gotIt: (g) => `${g} acertou!`,
-  skipped: "Pulou",
-  noWords: "As palavras de que você precisou aparecem aqui.",
-  describes: "descreve",
-  guesses: "adivinha",
-  word: "A palavra era",
-  connected: "conectado",
-  disconnected: "reconectando…",
-  stateLabel: {
-    DISCOVERED: "Dica mostrada",
-    ASSISTED: "Usou com ajuda",
-    REINFORCED: "Lembrou no jogo",
-    USED_INDEPENDENTLY: "Usou por conta própria",
-  },
-  nextStep: {
-    DISCOVERED: "Tente usar na sua próxima frase.",
-    ASSISTED: "Ela pode voltar em um jogo.",
-    REINFORCED: "Na próxima, tente usar sozinho(a).",
-    USED_INDEPENDENTLY: "Ótimo. Continue usando.",
-  },
-  requestFailed: "Não foi possível falar com o Mochi. Tente de novo.",
-  micProblem: {
-    unsupported: "Esta página não consegue usar o microfone. Abra o link https:// (não http://).",
-    denied: "O microfone está bloqueado. Permita o acesso (iPhone: Ajustes > Apps > Safari > Microfone) e toque em Iniciar de novo.",
-    "no-agora": "O Mochi não mandou os dados do áudio. Toque em Parar e depois em Iniciar.",
-    agora: "Não foi possível ligar o áudio do celular ao Mochi. Confira a internet e tente de novo.",
-  },
-  choosing: "O que você quer fazer hoje?",
-  modeName: { together: "Companhia", activity: "Jogar", practice: "Praticar", choosing: "Escolhendo" },
-  modeFace: { together: "Ouvindo", activity: "Hora do jogo", practice: "Praticando", choosing: "Ouvindo" },
-  forName: (n) => `para ${n}`,
-  progressTitle: "Seu progresso",
-  statWords: "palavras novas",
-  statAssisted: "usadas com ajuda",
-  statRecalled: "lembradas no jogo",
-  statMinutes: "minutos de prática",
-  lastSessionTitle: "Sua última sessão",
-  sessionsTitle: "Sessões",
-  minutesLabel: "de prática de fala",
-  strengths: "Ponto forte",
-  toReview: "Para revisar",
-  newExpressions: "Expressões novas",
-  nextStepTitle: "Próximo passo",
-  noSummary: "Quando a sessão terminar, seu resumo aparece aqui.",
-  languageName: { en: "Inglês", "pt-BR": "Português" },
-  consentNote: "O Mochi só ouve entre Iniciar sessão e Encerrar sessão. Em reuniões, avise as outras pessoas que ele está ouvindo.",
-  tabSession: "Sessão",
-  tabAnalytics: "Análises",
-  tabsLabel: "Páginas",
-  startSession: "Iniciar sessão",
-  stopSession: "Encerrar sessão",
-  readyTitle: "Pronto para a sua reunião",
-  readyText: "O Mochi participa da conversa: ele ouve, mostra uma palavra quando alguém trava e responde quando você chama (\"Oi, Mochi\").",
-  sessionLive: "Sessão em andamento",
-  analyticsTitle: "Análises",
-  analyticsNotice: "Sessão em andamento. As análises dela aparecem aqui quando você encerrar.",
-  backToSession: "Voltar para a sessão",
-  wordsToLearn: "Palavras para aprender",
-  startSubtitle: "Suas conversas, percebidas pelo Mochi",
-  firstTimeTitle: "Primeira vez neste celular",
-  firstTimeText: "Abra o seu link uma vez. Este celular vai lembrar e sempre abrir a sua página.",
-  yourName: "seunome",
-  screensTitle: "Telas do Mochi",
-  screenDevice: "Tela do Mochi (mostra quem está falando)",
-  screenProjector: "Telão",
-  mockTip: "Sem backend rodando? Coloque ?mock=1 no endereço para ver uma demonstração.",
+  app_name: "Papear",
+  loading: "Carregando…",
+  try_again: "Tentar de novo",
+  dismiss: "Fechar",
+  nav_label: "Navegação principal",
+  nav_session: "Sessão",
+  nav_training: "Treino",
+  nav_digest: "Resumo",
+  nav_analytics: "Análises",
+  profile_open: "Abrir seu perfil ({name})",
+  lang_en: "Inglês",
+  "lang_pt-BR": "Português",
+  min_short: "{n} min",
+  hints_one: "1 dica",
+  hints_other: "{n} dicas",
+  sessions_one: "1 sessão",
+  sessions_other: "{n} sessões",
+
+  mic_wait_title: "Libere o microfone",
+  mic_wait_body: "Seu navegador está perguntando se o Papear pode usar o microfone. O Papear só ouve enquanto uma sessão está ativa.",
+  mic_allow: "Permitir microfone",
+  mic_continue_without: "Continuar sem microfone",
+  mic_open_secure: "Abrir a página segura",
+  mic_fix: "Arrumar o microfone",
+  mic_insecure_title: "O microfone precisa de um link seguro",
+  mic_insecure_body: "Esta página foi aberta com http://, e os navegadores só liberam o microfone em páginas https://. Abra o endereço https:// do Papear.",
+  mic_unsupported_title: "Este navegador não consegue usar o microfone",
+  mic_unsupported_body: "Abra o Papear em um Chrome, Edge, Firefox ou Safari recente. Navegadores dentro de outros apps (de conversa ou redes sociais) costumam bloquear o microfone.",
+  mic_denied_title: "O acesso ao microfone está bloqueado",
+  mic_denied_body: "O Papear precisa ouvir a conversa. Libere o microfone para este site: toque no cadeado ou no ícone de configurações ao lado do endereço, escolha Permitir em Microfone e toque em Tentar de novo.",
+  mic_policy_title: "O microfone está desligado para esta página",
+  mic_policy_body: "Esta página está dentro de outro site ou app que não permite o microfone. Abra o Papear direto no navegador.",
+  mic_no_device_title: "Nenhum microfone encontrado",
+  mic_no_device_body: "Conecte um microfone ou um fone com microfone, ou confira se o microfone do aparelho está ligado, e toque em Tentar de novo.",
+  mic_busy_title: "O microfone está sendo usado por outro app",
+  mic_busy_body: "Outro app ou aba (uma chamada, um gravador) está usando o microfone. Feche-o e toque em Tentar de novo.",
+  mic_unknown_title: "O microfone não começou",
+  mic_unknown_body: "Algo inesperado impediu o microfone. Toque em Tentar de novo; se continuar, recarregue a página.",
+
+  problem_offline_title: "Você está sem internet",
+  problem_offline_body: "O Papear volta a se conectar quando a internet voltar.",
+  problem_waking_title: "Conectando ao Papear…",
+  problem_waking_body: "O servidor estava dormindo. Isso leva até um minuto.",
+  problem_unreachable_title: "Não foi possível falar com o Papear",
+  problem_unreachable_body: "Confira sua conexão com a internet. O servidor do Papear não está respondendo.",
+  problem_session_full_title: "O Papear está ocupado agora",
+  problem_session_full_body: "Há muitas conversas acontecendo. Tente de novo em um minuto.",
+  problem_agora_start_title: "O Papear não conseguiu entrar na conversa",
+  problem_agora_start_body: "O serviço de voz não iniciou. Tente de novo daqui a pouco.",
+  problem_agora_sdk_title: "A conexão de voz não carregou",
+  problem_agora_sdk_body: "Algo bloqueou a biblioteca de voz do Papear (um bloqueador de anúncios ou de privacidade, ou um firewall). Libere download.agora.io e tente de novo.",
+  problem_agora_join_title: "Não foi possível ligar seu microfone ao Papear",
+  problem_agora_join_body: "O canal de voz recusou a conexão. Tente de novo; se a sua rede bloqueia chamadas (algumas redes de escritório bloqueiam), tente outra rede.",
+  problem_session_ended_title: "A sessão terminou",
+  problem_session_ended_body: "O Papear precisou encerrar esta conversa para abrir espaço. Comece de novo quando quiser.",
+  problem_profile_lost_title: "O Papear esqueceu o perfil deste aparelho",
+  problem_profile_lost_body: "O Papear esqueceu o perfil deste aparelho (o servidor reiniciou). Diga seu nome de novo.",
+  problem_server_title: "Algo deu errado",
+  problem_server_body: "O servidor do Papear teve um problema. Tente de novo daqui a pouco.",
+
+  welcome_title: "Bem-vindo ao Papear",
+  welcome_question: "Informe seu nome para configurar seu espaço.",
+  welcome_name_label: "Seu nome",
+  welcome_speak: "Seu primeiro idioma",
+  welcome_learn: "Idioma que você pratica",
+  welcome_submit: "Continuar",
+  welcome_sending: "Salvando…",
+  welcome_name_error: "Use de 1 a 40 letras.",
+
+  session_title: "Sessão",
+  session_start: "Começar sessão",
+  session_start_line: "O Papear só ouve pelo seu microfone enquanto uma sessão está ativa.",
+  session_waking: "Conectando…",
+  session_stop: "Encerrar sessão",
+  session_stopping: "Encerrando…",
+  chip_asleep: "Dormindo",
+  chip_waking: "Acordando",
+  chip_listening: "Ouvindo",
+  chip_offline: "Sem conexão",
+  session_elapsed: "Tempo de sessão",
+  session_saved: "Sessão salva",
+  session_see_digest: "Ver seu resumo",
+  session_reload_banner: "Sua sessão continua ativa, mas esta página não está ouvindo.",
+  session_listen_again: "Ouvir de novo",
+  session_stop_short: "Encerrar",
+  session_this_session: "Esta sessão",
+  session_no_hints: "As palavras que o Papear mostrar aparecem aqui.",
+  session_volume: "Voz do Papear",
+  session_volume_badge: "Volume {n}",
+  session_mic_needed: "Para começar, o Papear precisa do microfone: {reason}",
+  session_game: "Jogo",
+  session_said: "O Papear disse",
+  hint_region: "Dica",
+  hint_for_everyone: "Para todos",
+  hint_used: "Palavra usada",
+  hint_time_left: "Tempo restante desta dica",
+
+  face_sleeping: "Pronto",
+  face_waking: "Conectando",
+  face_awake: "Ouvindo",
+  face_hearing: "Ouvindo {name}",
+  face_thinking: "Processando",
+  face_speaking: "Falando",
+  face_bye: "Sessão encerrada",
+  face_offline: "Sem conexão",
+
+  training_title: "Treino",
+  "training_prompt_en": "Como se diz isso em inglês?",
+  "training_prompt_pt-BR": "Como se diz isso em português?",
+  training_answer_label: "Sua resposta",
+  training_check: "Conferir",
+  training_dont_know: "Não sei",
+  training_say_it: "Falar",
+  training_speech_note: "Usa o serviço de voz do navegador",
+  training_listening: "Ouvindo…",
+  training_right: "Isso!",
+  training_almost: "Quase! Escreve-se “{word}”.",
+  training_wrong: "A palavra é “{word}”.",
+  training_next: "Próxima",
+  training_progress: "{i} / {n}",
+  training_done: "{right} certas · {review} para revisar",
+  training_next_due: "Próxima palavra {when}.",
+  training_again: "Treinar de novo",
+  training_caught_up: "Tudo em dia! Próxima palavra {when}.",
+  training_no_words: "As palavras que você precisar em uma sessão aparecem aqui.",
+  training_go_session: "Ir para a sessão",
+  training_no_meaning_one: "1 palavra ainda não tem significado e não está no treino.",
+  training_no_meaning_other: "{n} palavras ainda não têm significado e não estão no treino.",
+
+  digest_title: "Resumo semanal",
+  digest_pick: "Semana",
+  digest_this_week: "Esta semana",
+  digest_sessions: "Sessões",
+  digest_minutes: "Minutos praticados",
+  digest_active_days: "Dias ativos",
+  digest_new_words: "Palavras novas",
+  digest_per_day: "Minutos por dia",
+  digest_delta_up: "{n} min a mais que na semana anterior",
+  digest_delta_down: "{n} min a menos que na semana anterior",
+  digest_delta_same: "Igual à semana anterior",
+  digest_new: "Palavras novas",
+  digest_assisted: "Usadas com ajuda",
+  digest_reinforced: "Lembradas em um jogo",
+  digest_no_words: "Nenhuma palavra nova nesta semana.",
+  digest_practise_next: "Pratique a seguir",
+  digest_practise_now: "Praticar agora",
+  digest_empty: "Nenhuma sessão nesta semana ainda. Comece uma sessão e o resumo semanal aparece aqui.",
+  digest_go_session: "Começar uma sessão",
+
+  analytics_title: "Análises",
+  tile_words: "Palavras salvas",
+  tile_assisted: "Usadas com ajuda",
+  tile_reinforced: "Lembradas em um jogo",
+  tile_independent: "Usadas sem ajuda",
+  tile_independent_note: "Chega em uma versão futura",
+  tile_sessions: "Sessões",
+  tile_minutes: "Minutos no total",
+  tile_streak: "Dias seguidos",
+  tile_accuracy: "Acertos no treino",
+  tile_accuracy_note: "Neste aparelho",
+  chart_minutes: "Minutos por sessão",
+  chart_date: "Data",
+  chart_minutes_col: "Minutos",
+  chart_states: "Onde estão suas palavras",
+  words_list: "Suas palavras",
+  filter_all: "Todas",
+  state_path: "Progresso",
+  state_DISCOVERED: "Dica mostrada",
+  state_ASSISTED: "Usada com ajuda",
+  state_REINFORCED: "Lembrada em um jogo",
+  state_USED_INDEPENDENTLY: "Usada sem ajuda",
+  state_not_reached: "ainda não",
+  analytics_empty: "Seu progresso aparece depois da primeira sessão.",
+
+  profile_title: "Perfil",
+  profile_speaks: "Fala",
+  profile_learns: "Aprendendo",
+  profile_ui_language: "Idioma da interface",
+  switch_en: "English",
+  switch_pt: "Português",
+  profile_forget: "Esquecer-me neste aparelho",
+  profile_forget_note: "Isso só limpa este aparelho. Nada é apagado no servidor do Papear, e suas palavras continuam lá.",
 };
 
-/** Choose the language: ?lang= in the URL wins; otherwise the browser language (pt → Portuguese). */
-export function pickLanguage(search: string, browserLang = ""): Language {
-  const asked = new URLSearchParams(search).get("lang");
-  if (asked === "pt-BR" || asked === "en") return asked;
-  return browserLang.toLowerCase().startsWith("pt") ? "pt-BR" : "en";
+export const copy: { en: Copy; "pt-BR": Copy } = { en, "pt-BR": ptBR };
+
+/** One string, with {placeholders} filled in. */
+export function t(lang: UiLang, key: CopyKey, vars: Record<string, string | number> = {}): string {
+  return fill(copy[lang][key], vars);
 }
 
-/** Get all the texts for one language. Screens call this as `const t = copyFor(lang)`. */
-export function copyFor(lang: Language): Copy {
-  return lang === "pt-BR" ? ptBR : en;
+export function fill(text: string, vars: Record<string, string | number>): string {
+  return text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
-/** "ana" → "Ana" for display. */
-export function displayName(userId: string | null | undefined): string {
-  if (!userId) return "";
-  return userId.charAt(0).toUpperCase() + userId.slice(1);
+/** "1 hint" / "3 hints", from a pair of keys ending in _one and _other. */
+export function plural(lang: UiLang, base: "hints" | "sessions" | "training_no_meaning", n: number): string {
+  return t(lang, n === 1 ? `${base}_one` : `${base}_other`, { n });
 }
 
-/**
- * Font size that keeps a word on one line: shrink with the longest word's length.
- * Bold sans-serif letters are about 0.62em wide; we use `widthVw` of the screen width.
- */
-export function fitFontSize(text: string, maxVh: number, widthVw = 90, wholeLine = false): string {
-  // wholeLine = true: the text must stay on ONE line (e.g. "tomei muito sol"), so count every letter.
-  const longest = wholeLine ? Math.max(1, text.length) : Math.max(1, ...text.split(/\s+/).map((w) => w.length));
-  const vw = Math.floor((widthVw / (longest * 0.62)) * 10) / 10;
-  return `min(${maxVh}vh, ${vw}vw)`;
+/** The name of a language in the UI language: en -> "English" / "Inglês". */
+export function languageName(ui: UiLang, lang: Language): string {
+  return t(ui, lang === "en" ? "lang_en" : "lang_pt-BR");
+}
+
+export const LANG_KEY = "mochi.lang";
+
+export function parseLang(v: string | null | undefined): UiLang | null {
+  if (!v) return null;
+  const low = v.toLowerCase();
+  if (low.startsWith("pt")) return "pt-BR";
+  if (low.startsWith("en")) return "en";
+  return null;
+}
+
+/** The UI language: ?lang= first, then localStorage "mochi.lang", then the browser language
+ *  (anything starting with "pt" is pt-BR, anything else English). */
+export function detectLang(input: { search?: string; stored?: string | null; navigatorLanguage?: string | null }): UiLang {
+  const q = new URLSearchParams(input.search ?? "").get("lang");
+  return parseLang(q) ?? parseLang(input.stored) ?? (input.navigatorLanguage?.toLowerCase().startsWith("pt") ? "pt-BR" : "en");
+}
+
+export function storedLang(s: KV | null = localStore()): string | null {
+  return safeGet(s, LANG_KEY);
+}
+
+export function storeLang(lang: UiLang, s: KV | null = localStore()): void {
+  safeSet(s, LANG_KEY, lang);
+}
+
+/** What a web Start sends as woken_by (THE SHARED CONTRACT, C4): Papear greets in the UI language. */
+export function wokenBy(lang: UiLang): "oi mochi" | "hey mochi" {
+  return lang === "pt-BR" ? "oi mochi" : "hey mochi";
+}
+
+/** Intl locale for formatting: en-GB for the English UI (21 Nov, 24 h), pt-BR for Portuguese. */
+export function intlLocale(lang: UiLang): string {
+  return lang === "pt-BR" ? "pt-BR" : "en-GB";
 }

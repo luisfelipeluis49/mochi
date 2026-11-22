@@ -37,6 +37,30 @@ DEMO_MEMBERS: list[Member] = [
 ]
 
 
+# The second person in a web session (D-56). Reserved: never a user anyone can be. Seeded with the
+# demo users so a guest's learning events satisfy the database's foreign key; the languages stored
+# here are irrelevant, each session's participant carries the real ones.
+GUEST_ID = "guest"
+GUEST_USER = User(
+    user_id=GUEST_ID,
+    display_name="Guest",
+    comfortable_languages=[Language.EN],
+    target_language=Language.PT_BR,
+)
+
+
+def company_people(stored: list[User], member_ids: set[str]) -> list[User]:
+    """The stored users who belong to a company: they are who sits in the device's meetings.
+
+    A person the web app made (`POST /api/users`, D-56) and `guest` are not among them: they
+    have sessions of their own, and must not turn up as participants of everyone's meeting
+    (D-58). With nothing stored, the two demo people.
+    Example: `company_people([], {"ana"})` is `DEMO_USERS`.
+    """
+    members = [user for user in stored if user.user_id in member_ids]
+    return members or list(DEMO_USERS)
+
+
 def as_participant(user: User) -> Participant:
     """The session's view of a person. Example: `as_participant(DEMO_USERS[0]).user_id` is "ana"."""
     return Participant(

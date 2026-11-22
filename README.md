@@ -7,7 +7,7 @@ and remembers the words each person needed. Later each person goes over their wo
 **review** on their phone, and the company's administrators see how the team is doing in a **team
 view**. Product and contracts: [`AGENTS.md`](AGENTS.md); the company data model and its API:
 [`docs/TEAM_VIEW.md`](docs/TEAM_VIEW.md). This repository holds the **backend**,
-the shared contracts and the scripts, the web app (`apps/web`: Home, Mobile and Audience views),
+the shared contracts and the scripts, the web app (`apps/web`: Onboarding, Session, Training, Digest and Analytics, deployed as `mochi-web`),
 the Mochi AR glasses app (`apps/glasses`, outside the hackathon MVP) and the Pi bridge
 (`hardware/`); each app has its own README and owner.
 

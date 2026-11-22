@@ -3,11 +3,18 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from mochi_backend.gateway.errors import InvalidRequestError, UpstreamError
+from mochi_backend.gateway.container import AppContainer
+from mochi_backend.gateway.errors import (
+    ConflictError,
+    InvalidRequestError,
+    NotFoundError,
+    UpstreamError,
+)
+from mochi_backend.gateway.roster import SESSION_ID
 from mochi_backend.gateway.routes.dependencies import ContainerDep, SessionIdPath
 from mochi_backend.gateway.session_service import AgoraJoin
 from mochi_backend.gateway.session_store import SessionStore
-from mochi_contracts import SessionMode, SessionState
+from mochi_contracts import SessionMode, SessionState, User
 
 router = APIRouter()
 
@@ -16,12 +23,29 @@ class StartBody(BaseModel):
     """Optional. `{"woken_by": "oi mochi"}`: the device heard its wake phrase and starts.
 
     `{"mode": "review", "user_id": "ana"}`: Ana goes over her saved words (her phone's session).
-    Without `mode` it is a meeting.
+    Without `mode` it is a meeting; a `user_id` then names the web user the session is for, and
+    it is theirs and `guest`'s (D-56).
     """
 
     woken_by: str | None = None
     mode: SessionMode = SessionMode.MEETING
     user_id: str | None = None
+
+
+def _owner(container: AppContainer, session_id: str, body: StartBody) -> User | None:
+    """The user a Start names, checked BEFORE the session is opened: opening may evict another
+    session, and a bad user must not cost anyone theirs. A review's person may be unknown
+    here: the service then answers 422 and names the people it knows."""
+    if body.user_id is None:
+        return None
+    user = container.users.find(body.user_id) or container.roster.user(body.user_id)
+    if body.mode is SessionMode.REVIEW:
+        return user
+    if session_id == SESSION_ID:
+        raise ConflictError(f"session {SESSION_ID!r} is the device's; start another id")
+    if user is None:
+        raise NotFoundError(f"unknown user {body.user_id!r}; create one with POST /api/users")
+    return user
 
 
 @router.post("/api/sessions/{session_id}/start")
@@ -34,12 +58,14 @@ async def start_session(
     channel, agent and hints, apart from every other session (DECISIONS D-41).
     A meeting by default; `mode: "review"` with a `user_id` is that person's review (422 when
     the person is not known). When the device was woken by its wake phrase, Mochi greets in
-    that language.
+    that language. A meeting with a `user_id` is a web user's own: its participants are that
+    user and `guest` (404 for an unknown user, 409 on the device's session).
     """
     asked = body or StartBody()
+    user = _owner(container, session_id, asked)
     runtime = await container.registry.open(session_id)
     try:
-        return await runtime.sessions.start(asked.woken_by, asked.mode, asked.user_id)
+        return await runtime.sessions.start(asked.woken_by, asked.mode, asked.user_id, user)
     except (InvalidRequestError, UpstreamError):
         if not runtime.core.store.capturing:
             container.registry.close(session_id)  # a start that failed leaves nothing behind

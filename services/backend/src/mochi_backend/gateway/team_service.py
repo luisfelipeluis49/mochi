@@ -6,6 +6,7 @@ identity is missing, and it slots in here when sign-in exists.
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from mochi_backend.gateway.errors import ForbiddenError, InvalidRequestError, NotFoundError
@@ -35,6 +36,8 @@ class TeamSources:
     ledger: TeamLedger
     roster: Roster
     words: IntelligencePort
+    # People outside the company who still have a page of their own: the web app's users (D-56).
+    also_known: Callable[[str], bool] = lambda user_id: False  # noqa: E731 - a default
 
 
 USER_ID_PATTERN = r"^[a-z0-9][a-z0-9_-]{0,39}$"  # what `/ws?user=` and `/api/users/{id}` take
@@ -65,6 +68,7 @@ class TeamService:
         self._ledger = sources.ledger
         self._roster = sources.roster
         self._words = sources.words
+        self._also_known = sources.also_known
         self._clock = clock
         self._min_people = min_people
 
@@ -130,12 +134,16 @@ class TeamService:
         self._allow(company_id, viewer, admin_only=True)
         return list(reversed(self._ledger.records_of(company_id)))
 
+    def _is_person(self, user_id: str) -> bool:
+        """Someone with a page of their own: a company's person, or a user the web app made."""
+        return self._roster.knows(user_id) or self._also_known(user_id)
+
     def moments_of(self, user_id: str, viewer: str | None) -> list[WordMoment]:
         """A person's own moments, newest first, with the sentence each word was needed in.
 
         Only that person may ask: a manager sees the team's numbers, never someone's sentences.
         """
-        if viewer != user_id or not self._roster.knows(user_id):
+        if viewer != user_id or not self._is_person(user_id):
             raise ForbiddenError(f"viewer {viewer!r} may only read their own moments")
         mine = [
             moment
@@ -150,7 +158,7 @@ class TeamService:
 
         Example: `service.sentences_of("ana", "ana")[0].text`.
         """
-        if viewer != user_id or not self._roster.knows(user_id):
+        if viewer != user_id or not self._is_person(user_id):
             raise ForbiddenError(f"viewer {viewer!r} may only read their own sentences")
         return list(reversed(self._ledger.utterances_by(user_id)))
 
@@ -159,6 +167,6 @@ class TeamService:
 
         Only that person may ask. Example: `service.reports_of("ana", "ana")[0].mistakes`.
         """
-        if viewer != user_id or not self._roster.knows(user_id):
+        if viewer != user_id or not self._is_person(user_id):
             raise ForbiddenError(f"viewer {viewer!r} may only read their own reports")
         return list(reversed(self._ledger.reports_by(user_id)))

@@ -10,7 +10,7 @@ from mochi_backend.gateway.agora.client_port import AgoraAgentClient, RtcTokenIs
 from mochi_backend.gateway.agora.local_mock import LocalMockAgoraClient, LocalMockTokenIssuer
 from mochi_backend.gateway.agora.rest_client import AgoraRestClient
 from mochi_backend.gateway.agora.token_issuer import AgoraTokenIssuer
-from mochi_backend.gateway.connections import ConnectionService
+from mochi_backend.gateway.connections import ConnectionService, WhoConnects
 from mochi_backend.gateway.container import AppContainer
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
@@ -20,15 +20,24 @@ from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.live_transcript import LiveTranscript
-from mochi_backend.gateway.roster import DEMO_COMPANY, DEMO_MEMBERS, DEMO_USERS, SESSION_ID, Roster
+from mochi_backend.gateway.roster import (
+    DEMO_COMPANY,
+    DEMO_MEMBERS,
+    DEMO_USERS,
+    GUEST_USER,
+    SESSION_ID,
+    Roster,
+    company_people,
+)
+from mochi_backend.gateway.session_history import SessionHistory
 from mochi_backend.gateway.session_registry import SessionRegistry, SessionRuntime
-from mochi_backend.gateway.session_service import SessionConfig, SessionService
+from mochi_backend.gateway.session_service import SessionConfig, SessionLeaves, SessionService
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.team_service import TeamService, TeamSources
 from mochi_backend.gateway.turn_pipeline import PipelineDeps, TurnPipeline
+from mochi_backend.gateway.user_directory import RandomSuffix, SuffixSource, UserDirectory
 from mochi_backend.gateway.voice_directory import VoiceDirectory
-from mochi_backend.intelligence.json_chat import JsonChat, JsonChatConfig
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.model_port import HintModel, NullHintModel
@@ -36,11 +45,10 @@ from mochi_backend.intelligence.openai_character_model import (
     CharacterModelConfig,
     OpenAiCharacterModel,
 )
-from mochi_backend.intelligence.openai_coach_model import OpenAiCoachModel
-from mochi_backend.intelligence.openai_explain_model import OpenAiExplainModel
 from mochi_backend.intelligence.openai_hint_model import OpenAiHintModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.model_wiring import look_beyond_the_word
 from mochi_backend.platform.clock import Clock, SystemClock
 from mochi_backend.platform.http_client import HttpxClient, JsonValue
 from mochi_backend.platform.ids import IdGenerator, UuidIdGenerator
@@ -73,6 +81,8 @@ class Adapters:
     # A new conversation over the same saved words, one per session. None: every session shares
     # `intelligence` (a fake in a test).
     brain_factory: Callable[[], IntelligencePort] | None = None
+    # The 6 random hex characters of a new web user's id (D-56).
+    suffixes: SuffixSource = field(default_factory=RandomSuffix)
 
 
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
@@ -115,7 +125,8 @@ def default_adapters(settings: Settings) -> Adapters:
     clock, ids = SystemClock(), UuidIdGenerator()
     logger = configure_json_logging(settings.mochi_log_level)
     agora, tokens = _agora_for(settings, clock, ids, logger)
-    seed = Seed(DEMO_USERS, DEMO_COMPANY, DEMO_MEMBERS)
+    # guest's words need its row (foreign key; D-56)
+    seed = Seed([*DEMO_USERS, GUEST_USER], DEMO_COMPANY, DEMO_MEMBERS)
     storage = storage_for(settings.database_url, logger, seed, settings.mochi_local_data)
     brain = _brain_for(settings, (clock, ids, logger), storage)
     name = "rules+model" if settings.model_configured else "rules"
@@ -145,43 +156,8 @@ def _brain_for(
     if settings.character_configured:
         brain.speak_as(_openai_character(settings, logger))
     if settings.model_configured:
-        _look_beyond_the_word(brain, settings, logger)
+        look_beyond_the_word(brain, settings, logger)
     return brain
-
-
-def _look_beyond_the_word(brain: Intelligence, settings: Settings, logger: EventLogger) -> None:
-    """The two models that look at more than the stuck word: one explains an idiom or a term
-    to the people listening (D-53), one reads a person's sentences after the session (D-54)."""
-    if settings.mochi_explain_terms:
-        http = HttpxClient()
-        chat = JsonChat(http, _explain_model(settings), "explain", logger).warming(http)
-        brain.explain_with(OpenAiExplainModel(chat))
-    if settings.mochi_speech_reports:
-        chat = JsonChat(HttpxClient(), _coach_model(settings), "coach", logger)
-        brain.coach_with(OpenAiCoachModel(chat))
-
-
-def _explain_model(settings: Settings) -> JsonChatConfig:
-    """The hint judge's model: an explanation has the same second or two to arrive in."""
-    return JsonChatConfig(
-        base_url=settings.mochi_model_base_url,
-        model_name=settings.mochi_model_name,
-        api_key=settings.model_api_key,
-        timeout_seconds=settings.mochi_decide_timeout_seconds,
-        reasoning_effort=settings.mochi_model_reasoning_effort,
-    )
-
-
-def _coach_model(settings: Settings) -> JsonChatConfig:
-    """The model that writes reports: nobody waits for it, so it may think a little."""
-    thinking = "low" if settings.mochi_model_reasoning_effort else ""
-    return JsonChatConfig(
-        base_url=settings.mochi_model_base_url,
-        model_name=settings.mochi_report_model_name or settings.mochi_model_name,
-        api_key=settings.model_api_key,
-        timeout_seconds=settings.mochi_report_timeout_seconds,
-        reasoning_effort=settings.mochi_report_reasoning_effort or thinking,
-    )
 
 
 def _openai_character(settings: Settings, logger: EventLogger) -> OpenAiCharacterModel:
@@ -294,14 +270,21 @@ class People:
     roster: Roster
     voices: VoiceDirectory
     ledger: TeamLedger
+    users: UserDirectory  # the web app's people (D-56)
+    history: SessionHistory  # their finished sessions
 
 
 def _people(adapters: Adapters) -> People:
     start = adapters.storage
-    roster = Roster(start.users or DEMO_USERS)
-    voices = VoiceDirectory(start.storage, start.voices, roster)
     ledger = TeamLedger(start.storage, start.team, DEMO_COMPANY, DEMO_MEMBERS)
-    return People(roster, voices, ledger)
+    members = {member.user_id for member in ledger.members_of(DEMO_COMPANY.company_id)}
+    # The roster is the company's people: they sit in the device's meetings and own its voices.
+    # A web user called "Ana" must not take Ana's voice, nor join every meeting (D-56, D-58).
+    roster = Roster(company_people(start.users, members))
+    voices = VoiceDirectory(start.storage, start.voices, roster)
+    users = UserDirectory(start.storage, start.users, adapters.suffixes)
+    history = SessionHistory(start.storage, start.sessions)
+    return People(roster, voices, ledger, users, history)
 
 
 def _silence(settings: Settings, clock: Clock) -> SilencePolicy:
@@ -398,7 +381,9 @@ def _runtime(
         session_id=session_id,
         core=core,
         pipeline=pipeline,
-        sessions=SessionService(core, adapters.agora, adapters.tokens, config, after),
+        sessions=SessionService(
+            core, adapters.agora, adapters.tokens, config, SessionLeaves(people.history, after)
+        ),
         demo_reset=DemoReset(core, people.ledger),
     )
 
@@ -424,8 +409,17 @@ def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
     return _assemble(settings, adapters, (demo, registry, people), hub)
 
 
+def _connections(
+    adapters: Adapters, hub: EventHub, registry: SessionRegistry, people: People
+) -> ConnectionService:
+    """Who may connect: the company's people, and the users the web app made (D-56)."""
+    who = WhoConnects(people.roster, people.ledger, people.users.may_connect)
+    return ConnectionService(hub, adapters.intelligence, registry, who)
+
+
 def _team_service(settings: Settings, adapters: Adapters, people: People) -> TeamService:
-    sources = TeamSources(people.ledger, people.roster, adapters.intelligence)
+    also = people.users.may_connect
+    sources = TeamSources(people.ledger, people.roster, adapters.intelligence, also)
     return TeamService(sources, adapters.clock, settings.mochi_team_min_people)
 
 
@@ -436,21 +430,22 @@ def _assemble(
     hub: EventHub,
 ) -> AppContainer:
     demo, registry, people = parts
-    core, roster = demo.core, people.roster
     return AppContainer(
         settings=settings,
-        core=core,
+        core=demo.core,
         pipeline=demo.pipeline,
         sessions=demo.sessions,
-        devices=_devices(core, adapters, _session_config(settings)),
-        device_link=DeviceLink(core, adapters.agora, roster),
-        connections=ConnectionService(hub, adapters.intelligence, registry, roster, people.ledger),
+        devices=_devices(demo.core, adapters, _session_config(settings)),
+        device_link=DeviceLink(demo.core, adapters.agora, people.roster),
+        connections=_connections(adapters, hub, registry, people),
         demo_reset=demo.demo_reset,
         voices=people.voices,
         intelligence_name=adapters.intelligence_name,
         registry=registry,
-        roster=roster,
+        roster=people.roster,
         team_service=_team_service(settings, adapters, people),
+        users=people.users,
+        history=people.history,
         storage_name=adapters.storage.name,
         storage_unsaved=adapters.storage.storage.unsaved_writes,
     )

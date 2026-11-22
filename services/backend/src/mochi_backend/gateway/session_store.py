@@ -42,6 +42,37 @@ class SessionStore:
         self.served_byes: set[str] = set()  # `bye` is handed to the device once, never replayed
         self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
+        self.started_at: datetime | None = None  # set by a Start that succeeded (D-56)
+        self.belong_to(None, Language.EN, None)
+
+    def belong_to(
+        self, participants: list[Participant] | None, focus: Language, user_id: str | None
+    ) -> None:
+        """Set whose session this is, and start counting for its web record afresh (D-56).
+
+        `participants` None: everyone the roster knows (the device's meeting). A list: a session
+        of its own people, a web user and `guest`, or the one person of a review. `user_id` is
+        set only for a web user's session; `hint_count` and `learning_event_ids` are what its
+        record counts. Example: `store.belong_to(None, Language.EN, None)` for the Pi's.
+        """
+        self.own_people = list(participants) if participants is not None else None
+        self.own_focus, self.user_id = focus, user_id
+        self.hint_count = 0
+        self.learning_event_ids: list[str] = []
+
+    def count_hint(self) -> None:
+        """One more `hint.created` was published in this session (for any target)."""
+        self.hint_count += 1
+
+    def note_saved(self, events: list[LearningEvent]) -> None:
+        """Remember the ids of the session user's words saved now, first order, once each."""
+        mine = [e.learning_event_id for e in events if self.user_id and e.user_id == self.user_id]
+        self.learning_event_ids = list(dict.fromkeys([*self.learning_event_ids, *mine]))
+
+    @property
+    def participants(self) -> list[Participant]:
+        """Who is in the session (the same as `people()`; the web app's code reads it so)."""
+        return self.people()
 
     def invalidate(self) -> None:
         """Mark everything in flight (a pending start or turn) as out of date.
@@ -86,18 +117,16 @@ class SessionStore:
         self.mode, self.reviewer, self.speaker = SessionMode.MEETING, None, None
 
     def people(self) -> list[Participant]:
-        """Who is in the session: everyone the roster knows, or in a review that one person."""
-        everyone = self.roster.participants()
-        if self.mode is not SessionMode.REVIEW:
-            return everyone
-        return [person for person in everyone if person.user_id == self.reviewer]
+        """Who is in the session: everyone the roster knows (the device's meeting), or the
+        session's own people (a web user and `guest`; in a review that one person)."""
+        if self.own_people is not None:
+            return list(self.own_people)
+        return self.roster.participants()
 
     def focus(self) -> Language:
-        """The language practised: English in a meeting, the reviewer's own target in a review."""
-        people = self.people()
-        if self.mode is SessionMode.REVIEW and people:
-            return people[0].target_language
-        return Language.EN
+        """The language practised: English in the device's meeting, else the target language
+        of the person the session is for (a web user's session, a review)."""
+        return self.own_focus if self.own_people is not None else Language.EN
 
     def session_state(self) -> SessionState:
         """The `session.state.changed` payload."""

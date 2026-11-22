@@ -2,6 +2,7 @@
 
 from typing import Protocol
 
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_contracts import (
     Company,
     ConversationReport,
@@ -45,6 +46,14 @@ class Storage(Protocol):
 
     def clear_events(self) -> None:
         """Delete every learning event (demo reset). Users and voices are kept."""
+        ...
+
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Every web session record, oldest first. A demo reset never deletes them (D-56)."""
+        ...
+
+    def save_session(self, record: WebSessionRecord) -> None:
+        """Add one web session record (written once, never changed)."""
         ...
 
     def load_voices(self) -> list[VoiceProfile]:
@@ -139,6 +148,13 @@ class NullStorage:
         """Nothing to do."""
 
     def clear_events(self) -> None:
+        """Nothing to do."""
+
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Nothing stored."""
+        return []
+
+    def save_session(self, record: WebSessionRecord) -> None:
         """Nothing to do."""
 
     def load_voices(self) -> list[VoiceProfile]:

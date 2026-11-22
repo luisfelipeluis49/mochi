@@ -12,6 +12,7 @@ import pytest
 
 from mochi_backend.gateway.roster import DEMO_COMPANY, DEMO_MEMBERS, DEMO_USERS
 from mochi_backend.storage.postgres import PostgresStorage
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_contracts import (
     Language,
     LearningEvent,
@@ -20,10 +21,12 @@ from mochi_contracts import (
     MemberRole,
     Reason,
     StateChange,
+    User,
     Utterance,
     VoiceProfile,
 )
 from tests.fakes.fake_sender import FakeEventLogger
+from tests.unit.test_speech_report import draft
 from tests.unit.test_team_view import moment, record
 
 URL = os.environ.get("MOCHI_TEST_DATABASE_URL", "")
@@ -34,8 +37,8 @@ pytestmark = pytest.mark.skipif(not URL, reason="MOCHI_TEST_DATABASE_URL is not 
 def storage() -> Iterator[PostgresStorage]:
     with psycopg.connect(URL, autocommit=True) as connection:
         connection.execute(
-            "DROP TABLE IF EXISTS utterances, word_moments, session_records, company_members, "
-            "companies, "
+            "DROP TABLE IF EXISTS conversation_reports, utterances, word_moments, "
+            "company_sessions, company_members, companies, session_records, "
             "voices, learning_events, users"
         )
     database = PostgresStorage(URL, FakeEventLogger())
@@ -140,3 +143,49 @@ def test_the_company_tables_round_trip_and_a_reset_keeps_the_people(
     storage.clear_history()
     assert storage.load_records() == [] and storage.load_moments() == []
     assert storage.load_utterances() == [] and len(storage.load_members()) == 3
+
+
+def _web_record(record_id: str, ended: str, user: str = "luis-3f9c1a") -> WebSessionRecord:
+    return WebSessionRecord(
+        record_id=record_id,
+        session_id="w-1a2b3c4d",
+        user_id=user,
+        started_at="2026-11-21T10:00:00.000Z",
+        ended_at=ended,
+        minutes=12.5,
+        hint_count=3,
+        learning_event_ids=["learn_002"],
+    )
+
+
+def test_a_web_user_and_their_session_records_round_trip_and_survive_a_reset(
+    storage: PostgresStorage,
+) -> None:
+    luis = User(
+        user_id="luis-3f9c1a",
+        display_name="Luís",
+        comfortable_languages=[Language.PT_BR],
+        target_language=Language.EN,
+    )
+    storage.save_user(luis)
+    storage.save_event(_event("learn_002", "postpone", user="luis-3f9c1a"))
+    storage.save_session(_web_record("rec_2", "2026-11-21T10:12:30.000Z"))
+    storage.save_session(_web_record("rec_1", "2026-11-21T10:05:00.000Z"))
+    storage.save_session(_web_record("rec_1", "2026-11-21T10:05:00.000Z"))  # written once
+    storage.clear_events()
+    storage.clear_history()  # the company's history goes; a person's web sessions stay
+    assert [r.record_id for r in storage.load_sessions()] == ["rec_1", "rec_2"]
+    assert storage.load_sessions()[1] == _web_record("rec_2", "2026-11-21T10:12:30.000Z")
+    names = {u.user_id: u.display_name for u in storage.load_users()}
+    assert names["luis-3f9c1a"] == "Luís"
+
+
+def test_the_reports_table_takes_a_report_once_and_goes_with_the_history(
+    storage: PostgresStorage,
+) -> None:
+    report = draft()
+    storage.save_report(report)
+    storage.save_report(report.model_copy(update={"strengths": ["changed"]}))  # never rewritten
+    assert storage.load_reports() == [report]
+    storage.clear_history()
+    assert storage.load_reports() == []

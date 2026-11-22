@@ -14,6 +14,7 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import voice_key
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_contracts import (
     Company,
     ConversationReport,
@@ -42,6 +43,7 @@ class LocalFileStorage:
         self._moments: dict[str, WordMoment] = {}
         self._utterances: dict[str, Utterance] = {}
         self._reports: dict[str, ConversationReport] = {}
+        self._sessions: list[WebSessionRecord] = []
         self._read()
 
     def _read(self) -> None:
@@ -52,6 +54,7 @@ class LocalFileStorage:
         self._users = {u.user_id: u for u in self._rows("users", saved, User)}
         self._events = {e.learning_event_id: e for e in self._rows("events", saved, LearningEvent)}
         self._voices = {voice_key(v.name): v for v in self._rows("voices", saved, VoiceProfile)}
+        self._sessions = self._rows("sessions", saved, WebSessionRecord)
         self._read_team(saved)
 
     def _read_team(self, saved: dict[str, list[object]]) -> None:
@@ -87,15 +90,19 @@ class LocalFileStorage:
             "moments": self._moments.values(),
             "utterances": self._utterances.values(),
             "reports": self._reports.values(),
+            "sessions": self._sessions,
         }
-        text = json.dumps(
+        self._replace_file(
             {name: [row.model_dump(mode="json") for row in rows] for name, rows in tables.items()}
         )
+
+    def _replace_file(self, tables: dict[str, list[dict[str, object]]]) -> None:
+        """Write the whole file beside the old one, then swap: a crash never leaves half a file."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self._path.with_suffix(".tmp")
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w") as handle:
-            handle.write(text)
+            handle.write(json.dumps(tables))
         os.replace(temporary, self._path)
 
     def load_users(self) -> list[User]:
@@ -105,6 +112,16 @@ class LocalFileStorage:
     def seed_users(self, users: list[User]) -> None:
         """Add the users that are missing."""
         self._users |= {u.user_id: u for u in users if u.user_id not in self._users}
+        self._write()
+
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Web session records, oldest first."""
+        return list(self._sessions)
+
+    def save_session(self, record: WebSessionRecord) -> None:
+        """Add a record (one already there by id is left as it is)."""
+        if all(kept.record_id != record.record_id for kept in self._sessions):
+            self._sessions.append(record)
         self._write()
 
     def load_events(self) -> list[LearningEvent]:

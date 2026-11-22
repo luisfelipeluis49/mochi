@@ -1,8 +1,10 @@
 """Postgres through psycopg 3. One short connection per call: writes are rare and run off-loop."""
 
+from mochi_backend.platform.clock import parse_iso_z
 from mochi_backend.storage import schema
 from mochi_backend.storage.port import voice_key
 from mochi_backend.storage.postgres_team import PostgresTeamTables
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_contracts import Language, LearningEvent, User, VoiceProfile
 
 
@@ -52,6 +54,25 @@ class PostgresStorage(PostgresTeamTables):
         with self._connect() as connection:
             connection.execute(schema.DELETE_EVENTS)
 
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Every web session record, oldest first by `ended_at`."""
+        with self._connect() as connection:
+            rows = connection.execute(schema.SELECT_SESSIONS).fetchall()
+        return self._parsed("session_records", rows, _session)
+
+    def save_session(self, record: WebSessionRecord) -> None:
+        """Insert one record; one already there by id is left as it is."""
+        params = (
+            record.record_id,
+            record.user_id,
+            record.session_id,
+            parse_iso_z(record.started_at),
+            parse_iso_z(record.ended_at),
+            record.model_dump_json(),
+        )
+        with self._connect() as connection:
+            connection.execute(schema.INSERT_SESSION, params)
+
     def load_voices(self) -> list[VoiceProfile]:
         """Every learned voice, with its vector."""
         with self._connect() as connection:
@@ -79,6 +100,10 @@ class PostgresStorage(PostgresTeamTables):
     def unsaved_writes(self) -> int:
         """Writes are direct here (`WriteBehindStorage` queues them), so nothing is waiting."""
         return 0
+
+
+def _session(row: tuple[object, ...]) -> WebSessionRecord:
+    return WebSessionRecord.model_validate_json(str(row[1]))
 
 
 def _event(row: tuple[object, ...]) -> LearningEvent:

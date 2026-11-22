@@ -120,7 +120,7 @@ mochi/
   services/backend/intelligence/    Kaue      decide(), review rules, memory
   services/backend/team/            (new, D-45: owner to be agreed)   ledger, session journal, team view
   services/backend/storage/         Luis      Postgres / local file / memory
-  apps/web/                         Tasnim    one web app: Home, Mobile, and Audience views
+  apps/web/                         Tasnim    the Papear web app: Onboarding, Session, Training, Digest, Analytics (D-56, D-57)
   apps/glasses/                     Suhuai    Mochi AR (outside the hackathon build)
   hardware/pi-bridge/               Matheus   Agora IoT SDK audio bridge
   hardware/pi-setup/                Matheus   kiosk launch, device diagnostics
@@ -210,7 +210,7 @@ Every WebSocket message is one event. Only the gateway publishes; it sets every 
 - A mark's `text` is the part of the sentence it is about; `gloss` is what to show next to it (a code switch: the word in the language being spoken; an idiom or term: its meaning in the other language); `plain`, for an idiom or term, says it in everyday words of the language spoken.
 - On connect a phone also gets its person's five newest reports as `conversation.report.created`; the rest is `GET /api/users/{id}/reports`.
 
-- In a meeting `participants` is everyone the backend knows (the company's members); in a review it is the one person reviewing, and `focus` is the language that person is learning.
+- In the device's meeting `participants` is the company's members; in a web user's session it is that user and `guest`; in a review it is the one person reviewing. `focus` is English in the device's meeting, else the language that person is learning.
 - `target_user_id` and `user_id` may be `null` when Mochi cannot tell whose word it is. A hint with no target is shown to everyone; a learning event with no user is stored but shown to nobody.
 - `example` and `meaning` may be `null`.
 - Screens remove a hint at `expires_at` (default: 8 seconds after it is created).
@@ -268,6 +268,7 @@ GET  /api/companies/{company_id}/members?viewer=<user_id>
 POST /api/companies/{company_id}/members?viewer=<user_id>
 GET  /api/companies/{company_id}/insights?viewer=<user_id>&days=30
 GET  /api/companies/{company_id}/sessions?viewer=<user_id>
+POST /api/users                      a person of the web app (6.6, D-56); GET /api/users/{user_id}, .../words, .../sessions
 GET  /api/users/{user_id}/moments?viewer=<user_id>
 GET  /api/users/{user_id}/utterances?viewer=<user_id>
 GET  /api/users/{user_id}/reports?viewer=<user_id>      that person's conversation reports, newest first (D-54)
@@ -342,6 +343,8 @@ GET  /api/devices/home_pi_01/state   carries "commands": [ { "command_id", "kind
 - `session_started(conversing, language)`: the intelligence port's method. `conversing` is true for a review (one person talks with Mochi) and false for a meeting; `language` is the one Mochi greeted in.
 - Mochi's silent commands `[listen]` and `[chat]` (never sent to the device) still switch it between watching and taking part. `[play]` is gone.
 - **Many sessions at once (D-41).** `demo` stays the Pi's session. Any other id is a session a client opens (a phone's), with its own channel, agent and hints; nothing is shared between sessions except what is stored (saved words, the company's history). `&session=<id>` on `/ws?user=`, `?user=&surface=ar` and `?view=audience` follows that session (default `demo`). At most 8 live; a full house stops the oldest phone session. Unknown session: 404.
+- **Web app users and sessions (D-56).** `POST /api/users` `{ "display_name", "comfortable_language"?, "target_language"? }` → 201 `User` (id = slug-xxxxxx); `GET /api/users/{user_id}` (`guest` is reserved: 404); `GET /api/users/{user_id}/words` (newest first); `GET /api/users/{user_id}/sessions` → the web's own session records, newest first (`record_id`, `session_id`, `user_id`, `started_at`, `ended_at`, `minutes`, `hint_count`, `learning_event_ids`: a different shape from the company's `SessionRecord` of 6.7, see D-58). `POST /api/sessions/{id}/start` with a `user_id` and no `mode`: the session is that person's; its participants are the user and `guest` (the user's languages the other way round, so the whose-word rule still finds one learner) and `focus` is the user's target language; 409 on `demo`, 404 for an unknown user. It leaves a web session record when it ends. Such a session uses Agora's default interruption: speaking over Mochi cuts it off (D-57).
+- **Who is who (D-58).** The *roster* is the company's members: they are the participants of the device's meetings and the owners of its voices. The *user directory* also knows the people the web app made. `/ws?user=`, `GET /api/users/{id}` and a review accept a person from either; `guest` never.
 - The intelligence port has ten methods: the three in 6.5 plus `reset`, `session_started`, `interrupted` and `device_status`, and `explain`, `coach` and `used_alone` (6.5; `gateway/intelligence_port.py` is the source).
 - The Pi starts a session itself when it hears the wake phrase; Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
@@ -503,12 +506,19 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 
 ### 9.4 Tasnim — `apps/web`
 
-- **Home view (`/home?device=home_pi_01`):** 3.5-inch screen. A few static full-screen states with very large text and no animation: listening face, hint (the `expression` only), speaking. No game states, no touch input.
-- **Mobile view (`/m?user=ana`):** Start and Stop of a meeting on this phone; Start of a review; a live hint with meaning and example; "My words" cards with the state label, the state path, and a fixed next-step line; the person's own moments (`GET /api/users/{id}/moments`). *Proposed (D-51 to D-54):* the live transcript (`transcript.line`, a line replaced when it comes again, each mark drawn in its sentence with its `gloss`), and the person's reports (`conversation.report.created`, `GET /api/users/{id}/reports`).
-- **Team view (administrators):** `GET /api/companies/{id}/insights`. Every number and one example of the whole answer are in `docs/TEAM_VIEW.md`.
-- **Audience view (`/audience`):** a large version of Mochi's screen for the projector.
-- **Also:** `?debug=1` on any view lists the last ten events received. English and Brazilian Portuguese copy.
-- **Do not:** implement AI, speech, or storage. Do not decide visibility in the browser.
+Rebuilt in November 2026 (D-56) and renamed **Papear** for companies (D-57): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
+
+- **Screens:**
+  - **Onboarding** (`/welcome`): asks for a name only and creates the user with `POST /api/users`. The id is kept in `localStorage`.
+  - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's microphone through Agora. A sober status panel (state, audio meter), the hint card, what Papear says and who is talking are live. Speaking over Papear cuts it off (D-57).
+  - **Training** (`/training`): spaced recall of the person's saved words, answered by typing or speaking.
+  - **Digest** (`/digest`): a weekly wrap-up (Monday to Sunday, with a week picker) across all of the person's sessions.
+  - **Analytics** (`/analytics`): progress, each word's state path, and minutes per session.
+- **Microphone:** the browser asks for it on the first visit. Every way the microphone can fail has its own screen and message, and so does a backend that cannot be reached.
+- **Not built:** the Home view (`/home`) and the Audience view (`/audience`) of the old app are not in the new build. Mochi's own screen is `hardware/pi-setup/face.html`.
+- **Contracts:** the app still types contracts v0.4. Since D-58 its guard also accepts the session modes `meeting` and `review`; it drops event types it does not know, so it shows none of the things below until they are built.
+- **Proposed, not built in the app (D-51 to D-54, D-59):** the live transcript (`transcript.line`: a line replaced when it comes again, each mark drawn in its sentence with its `gloss`), a suggested sentence with a "say it" button (`phrase.suggested`, `POST /api/sessions/{id}/hints/{hint_id}/say`), the person's reports (`conversation.report.created`, `GET /api/users/{id}/reports`), and the team view for administrators (`GET /api/companies/{id}/insights`; `docs/TEAM_VIEW.md`).
+- **Do not:** implement AI or speech recognition, decide visibility in the browser, or store learning events. Training progress is kept only in the browser.
 
 ## 10. Rules for coding agents
 
@@ -552,6 +562,8 @@ Do not write code that assumes these work. If your task depends on one, say so i
 10. **Who reads the live transcript.** There is no sign-in, so anyone who opens `/ws?user=<a known id>` or `?view=audience` on a running session gets its lines, as they already got its hints. The transcript says much more than a hint does. `MOCHI_LIVE_TRANSCRIPT=false` is the switch until sign-in exists.
 
 ## 13. Changelog
+
+- **v0.7, merged with `main` (2026-11-22, D-58).** `main`'s web users, per-user sessions and web session records (D-56, D-57; they were D-42 and D-43 there) and this file's D-43 to D-55 are one tree. The company's table is `company_sessions` (the web's keeps `session_records`); a meeting's participants are the company's members, no longer everyone known; `apps/web` accepts the modes `meeting` and `review`.
 
 - **v0.7, the meeting beyond the stuck word (proposed, 2026-11-22, D-51 to D-55).** New events `transcript.line` (every finished sentence, with marks: a code switch, an explained idiom or technical term) and `conversation.report.created` (a person's private report after Stop). New: `TranscriptLine`, `TranscriptMark`, `ConversationReport` and its parts, `Utterance.marks`, `TeamInsights.mistakes` and `.explained`, `GET /api/users/{id}/reports`, device commands `caption` and `explain`, `why` in the hint card, port methods `explain`, `coach` and `used_alone`, table `conversation_reports`. `USED_INDEPENDENTLY` is built (decided at Stop). `ASSISTED` needs a hint at most three minutes old. Product rules 2 to 4 reworded for the live transcript. Switches: `MOCHI_LIVE_TRANSCRIPT`, `MOCHI_EXPLAIN_TERMS`, `MOCHI_SPEECH_REPORTS` (all on by default). Nothing in `apps/web` was changed; it ignores the two new events until its owners use them (`docs/TEAM_VIEW.md`, "For the web app").
 

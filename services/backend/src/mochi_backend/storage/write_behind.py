@@ -12,6 +12,7 @@ from threading import Lock
 
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import Storage, voice_key
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_contracts import (
     Company,
     ConversationReport,
@@ -114,6 +115,14 @@ class WriteBehindStorage:
     def clear_events(self) -> None:
         """Queue the delete."""
         self._later(CLEAR_KEY, self._inner.clear_events)
+
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Pass-through read."""
+        return self._inner.load_sessions()
+
+    def save_session(self, record: WebSessionRecord) -> None:
+        """Queue the write (after the user's own row, which it references)."""
+        self._later(f"session:{record.record_id}", lambda: self._inner.save_session(record))
 
     def load_voices(self) -> list[VoiceProfile]:
         """Pass-through read."""

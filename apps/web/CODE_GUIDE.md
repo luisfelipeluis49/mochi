@@ -1,104 +1,99 @@
-# apps/web: every file, grouped by language
+# apps/web code guide
 
-Every file below has comments at the top saying what it does, and notes beside the code.
-The files stay in their folders (`src/lib`, `src/views`, ...) because Vite and React expect this layout. This guide groups them by language instead.
-
-## How the pieces connect
+How the pieces fit together. Product rules are in the root `AGENTS.md`; web rules are in `AGENTS.md`
+here.
 
 ```text
-index.html  ──loads──▶  main.tsx  ──"which page?"──▶  who.ts
-                           │
-                           ▼
-                       useMochi.ts ──connects──▶ backend.ts ──▶ Luís's backend (or the mock: demoScript.ts)
-                           │                         │
-                           │       every event ──▶ store.ts (remembers it)
-                           ▼
-              HomeView / PhoneApp (SessionView + AnalyticsView) / AudienceView  (draw it; texts from i18n.ts, colors from styles.css)
-                  │                 ├── SessionView asks sessionStage.ts (= home.ts) what to show live
-                  │                 └── AnalyticsView asks analytics.ts for the progress numbers
-                  │
-                  └── HomeView asks home.ts "which screen, and what does a tap do?"
+main.tsx --builds--> AppDeps (real or ?mock=1)
+   |
+   v
+hooks/useApp.ts --(useReducer: lib/appState.ts)--> AppModel + AppActions
+   |    wires lib/api.ts, lib/socket.ts, lib/mic.ts, lib/probe.ts, hooks/useAgoraMic.ts
+   v
+App.tsx (no effects) --> screens/* --> ui/*
 ```
 
-## 1. TypeScript + JSX (`.tsx`): the screens (React components)
+The startup order is the mic gate and the reachability probe, in parallel. Then comes the identity
+(onboarding, or a check of the stored user), and then the app shell. A Start follows THE SHARED
+CONTRACT C6 in `useApp.start`: open the socket on the new session id, `POST start`, `GET agora`, and
+join with the microphone. When a step after the start fails, the app sends `POST stop`.
 
-JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}</p>`.
-
-| File | What it does |
-|---|---|
-| `src/main.tsx` | Starting point. Reads the URL, picks the screen, draws it |
-| `src/views/StartPage.tsx` | The page at `/`: goes straight to this phone's owner's page; first time, explains how to open your link |
-| `src/views/HomeView.tsx` | Mochi's 3.5-inch screen: face, the mode question, hints, what Mochi says, the game. Turns touches into tap / long press |
-| `src/views/PhoneApp.tsx` | A person's phone: the two tabs (Session, Analytics), switched without reloading; keeps the phone's mic on across tabs |
-| `src/views/SessionView.tsx` | The Session tab: Start session / Stop session, and the live stage that behaves like Mochi's screen (face, hint, what Mochi says, who is talking) |
-| `src/views/AnalyticsView.tsx` | The Analytics tab: progress numbers, last session, sessions bars, "Words to learn" cards |
-| `src/views/TabBar.tsx` | The Session / Analytics buttons at the bottom of the phone |
-| `src/views/AudienceView.tsx` | The projector. Never shows the secret word during a round |
-| `src/views/DebugPanel.tsx` | The `?debug=1` list of the last 10 events |
-
-## 2. TypeScript (`.ts`): the logic, with no screen
+## Pure logic (`src/lib/`, each with a `*.test.ts`)
 
 | File | What it does |
 |---|---|
-| `src/lib/store.ts` | The page's memory: applies each event from the backend |
-| `src/lib/analytics.ts` | Counts the numbers for the phone: words by step, minutes, sessions in order, bar sizes |
-| `src/lib/sessionStage.ts` | What the Session tab shows live: the same choice as Mochi's screen (home.ts), without the game |
-| `src/lib/tabs.ts` | The two phone tabs and their addresses (`/m`, `/m/analytics`) |
-| `src/lib/usePhoneMic.ts` / `phoneMic.ts` / `phoneSession.ts` | The phone as Mochi's microphone: ask for the mic, join the phone's own Agora session, leave on Stop |
-| `src/lib/home.ts` | The rules of Mochi's screen and the game (which screen, what a tap does) |
-| `src/lib/backend.ts` | The **only** file that talks to the backend (WebSocket + POST requests) |
-| `src/lib/useMochi.ts` | React hook: connects once, keeps the data, ticks the clock |
-| `src/lib/people.ts` | Each phone remembers its owner; reading `?people=` for the demo |
-| `src/lib/who.ts` | URL → "am I Mochi, a phone, or the projector?" |
-| `src/lib/i18n.ts` | Every text on screen, in English and Portuguese |
-| `src/contracts.ts` | The shape of every message (types only). Temporary until Matheus's `packages/contracts` exists. Lines marked `PROPOSED v0.5` are the proposal |
-| `src/mock/demoScript.ts` | A fake backend that replays the new demo with Ana and Sophie (`?mock=1`) |
-| `vite.config.ts` | Settings for Vite: the dev server and forwarding `/api` and `/ws` to the backend |
+| `../contracts.ts` | The TypeScript types for the AGENTS 6 events and payloads, plus `User`, `SessionRecord` and `AgoraJoin` from the contract, and the type guards. The guards accept unknown extra keys. |
+| `routes.ts` | Path to screen and screen to path. `/` and unknown paths go to `/session`. |
+| `storage.ts` | Safe access to `localStorage`/`sessionStorage`: every call is wrapped. It also has fake stores for tests. |
+| `identity.ts` | The user in `localStorage` `mochi.user.v1`: read, write, forget. Also the avatar initials. |
+| `sessionId.ts` | `w-` plus 8 hex characters, and the `sessionStorage` slot `mochi.session.v1` used for a reload. |
+| `api.ts` | The typed client for every endpoint the web uses (with an injectable `fetch`), `ApiError {status, kind}`, the 10 s `/healthz` timeout, and `beaconStop`. |
+| `httpProblem.ts` | Maps a status code or network failure to a `ProblemKind` (section 6.1), including the 90 s waking-to-unreachable edge. |
+| `probe.ts` | The `/healthz` probe loop: it retries after 2, 4 and 8 s, then every 15 s, and reports waking, unreachable or offline. |
+| `socket.ts` | The `/ws?user=&session=` URL, the backoff (1, 2, 4, 8, then 15 s), message parsing, and the rule that close code 4400 means a lost user. |
+| `events.ts` | The live-state reducer: drops duplicate `sequence` numbers, holds the session state, the live hint and its expiry (from the server's own times), the hints of this session, what Papear said, and the words by id, and tracks the "used" and "proud" moments. |
+| `appState.ts` | The app store: gate, probe, identity, socket, the session phase (idle, starting, capturing, stopping), banners, "ended elsewhere", reload/rejoin, volume, records, progress. |
+| `mic.ts` | `runMicGate(env)` (secure context, `mediaDevices`, permissions query, `getUserMedia`, the 8 s "slow" prompt) and `micProblemOf(error)` (DOM names and Agora codes; the Agora codes are unverified). |
+| `agora.ts` | Loads the SDK from the CDN (pinned 4.24.8) and wraps join, publish (AEC/ANS/AGC), play, volume, levels and leave behind `VoiceLink`. It reports failures as `VoiceError`: `agora_sdk`, `agora_join` or a mic problem. |
+| `face.ts` | `faceOf(input, now)`: Papear's mode, mood, word, note, who, badge and pop, as in the section 3.3 table. Also `speakingUntil`. |
+| `training.ts` | `checkAnswer` (normalising, articles, accents, Levenshtein), the Leitner `schedule`, `dueCards`, `nextDue`, `ProgressStore` (`mochi.training.v1.<user>`), accuracy. |
+| `digest.ts` | `buildDigest`: the wrap-up of one calendar week (Monday to Sunday, `weekKeys`) across all sessions: totals, the week before, minutes per day, words grouped by what happened that week, and what to practise next. |
+| `analytics.ts` | `buildAnalytics`: tiles, the day streak, the bars for the last 10 records, the state counts, and `statePath`. |
+| `i18n.ts` | All copy in `en` and `pt-BR` with the same keys (enforced by the types), `t`, `plural`, `languageName`, UI-language detection and storage, `wokenBy`. |
+| `format.ts` | `Intl` dates (`en-GB` / `pt-BR`), minutes, `mm:ss`, relative times, `dayKey` (with an injectable time zone). |
+| `contrast.ts` | The WCAG contrast ratio, and a reader for the hex tokens in a CSS file. |
+| `testkit.ts` | Test helpers only: a fake `fetch`, fake timers, `flush`. |
+| `tokens.test.ts` | Fails on any hex color outside `styles/tokens.css`. |
 
-**Tests** (also TypeScript, run with `npm test`):
+## Components (`src/ui/`, tested with `renderToString`)
 
-| File | Checks |
+| File | What it shows |
 |---|---|
-| `src/lib/store.test.ts` | duplicates ignored, hints expire, word order, debug list |
-| `src/lib/analytics.test.ts` | the progress numbers, session order, bar sizes |
-| `src/lib/sessionStage.test.ts` | the Session tab: idle, listening, hint with meaning and example, Mochi speaking, no game on the phone |
-| `src/lib/tabs.test.ts` | the tab of each address; switching keeps the person and options |
-| `src/lib/contract.test.ts` | the app against the OFFICIAL contract in `packages/contracts`: every example event, every field the screens read, the learning states |
-| `src/lib/home.test.ts` | the mode question, hint options, Mochi speaking, every game step, text size |
-| `src/mock/demoScript.test.ts` | the secret word only reaches Mochi's screen; words and summaries only reach their owner; the story runs in order |
+| `Face.tsx` | Papear's presence panel: monogram, state text and an audio meter. CSS `mode-*` classes colour the meter; `has-problem` and `is-offline` mark errors. It has the volume pop and the offline label. `role="img"` with an `aria-label`. |
+| `HintCard.tsx` | The live hint: the word (with `lang`), the note, the example, the countdown bar, "For everyone", and "★ You used it!". `aria-live`. |
+| `SpeechBubble.tsx` | What Papear said. `aria-live`. |
+| `StatusChip.tsx` | Asleep, Waking up, Listening, or No connection. |
+| `Nav.tsx` | One `<nav>` laid out as a tab bar, a rail or a side nav. `aria-current` on the active item. `Avatar`, `linkClick`. |
+| `Problem.tsx` | A full-screen problem (`role="alert"`) for a `MicProblem` or a `ProblemKind`. |
+| `Banner.tsx` | A non-blocking problem or notice. |
+| `Icons.tsx` | The inline SVG icons. |
 
-## 3. CSS
+## Screens (`src/screens/`)
+
+| File | Notes |
+|---|---|
+| `MicGate.tsx` | "Allow the microphone" while the browser asks, with "Allow microphone" after 8 s. Also `Loading`. |
+| `Unreachable.tsx` | Shows waking, unreachable or offline while `/healthz` does not answer. |
+| `Onboarding.tsx` | The name, plus the languages (pre-filled; they always differ). Shows the `profile_lost` note and the 422 and unreachable errors. |
+| `SessionScreen.tsx` | The device (Mochi Home) in the browser. Two columns from 840 px. |
+| `TrainingScreen.tsx` | `TrainingCard`, `TrainingDone`, `TrainingEmpty`, and the round logic. "Say it" appears only with `SpeechRecognition`. |
+| `DigestScreen.tsx` / `AnalyticsScreen.tsx` | Render the view models from `lib/digest.ts` and `lib/analytics.ts`. The chart is SVG with a hidden table. |
+| `ProfileScreen.tsx` | Languages, the UI language switch, and "Forget me on this device". |
+
+`App.tsx` chooses between them in order (gate, probe, onboarding, shell) and has no effects, so
+`App.test.tsx` renders it from `mock/model.ts`.
+
+## Hooks (`src/hooks/`)
 
 | File | What it does |
 |---|---|
-| `src/styles.css` | All colors, sizes and layout, with one section per screen. Colors are variables at the top, from the product vision slides |
+| `useApp.ts` | The wiring: the store, routing, `<html lang>`, the gate, the probe, the identity check, the words and records, the socket (it reconnects when the session id changes), `pagehide`, and Start, Stop, rejoin, onboarding, training and language. |
+| `useAgoraMic.ts` | The voice link, and the microphone and voice levels sampled every 100 ms (hearing, speaking, the mouth). |
+| `useNow.ts` | A clock tick (1 s, or 250 ms during a session). |
 
-## 4. HTML
+## Mock (`src/mock/`)
 
-| File | What it does |
+`backend.ts` is an in-page backend for `?mock=1`. It provides an `Api`, a `WebSocket` class, a fake
+`VoiceLink`, the demo script and seeded history. `model.ts` builds a ready `AppModel` for the tests.
+
+## Styles and infrastructure
+
+| File | What it is |
 |---|---|
-| `index.html` | The one HTML page. Nearly empty: React draws everything inside `<div id="root">` |
-
-## 5. JSON (settings)
-
-| File | What it does |
-|---|---|
-| `package.json` | The project's name, its libraries (`react`, `vite`, ...) and its commands: `npm run dev`, `npm test`, `npm run build`. JSON can't hold comments, so here is what it does. |
-| `tsconfig.json` | How strict TypeScript is. This one allows comments. |
-| `vercel.json` | Settings to host the app on Vercel (build command, output folder, every address opens the app) |
-
-## 6. Markdown (documentation)
-
-| File | What it does |
-|---|---|
-| `README.md` | How to run the app, plus the report and open questions for the team |
-| `CODE_GUIDE.md` | This file |
-| `PROPOSAL_contracts_v0.5.md` | What the new vision needs from the contracts, for the team to approve |
-
-## Where to change common things
-
-- **A sentence on any screen:** `src/lib/i18n.ts`. Change it in both languages.
-- **A color or size:** `src/styles.css` (the colors are variables at the top: `--night`, `--cream`, `--pink`...).
-- **The backend address:** `vite.config.ts` (during development) or `VITE_BACKEND_URL`.
-- **How the game reacts to taps:** `src/lib/home.ts`, then run `npm test`.
-- **When we get the real contracts:** replace `src/contracts.ts` with Matheus's types.
+| `styles/tokens.css` | The design tokens: the only colors in the app. The face colors map onto them. |
+| `styles/app.css` | Layout (phone, tablet, desktop), components, the face, and reduced motion. |
+| `index.html`, `public/favicon.svg` | The page, its theme color and the favicon. These are the only color values outside the tokens. |
+| `vite.config.ts` | The React plugin and the dev proxy for `/api`, `/ws` and `/healthz`, set with `MOCHI_BACKEND_URL`. |
+| `Dockerfile`, `.dockerignore` | Node 22 build, then `nginx:1.27-alpine`. |
+| `nginx/default.conf.template` | The SPA, the proxy, caching and security headers. Only `${PORT}`, `${BACKEND_URL}` and `${BACKEND_HOST}` are substituted. |
+| `nginx/15-backend-host.envsh` | Exports `BACKEND_HOST` (the host of `BACKEND_URL`) before envsubst runs. |
