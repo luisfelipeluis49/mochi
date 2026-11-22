@@ -8,10 +8,12 @@ from mochi_backend.intelligence.lexicon import Lexicon, LexiconEntry, other_lang
 from mochi_backend.intelligence.tokens import lowered, normalized, words_of
 from mochi_contracts import Language, Reason, SessionContext
 
+# "Como é que fala X?" asks for a word; "não sei como é que fala com ele" tells a story.
+_E_QUE = r"(?<!sei )(?<!sabe )(?<!saber )(?<!de )como [eé] que (?:se )?(?:diz|fala)"
 ASK_PATTERN = re.compile(
     r"how (?:do (?:you|i)|to|can i|would you) say|what(?:'s| is) the word for|what do you call|"
     r"i don'?t know (?:the word|how to say)|i can'?t remember the word|i forgot the word|"
-    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra|esqueci a palavra"
+    r"como (?:se )?(?:diz|fala)|" + _E_QUE + r"|qual (?:é )?a palavra|esqueci a palavra"
 )
 # "Limpar em inglês?": a word and the language wanted, and nothing else in that sentence
 _SHORT_ASK = re.compile(
@@ -25,7 +27,7 @@ _ASKED = re.compile(
     r"how (?:do (?:you|i)|to|can i|would you) say|what(?:'s| is) the word for|what do you call|"
     r"i don'?t know (?:the word(?: for)?|how to say)|"
     r"i (?:can'?t remember|forgot) the word(?: for)?|"
-    r"como (?:se )?(?:diz|fala)|qual (?:é )?a palavra (?:para|pra|de)|"
+    r"como (?:se )?(?:diz|fala)|" + _E_QUE + r"|qual (?:é )?a palavra (?:para|pra|de)|"
     r"esqueci a palavra(?: para| pra| de)?"
 )
 # "How do you say that?" points at a word said elsewhere: it names nothing itself

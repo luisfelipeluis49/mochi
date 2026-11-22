@@ -86,7 +86,7 @@ _DESCRIBING = re.compile(
     r"(?:that|where|who|you|they|for|to|of|que|onde|de|para|pra)\b"
 )
 _SEARCHING = re.compile(
-    r"como é que (?:se )?(?:fala|diz|chama)|como (?:é|era) mesmo|como (?:se )?chama|"
+    r"como [eé] que (?:se )?(?:fala|diz|chama)|como (?:é|era) mesmo|como (?:se )?chama|"
     r"qual é (?:a palavra|o nome)|(?:não|nao) lembro (?:a palavra|o nome)|esqueci o nome|"
     r"how (?:do|can|would) (?:you|i) (?:say|call)|how to say|how is it called|"
     r"what(?:'s| is) (?:it|that) called|what(?:'s| is) the (?:name|word)|"
@@ -163,6 +163,36 @@ def searches(text: str) -> bool:
     Example: `searches("It's cold, I need my, como é que fala, my...")` is True.
     """
     return _SEARCHING.search(lowered(text)) is not None
+
+
+def before_search(text: str) -> str | None:
+    """What was said before the speaker began to look for the word aloud; None when they did
+    not, or when the search opens the turn.
+
+    Example: `before_search("We need to, como é que fala, destravar isso")` is "we need to, ".
+    """
+    found = _SEARCHING.search(lowered(text))
+    before = lowered(text)[: found.start()] if found else ""
+    return before if words_of(before) else None
+
+
+def after_search(text: str) -> str:
+    """What follows the words the speaker looked for the word with: usually the word itself.
+
+    Example: `after_search("We need to, como é que fala, destravar isso")` is ", destravar isso".
+    """
+    found = _SEARCHING.search(lowered(text))
+    return lowered(text)[found.end() :] if found else ""
+
+
+def search_language(text: str) -> Language | None:
+    """The language the speaker looks for the word in. Example: "..., como é que fala, ..." is
+    Portuguese, "..., how do you say, ..." English; None when nobody is searching."""
+    found = _SEARCHING.search(lowered(text))
+    if found is None:
+        return None
+    portuguese = found.group(0).startswith(("como", "qual", "não", "nao", "esqueci"))
+    return Language.PT_BR if portuguese else Language.EN
 
 
 def searching_aside(text: str, language: Language) -> bool:

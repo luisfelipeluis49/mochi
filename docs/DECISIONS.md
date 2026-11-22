@@ -1901,3 +1901,109 @@ the wrap-up note, the brief, the time limit), `TrainingScreen.test.tsx`; `make v
 **Open.**
 - **Not tried with a real model or voice.** Whether the model really invents a different scene, never gives
   the word away and keeps to the five minutes is the prompt's job; only a scripted model was run.
+
+## D-69: after the first real meeting on the device: four fixes, and speak for me as a two-way interpreter (2026-11-22)
+
+**Asked** (Suhuai, after a real test at Mochi Home, 09:20 to 09:31): "the result is mixed, can you check
+the logs?" Code switches and idioms sometimes worked and sometimes not; one-touch assistance did not work
+although the transcription was right. And for speak for me, not tested yet: "maybe we don't need a speaker
+lock. I say a sentence or two and Mochi translates it and speaks it out loud, then my colleague or client
+speaks a sentence or two and Mochi translates it and speaks it out."
+
+**What the logs said** (the device's journal and the deployed backend's `turn` / `decision` lines, 102
+sentences):
+
+| What was tried | What happened | Why |
+|---|---|---|
+| "I forgot my guarda-chuva at the office." | hint **umbrella**, and a suggested sentence | worked |
+| "Vamos marcar a meeting para sexta-feira de manhã." | hint **reunião**, and a suggested sentence | worked |
+| "I need to adiar my meeting tomorrow." | nothing | the recogniser wrote "adjourn" |
+| "Can you send me the planilha before lunch?" | nothing | written "plan" |
+| "We need to renegociar the contract…" / "…asked for a desconto…" | nothing | written "renegotiate", "discount" |
+| "Eu esqueci meu umbrella…" / "…pediu um discount…" | nothing | written "minha ombrela", "desconto" |
+| circle back, think outside the box, is fire, bater o martelo, dar um jeitinho, pisou na bola (2nd time) | explained | worked |
+| piece of cake, swamped, tá puxada | nothing | each came 15 to 17 s after another explanation; the pause between two was 20 s |
+| "vai dar pano pra manga", "pisou na bola" (1st time) | nothing | written "plano para manga", "pessoa na bola" |
+| "I'll say it again: …" (four times) | Mochi said "umbrella. umbrella." / "reunião. reunião." aloud | "say it again" was taken as a request to hear the last hint |
+| "We need to— Como é que fala "destravar a autenticação"?" | nothing | the model answered "unlock authentication"; the sentence was counted as Portuguese, so an English hint was "in the wrong language" and dropped. No hint, so no sentence to touch |
+
+Every sentence had `speaker: null`: the voice at the device is registered as a name that is not a member of
+the demo company, and a voice is tied to a member by its name (6.6).
+
+**Fixed** (all in `intelligence/`, each with the live sentence as its test, `tests/unit/test_live_findings.py`):
+- `aloud.py`: someone who says they will repeat themselves ("I'll say it again", "let me say it", "vou falar
+  de novo") is not asking Mochi to say the hint.
+- `spoken_focus.py`: a sentence its speaker left to ask, in the other language, for the next word keeps the
+  language it began in ("We need to, como é que fala, …" is English). Three words must have been begun, and
+  not to Mochi. `clear_cases.py`: "como é que fala X" asks for a word like "como se diz X".
+- `settings.py`: `explain_gap_seconds` 20 → 8, the time a card is shown.
+
+With the real model (`gpt-5.4-mini`), typed as the recogniser wrote them: the first one-touch sentence gets
+**unlock authentication** and "We need to unlock authentication."; "Because we need to, como é que fala,
+destravar a autenticação." gets **unblock authentication** and "Because we need to unblock authentication.";
+"I'll say it again: can you send me the plan before lunch?" gets nothing.
+
+**Speak for me, changed** (AGENTS 7.9; `speak_for_me.py`, the prompt in `openai_interpret_model.py`). It no
+longer holds *who* Mochi speaks for, only whether it is interpreting. On: anyone, by name ("speak for me",
+"translate for us", "fala por mim", "traduz pra gente"). While on, every sentence not addressed to Mochi is
+said in the other language, the direction taken from the sentence's own language; a sentence too short to
+tell is guessed to go the way of the one before, and the model has the last word on it. Off: the same
+phrases as before, from anyone. Mochi remembers its last lines and stays silent when one comes back as a
+turn. No contract change.
+
+With the real model, typed: "A gente precisa adiar o lançamento para a semana que vem." → "We need to
+postpone the launch to next week."; "Why? Is there a problem with the supplier?" → "Por quê? Há um problema
+com o fornecedor?"; "Sim, o fornecedor atrasou a entrega e a gente vai dar um jeitinho até sexta." → "Yes,
+the supplier delayed the delivery and we'll work something out by Friday."; "I need to adiar my meeting
+tomorrow." → "Preciso adiar minha reunião de amanhã."; "Ok." → nothing; "Mochi, como se diz fila em
+inglês?" → answered, not translated; "Mochi, pode parar." → off. 0.6 to 1.1 s each.
+
+**After a review before any deploy (same day).** Read by a second pair of eyes, with the functions run on
+sentences; each of these is now a test:
+- *Stopping.* "Stop, Mochi", "Mochi, stop translating", "Mochi, para.", "Mochi, stop, okay?" and a stop
+  with more said after it in the same turn left the interpreter on. The short stop words now count
+  wherever a sentence ends, the name may come after them, and "stop translating" needs no "for us".
+- *Saying no.* "Mochi, don't translate for us" and "não precisa falar por mim" hold the words that turn it
+  on, and turned it on. With a no in the sentence they stop it, or do nothing when it was off; so does
+  "Mochi, para de falar por mim" when it was off (it turned it on again: the D-64 bug, back).
+- *Which way.* The direction was the guess from the sentence's small words, and a short sentence with none
+  ("Quanto custa?", "Sounds good.") went the way of the sentence before, which is the wrong way whenever
+  two people take turns. The model now decides and says which language it answered in (`language` in its
+  JSON); the guess is only its starting point. With the real model, after an English sentence: "A proposta
+  ficou boa." → "The proposal turned out good."; "Quanto custa?" → "How much does it cost?"; "Dois mil
+  reais." → "Two thousand reais."; "Friday works." → "Sexta-feira funciona."; "Fechado, combinado." →
+  "Agreed, it's settled."
+- *Its own voice.* Mochi's welcome ends in "Mochi, pode parar": heard back through a microphone it would
+  have stopped the mode it had just started. What it said is now looked for before any command, whole and
+  sentence by sentence (but a piece that is a stop command is not remembered: said by a person it must work).
+- *The sentence's language.* "Eu não sei, how do you say recibo?" had become Portuguese under the new rule.
+  The rule now also needs the words asked about to be in the asker's own language, and a language named
+  outright ("… in English?") wins over it.
+- *Asking for a word.* "Não sei como é que diz pra ele…" is telling, not asking: the "é que" form does not
+  count after "sei", "sabe", "saber" or "de". It also matches without the accent ("como e que fala").
+- *Repeating oneself* was too wide ("Can you say it again so I can say it?" was refused) and too narrow ("I
+  have to say it again"): it is now the forms that announce it ("I'll", "I'm going to", "I have to", "let
+  me", "want me to", "vou", "tenho que", "deixa eu" + say/falar).
+
+**Tests:** `test_speak_for_me.py` rewritten (49), `test_live_findings.py` (31). `make verify`: 1875 passed
+with `main`'s D-68 merged in.
+
+**Open:**
+- **The misheard code switches are not fixed.** The deployed recogniser (ARES, en-US with pt-BR) writes a
+  Portuguese word inside English as the nearest English word, and the other way round; nothing after it can
+  tell. "adiar" is in the lexicon, so it is named to the recogniser, and was still written "adjourn" for
+  this voice. "planilha", "desconto" and "renegociar" are not in the lexicon and are not named. To try:
+  name the meeting's words in `MOCHI_ASR_KEYWORDS` on Render; the other recogniser (`MOCHI_ASR_VENDOR=openai`),
+  which kept "adiar" in spoken clips on this Pi and lost "desconto" too.
+- **A bare "Como é que fala destravar a autenticação?"** (nothing begun before it) gets a hint in the
+  language the model picks; with the real model it answered in Portuguese ("desbloquear a autenticação")
+  once. Told apart from "How do you say the thing for the rain?" only by the model.
+- **The interpreter was not tried by voice**, and not with two people. With the deployed `append` Mochi
+  finishes each translation before the next sentence gets its turn; with Agora's default (D-67) a person who
+  goes on talking cuts it off.
+- **In the interpreter a hesitation is translated too**: the stuck-word hint is not shown for a sentence that
+  is said in the other language anyway.
+- **The 8 s pause** makes Mochi explain more often; in a long real meeting that may be too much.
+- **The hint yardstick was not run again** after the change to the sentence's language; the decision
+  fixtures pass.
+- `intelligence/` is Luís's since D-68; needs his yes.

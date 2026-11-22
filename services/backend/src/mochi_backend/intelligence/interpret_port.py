@@ -1,5 +1,5 @@
-"""The model port for "speak for me": saying one person's sentence in the meeting's language
-(DECISIONS D-64)."""
+"""The model port for "speak for me": saying a sentence of the meeting in its other language
+(DECISIONS D-64, D-69)."""
 
 from typing import Literal, Protocol
 
@@ -9,7 +9,8 @@ from mochi_contracts import Language
 
 
 class InterpretRequest(BaseModel):
-    """One sentence, the language it was said in, and the language to say it in."""
+    """One sentence, the language it seems to be in (a guess from its small words), and the
+    other one, which it is to be said in. The model may find the guess wrong."""
 
     text: str
     recent_texts: list[str]
@@ -22,6 +23,7 @@ class Interpretation(BaseModel):
 
     decision: Literal["SAY", "NOTHING"]
     sentence: str | None = None
+    language: str | None = None  # the language of `sentence`, when the model says ("en", "pt-BR")
 
 
 class InterpretModel(Protocol):
