@@ -171,8 +171,13 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 }
 .stage-light { background: #fff; color: var(--night); }
 .stage-dark { background: var(--night); color: var(--cream); }
-.stage .face { width: min(56vw, 240px); height: min(26vw, 112px); }
-.stage .face.small-face { width: min(34vw, 150px); height: min(16vw, 70px); }
+/* The company face (HeadsetFace.tsx): drawn in the text color; the mic tip in the accent color */
+.headset-face { width: min(52vw, 210px); height: auto; color: var(--night); }
+.headset-face.small { width: min(34vw, 140px); }
+.headset-mic { fill: var(--berry); }
+.headset-face.talking .headset-mouth { transform-box: fill-box; transform-origin: center; animation: talk .35s ease-in-out infinite alternate; }
+@keyframes talk { from { transform: scaleY(.35); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .headset-face.talking .headset-mouth { animation: none; } }
 .stage-title { font-size: 22px; font-weight: 800; line-height: 1.2; }
 .stage-text { font-size: 15px; color: var(--muted); line-height: 1.4; max-width: 30ch; }
 .stage-label { font-size: 18px; font-weight: 700; color: var(--berry); }
@@ -185,6 +190,22 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 
 /* ---------- Analytics tab: the "session in progress" note ---------- */
 .record-notice { font-size: 14px; padding: 12px; border-radius: 12px; background: var(--beige); display: grid; gap: 10px; }
+
+/* ---------- Company colors on a person's phone (option A: navy + teal) ----------
+   The phone pages reuse the app's color names, so changing these few values recolors the Session
+   and Analytics tabs. Mochi's own screen (/home) and the projector keep the original colors. */
+body[data-view="user"] {
+  --night: #0F172A;      /* navy: text, dark cards, main buttons */
+  --berry: #0F766E;      /* teal: accents, section titles, "session in progress" */
+  --pink: #99F6E4;       /* light teal: numbers and labels on dark cards */
+  --cream: #F5F7FA;      /* page background */
+  --beige: #E2E8F0;      /* light cards and borders */
+  --muted: #475569;      /* secondary text */
+  --muted-dark: #94A3B8; /* secondary text on dark cards */
+  background: var(--cream);
+}
+body[data-view="user"] .btn.secondary { background: #CCFBF1; color: var(--night); }
+body[data-view="user"] .path li.done { background: #CCFBF1; color: var(--berry); }
 
 /* ---------- The tab bar at the bottom of the phone ---------- */
 body[data-view="user"] .mobile { padding-bottom: 96px; } /* room so the bar does not cover the last card */
