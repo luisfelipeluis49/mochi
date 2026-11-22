@@ -1,4 +1,4 @@
-"""Start and stop the session (and with it the Agora agent)."""
+"""Start and stop the session (and with it the Agora agent): a meeting, or one person's review."""
 
 import asyncio
 from dataclasses import dataclass, replace
@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from pydantic import BaseModel
 
+from mochi_backend.gateway.after_session import AfterSession
 from mochi_backend.gateway.agora.client_port import (
     AgentAlreadyStoppedError,
     AgentStartRequest,
@@ -16,14 +17,13 @@ from mochi_backend.gateway.agora.client_port import (
     SpeechTuning,
 )
 from mochi_backend.gateway.core import GatewayCore
-from mochi_backend.gateway.errors import ConflictError, UpstreamError
-from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID
+from mochi_backend.gateway.errors import ConflictError, InvalidRequestError, UpstreamError
+from mochi_backend.gateway.roster import SESSION_ID, as_participant
 from mochi_backend.gateway.session_history import SessionHistory
 from mochi_backend.gateway.user_directory import session_participants
 from mochi_backend.storage.session_record import SessionTally, build_record
 from mochi_contracts import (
     EventType,
-    GameState,
     Language,
     SessionMode,
     SessionState,
@@ -84,13 +84,13 @@ class SessionConfig:
         """The same ears with Agora's default interruption: speaking over Mochi cuts it off.
 
         The Pi's session keeps `append` (D-40: two people in a room). A web session is one person
-        with headphones, who expects to be able to interrupt (D-43).
+        with headphones, who expects to be able to interrupt (D-57).
         """
         return replace(tuning, interruption="") if tuning else None
 
 
-# First words of a wake phrase that are Portuguese ("oi Mochi", "olá Mochi", "e aí Mochi").
-PORTUGUESE_CUES = {"oi", "ola", "olá", "alo", "alô", "e", "ei", "bom", "boa"}
+# First words of a wake phrase that are Portuguese ("vamos papear", "oi Mochi", "e aí Mochi").
+PORTUGUESE_CUES = {"vamos", "vamo", "oi", "ola", "olá", "alo", "alô", "e", "ei", "bom", "boa"}
 
 
 def greeting_for(woken_by: str | None, config: SessionConfig) -> str:
@@ -115,8 +115,24 @@ def language_of_call(woken_by: str | None) -> Language | None:
     return Language.PT_BR if words[0] in PORTUGUESE_CUES else Language.EN
 
 
+# What Mochi says first in a review, in the language the person is at home in.
+REVIEW_GREETINGS = {
+    Language.EN: "Hi! Shall we go over your words?",
+    Language.PT_BR: "Oi! Vamos rever as suas palavras?",
+}
+
+
+@dataclass(frozen=True)
+class SessionLeaves:
+    """What a session leaves behind when it stops: a web user's record of it (D-56), and what
+    is worked out from it afterwards (D-54, D-55). Either may be missing (a test's session)."""
+
+    history: SessionHistory | None = None
+    after: AfterSession | None = None
+
+
 class SessionService:
-    """`POST /api/sessions/demo/start` and `.../stop`."""
+    """`POST /api/sessions/{id}/start` and `.../stop`."""
 
     def __init__(
         self,
@@ -124,11 +140,12 @@ class SessionService:
         agora: AgoraAgentClient,
         tokens: RtcTokenIssuer,
         config: SessionConfig,
-        history: SessionHistory | None = None,
+        leaves: "SessionLeaves | None" = None,
     ) -> None:
         self._store = core.store
         self._ids = core.ids
-        self._history = history  # None: this session never leaves a record (a test's)
+        leaves = leaves or SessionLeaves()
+        self._history = leaves.history  # None: this session never leaves a web record
         self._hub = core.hub
         self._intelligence = core.intelligence
         self._live_hint = core.live_hint
@@ -136,65 +153,134 @@ class SessionService:
         self._commit = core.commit
         self._clock = core.clock
         self._logger = core.logger
+        self._journal = core.journal
         self._agora = agora
         self._tokens = tokens
         self._config = config
         self._start_lock = asyncio.Lock()
+        self._after = leaves.after  # what is worked out once it has stopped (D-54, D-55)
 
-    async def start(self, woken_by: str | None = None, user: User | None = None) -> SessionState:
+    async def start(
+        self,
+        woken_by: str | None = None,
+        mode: SessionMode = SessionMode.MEETING,
+        user_id: str | None = None,
+        user: User | None = None,
+    ) -> SessionState:
         """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state.
 
-        `woken_by`: the wake phrase the device heard. Mochi then greets in that language, and the
-        next sentence is meant for it. `user`: the person a web session is for (D-42); its
-        participants become that user and `guest`. Raises `ConflictError` for a user on the demo
-        session, or another user than the one a running session is for.
-        Example: `await service.start("hey mochi", user)`.
+        `woken_by`: the wake phrase the device heard; Mochi greets in that language and the
+        meeting begins. `mode` review: `user` (or the roster's `user_id`) goes over their saved
+        words with Mochi; `InvalidRequestError` when that person is not known. `user` without a
+        review: the person a web session is for (D-56); its participants become that user and
+        `guest`. `ConflictError` for such a user on the device's session, or another user than
+        the one a running session is for. Example: `await service.start("let's chat", user=u)`.
         """
-        if user is not None and self._config.session_id == SESSION_ID:
-            raise ConflictError(f"session {SESSION_ID!r} is the device's; start another id")
+        person = self._person(mode, user_id, user)
+        greeting, language = self._opening(woken_by, mode, person)
         async with self._start_lock:
             if self._store.capturing:
-                return self._already_running(woken_by, user)
+                return self._already_running(mode, person)
             generation = self._store.generation
-            agent_id = await self._start_agent(greeting_for(woken_by, self._config))
+            agent_id = await self._start_agent(greeting)
             if generation != self._store.generation:
                 self._logger.log("start_superseded", {"agent_id": agent_id})
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
-            self._begin(agent_id, user)
-            self._logger.log("agent_started", {"agent_id": agent_id})
-            self._intelligence.session_started(
-                bool(woken_by), language_of_call(woken_by), explains=user is not None
-            )
+            self._begin(agent_id, mode, person)
+            self._logger.log("agent_started", {"agent_id": agent_id, "mode": mode.value})
+            self._tell_intelligence(woken_by, mode, person, language)
             return await self._publish_state()
 
-    def _already_running(self, woken_by: str | None, user: User | None) -> SessionState:
-        if user is not None and user.user_id != self._store.user_id:
+    def _tell_intelligence(
+        self,
+        woken_by: str | None,
+        mode: SessionMode,
+        person: User | None,
+        language: Language | None,
+    ) -> None:
+        """How Mochi takes part from here on. A review, and a web user's own session that was
+        started by its wake phrase, are conversations with Mochi (D-57). A web user's session
+        started without it is a quiet listener that may explain an expression aloud (D-62). The
+        device's meeting is neither: Mochi waits for its name (D-43)."""
+        reviewing = mode is SessionMode.REVIEW
+        own = person is not None and not reviewing
+        talking = reviewing or (own and bool(woken_by))
+        self._intelligence.session_started(talking, language, explains=own)
+
+    def _person(self, mode: SessionMode, user_id: str | None, user: User | None) -> User | None:
+        """Who the session is for: the reviewer, a web session's user, or nobody in particular
+        (the device's meeting). Raises before anything is started."""
+        if mode is SessionMode.REVIEW:
+            return user or self._reviewer(user_id)
+        if user is not None and self._config.session_id == SESSION_ID:
+            raise ConflictError(f"session {SESSION_ID!r} is the device's; start another id")
+        return user
+
+    def _reviewer(self, user_id: str | None) -> User:
+        person = self._store.roster.user(user_id or "")
+        if person is None:
+            known = ", ".join(self._store.roster.user_ids())
+            raise InvalidRequestError(
+                f"a review needs a known user_id; got {user_id!r}, expected one of: {known}"
+            )
+        return person
+
+    def _already_running(self, mode: SessionMode, person: User | None) -> SessionState:
+        """A Start while the session runs changes nothing; one for another web user is refused."""
+        theirs = mode is not SessionMode.REVIEW and person is not None
+        if theirs and person is not None and person.user_id != self._store.user_id:
             raise ConflictError(
                 f"session {self._config.session_id!r} is running for another user; "
                 f"expected user_id {self._store.user_id!r} or none"
             )
-        if woken_by:  # called on the device while a session runs: Mochi listens to that person now
-            self._intelligence.session_started(True, language_of_call(woken_by))
         return self._store.session_state()
+
+    def _opening(
+        self, woken_by: str | None, mode: SessionMode, person: User | None
+    ) -> tuple[str, Language | None]:
+        """Mochi's first line and its language. A review greets its person in their own language."""
+        if mode is not SessionMode.REVIEW or person is None:
+            return greeting_for(woken_by, self._config), language_of_call(woken_by)
+        home = (person.comfortable_languages or [Language.EN])[0]
+        return REVIEW_GREETINGS[home], home
 
     async def stop(self) -> SessionState:
         """Stop capturing at once, then the agent. Idempotent; a gone agent is fine."""
         self._store.invalidate()
         self._record()  # now: a turn still in flight is dropped by `invalidate` anyway
         agent_id = self._store.agent_id
-        was_playing = self._store.activity.state is not GameState.IDLE
         self._end_locally()
-        async with (
-            self._commit
-        ):  # a turn that is mid-publish finishes first, then everything is cleared
+        async with self._commit:  # a turn that is mid-publish finishes first, then all is cleared
             await self._live_hint.clear()
+            closed = self._journal.end()  # after that turn: what it counted belongs here
+            shown = self._journal.words_shown()
             state = await self._publish_state()
-            if was_playing:
-                await self._hub.publish(EventType.ACTIVITY_STATE_CHANGED, self._store.activity)
+        if closed is not None and self._after is not None:
+            self._after.begin(closed, shown)  # in the background: Stop never waits for a report
         if agent_id is not None:
             await self._stop_agent(agent_id)  # after local capture is off: the Pi sees false now
         return state
+
+    async def interrupt(self) -> bool:
+        """Someone started talking while Mochi was: stop its voice now, and have it just listen.
+
+        The device calls this the moment it hears a person over Mochi (D-50). True when a
+        running agent was told to stop; False when no session runs or Agora could not be told
+        (Mochi's own state goes quiet either way).
+        """
+        agent_id = self._store.agent_id
+        if agent_id is None or not self._store.capturing:
+            return False
+        self._intelligence.interrupted()
+        self._silence.finished_speaking()
+        try:
+            await self._agora.interrupt(agent_id)
+        except AgoraError as error:
+            self._logger.log("agora_interrupt_failed", {"agent_id": agent_id, "error": str(error)})
+            return False
+        self._logger.log("interrupted", {"agent_id": agent_id})
+        return True
 
     def join_info(self) -> AgoraJoin:
         """Where a phone joins this session's channel (its own, never the Pi's)."""
@@ -208,7 +294,7 @@ class SessionService:
         )
 
     def _record(self) -> None:
-        """Leave the session record of a session started with a user, once (D-42)."""
+        """Leave the web session record of a session started with a user, once (D-56)."""
         store, started = self._store, self._store.started_at
         if store.user_id is None or started is None or self._history is None:
             return
@@ -219,34 +305,41 @@ class SessionService:
         store.user_id, store.started_at = None, None  # a second Stop writes nothing
         self._history.add(record)
 
-    def _claim(self, user: User | None) -> None:
-        """Whose session this is from now on: the Pi's two people, or a user and `guest`."""
-        if user is None:
-            self._store.belong_to(DEMO_PARTICIPANTS, Language.EN, None)
+    def _claim(self, mode: SessionMode, person: User | None) -> None:
+        """Whose session this is from now on: everyone the roster knows (the device's
+        meeting), the one person of a review, or a web user and `guest`."""
+        if person is None:
+            self._store.belong_to(None, Language.EN, None)
+        elif mode is SessionMode.REVIEW:
+            self._store.belong_to([as_participant(person)], person.target_language, None)
         else:
-            participants = session_participants(user)
-            self._store.belong_to(participants, user.target_language, user.user_id)
+            people = session_participants(person)
+            self._store.belong_to(people, person.target_language, person.user_id)
         self._store.started_at = self._clock.now()
 
-    def _begin(self, agent_id: str, user: User | None = None) -> None:
-        self._claim(user)
+    def _begin(self, agent_id: str, mode: SessionMode, person: User | None) -> None:
+        self._claim(mode, person)
         expires = self._clock.now() + timedelta(seconds=self._config.token_ttl_seconds)
         self._store.agent_id = agent_id
         self._store.pi_token = self._issue(self._config.pi_uid)
         self._store.pi_token_expires_at = expires
         self._store.status, self._store.capturing = SessionStatus.ACTIVE, True
-        self._store.mode, self._store.commands = SessionMode.TOGETHER, []
+        reviewer = person.user_id if mode is SessionMode.REVIEW and person else None
+        self._store.mode, self._store.reviewer, self._store.commands = mode, reviewer, []
+        self._store.speaker = reviewer  # in a review every sentence is that person's
         # The last session's sentences and hints are not this one's: a hint shown five minutes ago
         # must not count as "a hint in the last two turns" now.
         self._store.turns, self._store.hints = [], []
         self._store.last_heard = (-1, "")
+        people = [person.user_id for person in self._store.people()]
+        self._journal.begin(self._config.session_id, mode, people)
 
     def _end_locally(self) -> None:
         self._store.agent_id, self._store.pi_token = None, None
         self._store.commands, self._store.last_heard = [], (-1, "")
         self._store.status, self._store.capturing = SessionStatus.ENDED, False
-        self._store.end_game()  # an unfinished round must not keep the next session deaf
-        self._hub.forget_secrets()
+        self._store.back_to_meeting()  # a review does not carry over into the next session
+        self._store.belong_to(None, Language.EN, None)  # nor does a web user's session
         self._silence.finished_speaking()  # a speaking window must not outlive the session
 
     def _issue(self, uid: int) -> str:

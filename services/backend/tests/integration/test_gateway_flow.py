@@ -3,22 +3,13 @@
 import pytest
 
 from mochi_backend.gateway.agora.client_port import AgentAlreadyStoppedError, AgoraError
-from mochi_backend.gateway.errors import ConflictError, NotFoundError, UpstreamError
+from mochi_backend.gateway.errors import NotFoundError, UpstreamError
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_contracts import (
-    Activity,
-    ActivityCommand,
-    ActivityResult,
-    Decision,
     DecisionKind,
-    Language,
-    LearningEvent,
     LearningState,
-    PrivatePrompt,
-    RoundResult,
-    SessionContext,
-    Turn,
 )
+from tests.fakes.broken_intelligence import BrokenIntelligence
 from tests.harness import ANA, AUDIENCE, BEN, HOME, Harness, make_harness
 
 ADIAR = "I need to adiar my meeting tomorrow."
@@ -89,33 +80,7 @@ async def test_hint_expires_and_a_newer_hint_replaces_the_old_one() -> None:
 
 
 async def test_a_failing_or_slow_decide_means_silence() -> None:
-    class Broken:
-        async def decide(self, turn: Turn, context: SessionContext) -> Decision:
-            raise RuntimeError("boom")
-
-        def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
-            raise NotImplementedError
-
-        def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
-            return proposals
-
-        def words_for(self, user_id: str) -> list[LearningEvent]:
-            return []
-
-        def reset(self) -> None:
-            return None
-
-        def session_started(
-            self, woken: bool, language: Language | None = None, explains: bool = False
-        ) -> None:
-            return None
-
-        def device_status(
-            self, volume: int | None, temperature: int | None, voices: list[str], who: str | None
-        ) -> None:
-            return None
-
-    harness = await _started(intelligence=Broken())
+    harness = await _started(intelligence=BrokenIntelligence())
     outcome = await harness.say(ADIAR)
     assert outcome.reply == "" and outcome.decision.decision is DecisionKind.IGNORE
     assert "decide_failed" in harness.logger.names()
@@ -127,11 +92,10 @@ async def test_snapshot_on_connect_respects_visibility() -> None:
     ana, ben, audience = await harness.connect_all(ANA, BEN, AUDIENCE)
     assert ana.types() == [
         "session.state.changed",
-        "activity.state.changed",
         "hint.created",
         "learning_event.created",  # her saved word, replayed (words survive a restart)
     ]
-    assert ben.types() == ["session.state.changed", "activity.state.changed"]
+    assert ben.types() == ["session.state.changed"]
     assert audience.types()[-1] == "hint.created"
 
 
@@ -175,7 +139,8 @@ async def test_pi_token_is_cached_until_near_expiry() -> None:
     first = devices.state("home_pi_01").agora
     again = devices.state("home_pi_01").agora
     assert first is not None and again is not None and first.token == again.token
-    harness.clock.advance(3600 - 60)  # inside the 5-minute refresh margin
+    ttl = harness.container.settings.mochi_token_ttl_seconds
+    harness.clock.advance(ttl - 60)  # inside the 5-minute refresh margin
     refreshed = devices.state("home_pi_01").agora
     assert refreshed is not None and first is not None and refreshed.token != first.token
 
@@ -224,24 +189,18 @@ async def test_empty_reply_strategy_never_mutes() -> None:
     assert harness.container.devices.state("home_pi_01").speaker_muted is False
 
 
-async def test_reset_clears_words_game_and_hint_but_keeps_capturing() -> None:
+async def test_reset_clears_words_history_and_hint_but_keeps_capturing() -> None:
     harness = await _started()
     ana, home = await harness.connect(ANA), await harness.connect(HOME)
     await harness.say(ADIAR)
-    await harness.container.activity.start()
     await harness.container.demo_reset.run()
     assert harness.container.core.intelligence.words_for("ana") == []
     assert harness.container.core.store.capturing
     assert harness.container.core.live_hint.current is None
-    assert home.types()[-2:] == ["session.state.changed", "activity.state.changed"]
-    last = ana.events[-1].payload
-    assert isinstance(last, Activity) and last.state.value == "IDLE"
-
-
-async def test_activity_conflicts_are_409s() -> None:
-    harness = await _started()
-    with pytest.raises(ConflictError, match="expected ACTIVE_ROUND"):
-        await harness.container.activity.finish(RoundResult.GUESSED)
+    assert home.types()[-1] == "session.state.changed"
+    assert ana.types()[-1] == "session.state.changed"
+    assert harness.container.team_service.sessions("demo", "ana") == []
+    assert harness.container.team_service.moments_of("ana", "ana") == []
 
 
 async def test_the_full_walkthrough_from_agents_section_2() -> None:
@@ -259,53 +218,15 @@ async def test_the_full_walkthrough_from_agents_section_2() -> None:
         "Yes, I will postpone it until Thursday."
     )  # filler turns respect the cooldown
     await harness.say(GUARDA_CHUVA)
-    cut = len(audience.texts)
-    await harness.container.activity.start()
-    prompt = [e for e in home.events if e.type.value == "activity.private_prompt"][0]
-    assert isinstance(prompt.payload, PrivatePrompt)
-    assert prompt.payload.secret_word == "umbrella"
-    for watcher in (ana, ben, audience):
-        assert "activity.private_prompt" not in watcher.types()
-    assert all("umbrella" not in t for t in audience.texts[cut:])
-    await harness.container.activity.finish(RoundResult.GUESSED)
-    assert "umbrella" in "".join(audience.texts[-3:])  # the result, the session, Mochi's line
-    assert harness.agora.spoken[-1][1] == "Ana got it!"  # the host confirms it out loud
+    assert audience.types().count("hint.created") == 2 and harness.agora.spoken == []
     words = {
         e.expression: e.learning_state for e in harness.container.core.intelligence.words_for("ana")
     }
-    assert words == {"umbrella": LearningState.REINFORCED, "postpone": LearningState.ASSISTED}
+    assert words == {"umbrella": LearningState.DISCOVERED, "postpone": LearningState.ASSISTED}
     assert harness.container.core.intelligence.words_for("ben") == []
     assert [e.type.value for e in ben.events].count("hint.created") == 0
     await harness.container.sessions.stop()
     assert harness.container.devices.state("home_pi_01").capturing is False
-
-
-async def test_home_reconnecting_mid_round_gets_the_private_prompt_and_nobody_else_does() -> None:
-    harness = make_harness()
-    await harness.container.sessions.start()
-    await harness.container.activity.start()
-    home, audience, ana, ben = await harness.connect_all(HOME, AUDIENCE, ANA, BEN)
-    prompts = [e for e in home.events if e.type.value == "activity.private_prompt"]
-    assert len(prompts) == 1 and isinstance(prompts[0].payload, PrivatePrompt)
-    assert home.types().index("activity.private_prompt") > home.types().index(
-        "activity.state.changed"
-    )
-    secret = prompts[0].payload.secret_word
-    for watcher in (audience, ana, ben):
-        assert "activity.private_prompt" not in watcher.types()
-        assert all(secret not in text for text in watcher.texts)
-
-
-async def test_no_private_prompt_after_the_round_ends_or_the_session_stops() -> None:
-    harness = make_harness()
-    await harness.container.sessions.start()
-    await harness.container.activity.start()
-    await harness.container.activity.finish(RoundResult.GUESSED)
-    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()
-    await harness.container.activity.start()
-    await harness.container.sessions.stop()
-    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()
-    await harness.container.sessions.start()
-    await harness.container.activity.start()
-    await harness.container.demo_reset.run()
-    assert "activity.private_prompt" not in (await harness.connect(HOME)).types()
+    [record] = harness.container.team_service.sessions("demo", "ana")
+    assert record.ended_at is not None and sum(s.turns for s in record.speaking) == 5
+    assert ana.types().count("learning_event.created") == 2

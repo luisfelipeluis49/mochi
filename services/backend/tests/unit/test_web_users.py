@@ -1,4 +1,4 @@
-"""Web users and session records (D-42): ids, directory, participants, records, socket query."""
+"""Web users and session records (D-56): ids, directory, participants, records, socket query."""
 
 import re
 from datetime import timedelta
@@ -134,11 +134,11 @@ def test_parse_target_accepts_a_created_user_and_refuses_guest() -> None:
     user = directory.create("Luís", Language.PT_BR, Language.EN)
     query = {"user": user.user_id, "session": "w-1a2b3c4d"}
     expected = ConnectionTarget("mobile", user_id=user.user_id, session_id="w-1a2b3c4d")
-    assert parse_target(query, directory.may_connect) == expected
-    assert parse_target({"user": "ana"}, directory.may_connect).user_id == "ana"
-    assert parse_target({"user": "ben"}, directory.may_connect).user_id == "ben"
+    assert parse_target(query, may_connect=directory.may_connect) == expected
+    assert parse_target({"user": "ana"}, may_connect=directory.may_connect).user_id == "ana"
+    assert parse_target({"user": "ben"}, may_connect=directory.may_connect).user_id == "ben"
     with pytest.raises(ValueError, match="user=ana\\|ben\\|<user_id>"):
-        parse_target({"user": "guest"}, directory.may_connect)
+        parse_target({"user": "guest"}, may_connect=directory.may_connect)
 
 
 def test_parse_target_without_a_directory_knows_only_ana_and_ben() -> None:

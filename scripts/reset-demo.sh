@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clear saved words, the game and the live hint. Capturing is left as it is.
+# Clear saved words, the learning history and the live hint. Capturing is left as it is.
 set -euo pipefail
 . "$(dirname "$0")/_lib.sh"
 usage_and_exit_if_help "Usage: scripts/reset-demo.sh

@@ -4,7 +4,9 @@
 temperature, `[enroll Ana pt]` / `[forget Ana]` learn and forget a voice, `[bye]` ends the session
 once Mochi's goodbye has been heard. The device reads them from its state (`commands`) and does each
 one once. A hint adds a command of its own that Mochi does not write: `hint`, whose value is a JSON
-card (`word`, `language`, `meaning`, `example`).
+card (`word`, `language`, `meaning`, `example`, `why`). So do the live transcript (`caption`:
+`who`, `text`) and an explained idiom or term (`explain`: `word`, `meaning`, `plain`, `kind`), D-51
+to D-53.
 """
 
 import re

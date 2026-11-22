@@ -8,8 +8,8 @@ from mochi_backend.composition import build_container, default_adapters
 from mochi_backend.gateway.container import AppContainer
 from mochi_backend.gateway.errors import GatewayError
 from mochi_backend.gateway.routes import (
-    activity,
     agora_llm,
+    companies,
     dev_tools,
     devices,
     health,
@@ -37,7 +37,7 @@ def create_app(container: AppContainer) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_exception_handler(GatewayError, _gateway_error)
-    for module in (health, sessions, users, activity, devices, voices, agora_llm, websocket):
+    for module in (health, sessions, users, companies, devices, voices, agora_llm, websocket):
         app.include_router(module.router)
     if container.settings.mochi_enable_dev_routes:
         app.include_router(dev_tools.router)

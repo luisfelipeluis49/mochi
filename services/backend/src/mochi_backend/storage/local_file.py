@@ -7,14 +7,25 @@ on every deploy (see D-33).
 
 import json
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import voice_key
-from mochi_backend.storage.session_record import SessionRecord
-from mochi_contracts import LearningEvent, User, VoiceProfile
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
+from mochi_contracts import (
+    Company,
+    ConversationReport,
+    LearningEvent,
+    Member,
+    SessionRecord,
+    User,
+    Utterance,
+    VoiceProfile,
+    WordMoment,
+)
 
 
 class LocalFileStorage:
@@ -26,7 +37,13 @@ class LocalFileStorage:
         self._users: dict[str, User] = {}
         self._events: dict[str, LearningEvent] = {}
         self._voices: dict[str, VoiceProfile] = {}
-        self._sessions: list[SessionRecord] = []
+        self._companies: dict[str, Company] = {}
+        self._members: dict[tuple[str, str], Member] = {}
+        self._records: dict[str, SessionRecord] = {}
+        self._moments: dict[str, WordMoment] = {}
+        self._utterances: dict[str, Utterance] = {}
+        self._reports: dict[str, ConversationReport] = {}
+        self._sessions: list[WebSessionRecord] = []
         self._read()
 
     def _read(self) -> None:
@@ -37,7 +54,19 @@ class LocalFileStorage:
         self._users = {u.user_id: u for u in self._rows("users", saved, User)}
         self._events = {e.learning_event_id: e for e in self._rows("events", saved, LearningEvent)}
         self._voices = {voice_key(v.name): v for v in self._rows("voices", saved, VoiceProfile)}
-        self._sessions = self._rows("sessions", saved, SessionRecord)
+        self._sessions = self._rows("sessions", saved, WebSessionRecord)
+        self._read_team(saved)
+
+    def _read_team(self, saved: dict[str, list[object]]) -> None:
+        self._companies = {c.company_id: c for c in self._rows("companies", saved, Company)}
+        members = self._rows("members", saved, Member)
+        self._members = {(m.company_id, m.user_id): m for m in members}
+        self._records = {r.record_id: r for r in self._rows("records", saved, SessionRecord)}
+        self._moments = {m.moment_id: m for m in self._rows("moments", saved, WordMoment)}
+        said = self._rows("utterances", saved, Utterance)
+        self._utterances = {u.utterance_id: u for u in said}
+        reports = self._rows("reports", saved, ConversationReport)
+        self._reports = {r.report_id: r for r in reports}
 
     def _rows[T: BaseModel](
         self, table: str, saved: dict[str, list[object]], model: type[T]
@@ -51,19 +80,29 @@ class LocalFileStorage:
         return kept
 
     def _write(self) -> None:
-        text = json.dumps(
-            {
-                "users": [u.model_dump(mode="json") for u in self._users.values()],
-                "events": [e.model_dump(mode="json") for e in self._events.values()],
-                "voices": [v.model_dump(mode="json") for v in self._voices.values()],
-                "sessions": [r.model_dump(mode="json") for r in self._sessions],
-            }
+        tables: dict[str, Iterable[BaseModel]] = {
+            "users": self._users.values(),
+            "events": self._events.values(),
+            "voices": self._voices.values(),
+            "companies": self._companies.values(),
+            "members": self._members.values(),
+            "records": self._records.values(),
+            "moments": self._moments.values(),
+            "utterances": self._utterances.values(),
+            "reports": self._reports.values(),
+            "sessions": self._sessions,
+        }
+        self._replace_file(
+            {name: [row.model_dump(mode="json") for row in rows] for name, rows in tables.items()}
         )
+
+    def _replace_file(self, tables: dict[str, list[dict[str, object]]]) -> None:
+        """Write the whole file beside the old one, then swap: a crash never leaves half a file."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self._path.with_suffix(".tmp")
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, "w") as handle:
-            handle.write(text)
+            handle.write(json.dumps(tables))
         os.replace(temporary, self._path)
 
     def load_users(self) -> list[User]:
@@ -75,9 +114,15 @@ class LocalFileStorage:
         self._users |= {u.user_id: u for u in users if u.user_id not in self._users}
         self._write()
 
-    def save_user(self, user: User) -> None:
-        """Add the user if missing."""
-        self.seed_users([user])
+    def load_sessions(self) -> list[WebSessionRecord]:
+        """Web session records, oldest first."""
+        return list(self._sessions)
+
+    def save_session(self, record: WebSessionRecord) -> None:
+        """Add a record (one already there by id is left as it is)."""
+        if all(kept.record_id != record.record_id for kept in self._sessions):
+            self._sessions.append(record)
+        self._write()
 
     def load_events(self) -> list[LearningEvent]:
         """Events in the order first saved."""
@@ -107,14 +152,73 @@ class LocalFileStorage:
         self._voices.pop(voice_key(name), None)
         self._write()
 
-    def load_sessions(self) -> list[SessionRecord]:
-        """Session records, oldest first."""
-        return list(self._sessions)
+    def save_user(self, user: User) -> None:
+        """Create or replace by id."""
+        self._users[user.user_id] = user
+        self._write()
 
-    def save_session(self, record: SessionRecord) -> None:
-        """Add a record (one already there by id is left as it is)."""
-        if all(kept.record_id != record.record_id for kept in self._sessions):
-            self._sessions.append(record)
+    def load_companies(self) -> list[Company]:
+        """Every stored company."""
+        return list(self._companies.values())
+
+    def load_members(self) -> list[Member]:
+        """Every stored membership."""
+        return list(self._members.values())
+
+    def seed_company(self, company: Company, members: list[Member]) -> None:
+        """Add the company and the memberships that are missing."""
+        self._companies.setdefault(company.company_id, company)
+        for member in members:
+            self._members.setdefault((member.company_id, member.user_id), member)
+        self._write()
+
+    def save_member(self, member: Member) -> None:
+        """Create or replace one membership."""
+        self._members[(member.company_id, member.user_id)] = member
+        self._write()
+
+    def load_records(self) -> list[SessionRecord]:
+        """Records in the order first saved."""
+        return list(self._records.values())
+
+    def save_record(self, record: SessionRecord) -> None:
+        """Create or replace by id (a replaced record keeps its place)."""
+        self._records[record.record_id] = record
+        self._write()
+
+    def load_moments(self) -> list[WordMoment]:
+        """Moments in the order saved."""
+        return list(self._moments.values())
+
+    def save_moment(self, moment: WordMoment) -> None:
+        """Keep one moment."""
+        self._moments.setdefault(moment.moment_id, moment)
+        self._write()
+
+    def load_utterances(self) -> list[Utterance]:
+        """Sentences in the order first saved."""
+        return list(self._utterances.values())
+
+    def save_utterance(self, utterance: Utterance) -> None:
+        """Create or replace by id (a replaced sentence keeps its place)."""
+        self._utterances[utterance.utterance_id] = utterance
+        self._write()
+
+    def load_reports(self) -> list[ConversationReport]:
+        """Reports in the order saved."""
+        return list(self._reports.values())
+
+    def save_report(self, report: ConversationReport) -> None:
+        """Keep one report."""
+        self._reports.setdefault(report.report_id, report)
+        self._write()
+
+    def clear_history(self) -> None:
+        """Delete every record, moment, sentence and report."""
+        self._records.clear()
+        self._moments.clear()
+        self._utterances.clear()
+        self._reports.clear()
         self._write()
 
     def unsaved_writes(self) -> int:

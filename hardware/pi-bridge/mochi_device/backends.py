@@ -9,16 +9,21 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
   (POST /api/sessions/demo/start|stop), reads the join info from
   GET /api/devices/{device_id}/state, and keeps reading that state while the session runs: the
   backend can end the session, silence the speaker, and move Mochi's body (the `commands` in the
-  state: face, volume, temperature, voices, a Describe & Guess round). The Pi reports its volume,
-  temperature and the voices it knows (POST .../status, .../voices), and how a round ended (a tap
-  on the screen). No agent logic here: that stays in services/backend.
+  state: face, volume, temperature, voices, a hint for someone who is stuck). The Pi reports its
+  volume, temperature, the voices it knows and who is talking (POST .../status, .../voices). A
+  session started here is a meeting (Papear's meeting mode); a review happens on a phone. No agent
+  logic here: that stays in services/backend.
 """
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import http.client
 import json
 import os
 import re
+import threading
+import time
 import urllib.parse
 import urllib.request
 import warnings
@@ -96,10 +101,10 @@ Examples: "[mood cool][volume 80] Louder it is!"
 "[mood sleepy][temp] I'm at fifty-two degrees, nice and warm." (asked in English)
 "[mood sleepy][temp] Estou com cinquenta e dois graus, quentinho." (asked in Portuguese)
 
-Right now you can only chat. Usually people can also ask you to keep quiet company while two of them
-talk to each other, or to host a guessing game (Describe & Guess), but both need your home base,
-which you cannot reach at the moment. If someone asks for one of them, say in a few words that you
-cannot do it just now, and offer to practise with them instead.
+Right now you can only chat. Usually you also keep quiet company in people's meetings: you listen
+while they talk to each other and put a word on your screen when one of them is stuck. That needs
+your home base, which you cannot reach at the moment. If someone asks for it, say in a few words
+that you cannot do it just now, and offer to help with words while you talk instead.
 """
 STATUS = """Right now your speaker volume is {volume} of 100 and your temperature is {temp} degrees Celsius.
 {voices}
@@ -114,7 +119,7 @@ Before every reply, check three things:
 5. It uses a name only if you were told it or recognise the voice, and it does not send anyone to a
    partner you do not know is there."""
 TAG = re.compile(r"\[\s*(volume|mood|show|temp|enroll|forget|bye)\b\s*:?\s*([^\]]*?)\s*\]", re.I)
-PORTUGUESE_CUES = {"oi", "ola", "olá", "alo", "alô", "e", "bom", "boa", "tchau"}
+PORTUGUESE_CUES = {"oi", "ola", "olá", "alo", "alô", "e", "bom", "boa", "tchau", "vamos", "vamo"}
 
 
 def _moved(now: tuple[int | None, int | None], told: tuple[int | None, int | None]) -> bool:
@@ -140,9 +145,14 @@ class Body:
     def __init__(self, device: Device, on_event=None):
         """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
         "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session) |
-        "hint" (value: {"word", "language", "meaning", "example"}: a word someone needed) |
+        "hint" (value: {"word", "language", "meaning", "example"}, and "candidates" when other
+        words fit as well: a word someone needed) |
         "used" (value: {"word", "language"}: someone went on to say a word they were given) |
-        "round" (value: the round card, see services/backend gateway/device_service.py)."""
+        "caption" (value: {"who", "text"}: a sentence that was just said, for the live transcript) |
+        "explain" (value: {"word", "meaning", "plain", "kind"}: an idiom or a technical term that
+        was just said, and what it means) |
+        "suggest" (value: {"hint_id", "text", "language"}: the whole sentence someone was reaching
+        for; a touch on the screen has Mochi say it)."""
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
 
@@ -157,12 +167,19 @@ class Body:
             self.on_event("temp", await asyncio.to_thread(self.device.temperature))
         elif kind == "bye":
             self.on_event("bye", None)
-        elif kind in ("hint", "used", "round"):  # from the backend, as a JSON card: a word someone
-            try:                                 # needed, one they then said, or a round of the game
+        elif kind in ("hint", "used"):  # from the backend, as a JSON card: a word someone needed,
+            try:                        # or one they then said
                 card = json.loads(value)
             except ValueError:
                 return
-            if isinstance(card, dict) and card.get("state" if kind == "round" else "word"):
+            if isinstance(card, dict) and card.get("word"):
+                self.on_event(kind, card)
+        elif kind in ("caption", "explain", "suggest"):  # what was just said, what an idiom in it
+            try:                                         # means, the sentence someone reached for
+                card = json.loads(value)
+            except ValueError:
+                return
+            if isinstance(card, dict) and card.get("word" if kind == "explain" else "text"):
                 self.on_event(kind, card)
         elif kind == "enroll":
             words = value.split()
@@ -283,7 +300,7 @@ class TestAgentBackend:
         cue = (wake_phrase or "").lower().split()[:1]
         greeting = c.get("greeting_pt", "Oi! Pode falar.") if cue and cue[0] in PORTUGUESE_CUES else c.get("greeting", "Yes?")
         token = generate_convo_ai_token(app_id=self.app_id, app_certificate=self.cert,
-                                        channel_name=channel, uid=bridge_uid, token_expire=3600)
+                                        channel_name=channel, uid=bridge_uid, token_expire=7200)
         client = AsyncAgora(area=Area.US, app_id=self.app_id, app_certificate=self.cert)
         status = self._told = self._status()
         turn_detection = {"config": {
@@ -313,7 +330,7 @@ class TestAgentBackend:
         )
         self._session = agent.create_async_session(
             channel=channel, agent_uid=str(c["agent_uid"]), remote_uids=[str(bridge_uid)],
-            enable_string_uid=False, idle_timeout=30, expires_in=3600,
+            enable_string_uid=False, idle_timeout=30, expires_in=7200,
         )
         agent_id = await self._session.start()
         print(f"[mochi] test agent {agent_id} started in '{channel}'", flush=True)
@@ -321,6 +338,18 @@ class TestAgentBackend:
         await self._tell(status)  # someone may have been recognised while the agent was starting
         self._watcher = asyncio.create_task(self._watch())
         return JoinInfo(self.app_id, channel, bridge_uid, token)
+
+    async def interrupt(self) -> None:
+        """Someone is talking over Mochi: its own agent stops talking at once."""
+        if self._session:
+            try:
+                await self._session.interrupt()
+            except Exception as e:
+                print(f"[mochi] agent interrupt: {e!r}"[:300], flush=True)
+
+    async def hush_speaker(self, quiet: bool) -> None:
+        """Silence the speaker at once, or give it back."""
+        await asyncio.to_thread(self.device.set_muted, quiet)
 
     async def _act(self, kind: str, value: str) -> None:
         """Carry out one silent command the agent wrote."""
@@ -407,11 +436,13 @@ class MochiBackend:
         self._done: set[str] = set()  # commands already carried out in this session
         self._voices: tuple[list[str], str | None] = ([], None)
         self._voices_news = False  # who is talking changed: the backend should know before the reply
-        self._round_there = False  # the last state read had a round in it
+        self._heard: list[tuple[str | None, float, float]] = []  # (who, seconds, when it ended): not yet reported
         self._told = None  # the last status the backend was given
         self._status_failing = False
         self._local_voices = None
         self._sync_task: asyncio.Task | None = None
+        self._line: http.client.HTTPConnection | None = None  # kept open between two state reads
+        self._line_lock = threading.Lock()
 
     def __repr__(self) -> str:
         return f"MochiBackend({self.base!r}, {self.device_id!r})"  # no device key
@@ -428,8 +459,45 @@ class MochiBackend:
             return json.loads(reply) if reply else {}
 
     def _state(self, timeout: float = 10) -> dict:
-        # with the device key: only then does a round come with its secret word
-        return self._req("GET", f"/api/devices/{self.device_id}/state", timeout, auth=True)
+        """The device state, read over a connection that stays open between two reads.
+
+        A hint is on the screen only once the next read comes back, and every read used to open a
+        new connection: to a hosted backend that is a TLS handshake each time (measured from this
+        Pi to Render: 0.3 to 0.65 s per read, against about 0.1 s on an open connection). If the
+        open one fails for any reason (the far end closed it, a timeout), it is dropped and this
+        read is made the old way, so errors reach the caller exactly as they did before."""
+        # the route is open; the device key is sent anyway, so the backend can tell its own device
+        path = f"/api/devices/{self.device_id}/state"
+        try:
+            return self._kept_get(path, timeout)
+        except Exception:
+            self._drop_line()
+            return self._req("GET", path, timeout, auth=True)
+
+    def _kept_get(self, path: str, timeout: float) -> dict:
+        with self._line_lock:
+            url = urllib.parse.urlsplit(self.base)
+            if self._line is None:
+                secure = url.scheme == "https"
+                make = http.client.HTTPSConnection if secure else http.client.HTTPConnection
+                self._line = make(url.netloc, timeout=timeout)
+            line = self._line
+            if line.sock is not None:
+                line.sock.settimeout(timeout)
+            headers = {"Authorization": f"Bearer {self.device_key}"} if self.device_key else {}
+            line.request("GET", url.path + path, headers=headers)
+            reply = line.getresponse()
+            data = reply.read()
+            if reply.status != 200:
+                raise RuntimeError(f"state read answered HTTP {reply.status}")
+            return json.loads(data) if data else {}
+
+    def _drop_line(self) -> None:
+        with self._line_lock:
+            line, self._line = self._line, None
+        if line is not None:
+            with contextlib.suppress(Exception):
+                line.close()
 
     async def ping(self) -> bool:
         """Touch the backend so a hosted one does not go to sleep (a free Render service stops after
@@ -443,7 +511,7 @@ class MochiBackend:
 
     async def start(self, wake_phrase: str | None = None) -> JoinInfo:
         self._stopped_by_backend = False
-        self._done, self._told, self._round_there = set(), None, False
+        self._done, self._told, self._heard = set(), None, []
         await self._report()  # so Mochi's first words already know how loud and warm it is
         body = {"woken_by": wake_phrase} if wake_phrase else {}
         await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/start", 10, body)
@@ -462,6 +530,39 @@ class MochiBackend:
         """Called whenever the Pi recognises a (different) speaker or learns / forgets a voice."""
         if (list(known), speaker) != self._voices:
             self._voices, self._voices_news = (list(known), speaker), True  # reported on the next poll
+
+    async def interrupt(self) -> None:
+        """Someone is talking over Mochi: the backend stops its voice and has it just listen."""
+        try:
+            await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/interrupt", 5, {})
+        except Exception as e:  # the speaker is silent already; Mochi's sentence then simply runs out
+            print(f"[mochi] backend interrupt: {e!r}"[:300], flush=True)
+
+    async def say_suggestion(self, hint_id: str) -> bool:
+        """The screen was touched while a suggested sentence was showing: the backend has Mochi say
+        it aloud. True when it is being said."""
+        try:
+            path = f"/api/sessions/{self.session_id}/hints/{hint_id}/say"
+            answer = await asyncio.to_thread(self._req, "POST", path, 5, {})
+            return bool(answer and answer.get("said"))
+        except Exception as e:  # nothing is said; the sentence is still on the screen to read
+            print(f"[mochi] backend say: {e!r}"[:300], flush=True)
+            return False
+
+    async def hush_speaker(self, quiet: bool) -> None:
+        """Silence the speaker at once (someone talks over Mochi), or give it back. The backend's own
+        speaker_muted is left as it was."""
+        if self.device and not self._muted:
+            await asyncio.to_thread(self.device.set_muted, quiet)
+
+    HEARD_KEEP = 40  # stretches kept for the next report when one could not be sent
+
+    def heard(self, speaker: str | None, seconds: float, ended: float) -> None:
+        """A stretch of speech ended (speakers.py "said"): who said it, how much speech, and when
+        (time.monotonic()). Reported with the next status, so the backend can tell whose each
+        sentence of a meeting is."""
+        self._heard = [*self._heard, (speaker, round(seconds, 2), ended)][-self.HEARD_KEEP:]
+        self._voices_news = True
 
     async def voice_enrolled(self, name: str, lang: str, learned: bool, voiceprint: dict | None = None) -> None:
         """Learning a voice ended; the backend has Mochi say so, and keeps the voiceprint (a replaced
@@ -509,23 +610,6 @@ class MochiBackend:
             if not other.get("voiceprint"):
                 await self._send_voiceprint(name, other.get("language") or "en", voice)
 
-    async def round_result(self, result: str) -> bool:
-        """The describer touched the screen: "guessed" (a tap) or "skipped" (a long press).
-        False when the backend did not take it, so the screen can be touched again."""
-        return await self._round("result", {"result": result})
-
-    async def next_round(self) -> bool:
-        """A tap on the result: another round (the backend swaps who describes)."""
-        return await self._round("start", {})
-
-    async def _round(self, what: str, body: dict) -> bool:
-        try:
-            await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/activity/{what}", 5, body)
-            return True
-        except Exception as e:  # 409: the round is over already (two taps), or one is still running
-            print(f"[mochi] backend round {what}: {e!r}"[:300], flush=True)
-            return False
-
     async def _report(self) -> None:
         """Tell the backend the volume, temperature and voices, if any of them changed."""
         try:
@@ -536,14 +620,19 @@ class MochiBackend:
             volume, temp = None, None
         known, speaker = self._voices
         status = {"volume": volume, "temperature": temp, "voices": known, "speaker": speaker}
-        told = self._told
-        if told and (known, speaker) == (told["voices"], told["speaker"]) \
+        told, sending, now = self._told, list(self._heard), time.monotonic()
+        if not sending and told and (known, speaker) == (told["voices"], told["speaker"]) \
                 and not _moved((volume, temp), (told["volume"], told["temperature"])):
             return
+        body = dict(status)
+        if sending:  # how long ago each stretch ended: the two clocks need not agree
+            body["heard"] = [{"speaker": who, "seconds": seconds, "ago_ms": int((now - ended) * 1000)}
+                             for who, seconds, ended in sending]
         try:
-            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, status, True)
+            await asyncio.to_thread(self._req, "POST", f"/api/devices/{self.device_id}/status", 5, body, True)
             self._status_failing = False
             self._told = status
+            self._heard = [h for h in self._heard if h not in sending]  # the ones heard meanwhile stay
         except Exception as e:  # not worth a session: Mochi just knows a little less about itself
             if not self._status_failing:
                 print(f"[mochi] backend status: {e!r}"[:300], flush=True)
@@ -553,10 +642,6 @@ class MochiBackend:
             self._told = status if told and (known, speaker) == (told["voices"], told["speaker"]) else told
 
     async def _obey(self, commands: list[dict]) -> None:
-        round_there = any(command.get("kind") == "round" for command in commands)
-        if self._round_there and not round_there:  # reset, or an old result: off the screen
-            self.on_event("round", {"state": "IDLE"})
-        self._round_there = round_there
         for command in commands:
             if command.get("command_id") in self._done:
                 continue
@@ -640,6 +725,7 @@ class MochiBackend:
             except BaseException:
                 pass
             self._poller = None
+        await asyncio.to_thread(self._drop_line)  # in a thread: a read may still hold it for a moment
         try:
             await self._mute(False)  # never leave the speaker silent after a session
         except Exception as e:  # a mixer that does not answer must not skip the stop below
@@ -685,6 +771,16 @@ class WithFallback:
         self.backend.set_voices(known, speaker)
         self.own_agent.set_voices(known, speaker)
 
+    def heard(self, speaker: str | None, seconds: float, ended: float) -> None:
+        self.backend.heard(speaker, seconds, ended)  # only the backend keeps a record of who said what
+
+    async def interrupt(self) -> None:
+        if self.active is not None and hasattr(self.active, "interrupt"):
+            await self.active.interrupt()
+
+    async def hush_speaker(self, quiet: bool) -> None:
+        await self.backend.hush_speaker(quiet)  # one speaker, whoever runs the session
+
     async def voice_enrolled(self, name: str, lang: str, learned: bool, voiceprint: dict | None = None) -> None:
         if self.active:
             await self.active.voice_enrolled(name, lang, learned, voiceprint)
@@ -694,12 +790,6 @@ class WithFallback:
 
     async def ping(self) -> bool:
         return await self.backend.ping()
-
-    async def round_result(self, result: str) -> bool:
-        return self.active is self.backend and await self.backend.round_result(result)  # only the backend plays
-
-    async def next_round(self) -> bool:
-        return self.active is self.backend and await self.backend.next_round()
 
 
 def make_backend(cfg: dict, on_event=None):

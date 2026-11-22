@@ -1,4 +1,4 @@
-"""The web app's own users and sessions, end to end over HTTP and WebSocket (DECISIONS D-42)."""
+"""The web app's own users and sessions, end to end over HTTP and WebSocket (DECISIONS D-56)."""
 
 import re
 
@@ -89,11 +89,9 @@ def test_a_web_session_is_the_users_and_guests_and_its_words_reach_only_them() -
         client.websocket_connect(f"/ws?user={user_id}&session={WEB}") as mine,
         client.websocket_connect("/ws?user=ana") as ana,
     ):
-        assert [mine.receive_json()["type"] for _ in range(2)] == [
-            "session.state.changed",
-            "activity.state.changed",
-        ]
-        assert [ana.receive_json()["type"] for _ in range(2)][0] == "session.state.changed"
+        # one event on connect each: there is no game state any more (D-57, D-58)
+        assert mine.receive_json()["type"] == "session.state.changed"
+        assert ana.receive_json()["type"] == "session.state.changed"
         started = client.post(f"/api/sessions/{WEB}/start", json={"user_id": user_id})
         assert started.json()["participants"] == [user_id, "guest"]
         assert started.json()["focus"] == "en"
@@ -226,19 +224,18 @@ def test_the_snapshot_is_in_order_and_holds_only_the_users_own_words() -> None:
     _start(client, WEB, user_id)
     client.post(f"/dev/sessions/{WEB}/turn", json={"text": "I forgot my guarda-chuva."})
     with client.websocket_connect(f"/ws?user={user_id}&session={WEB}") as mine:
-        events = [mine.receive_json() for _ in range(4)]
+        events = [mine.receive_json() for _ in range(3)]
         client.post(f"/api/sessions/{WEB}/stop")
         rest = [mine.receive_json()["type"] for _ in range(2)]  # the hint goes, then the state
     assert [e["type"] for e in events] == [
         "session.state.changed",
-        "activity.state.changed",
         "hint.created",
         "learning_event.created",
-    ]
-    assert events[3]["payload"]["user_id"] == user_id
-    assert events[3]["payload"]["expression"] == "umbrella"
+    ]  # no `activity.state.changed` any more: the game is gone (D-57, D-58)
+    assert events[2]["payload"]["user_id"] == user_id
+    assert events[2]["payload"]["expression"] == "umbrella"
     assert rest == ["hint.cleared", "session.state.changed"]  # Ana's word never came
-    assert all(e["session_id"] == WEB for e in events[:3])
+    assert all(e["session_id"] == WEB for e in events[:2])
 
 
 @pytest.mark.parametrize("user", ["guest", "nobody-000000"])
@@ -256,7 +253,7 @@ def test_guest_and_unknown_users_cannot_connect(user: str) -> None:
 def test_a_word_the_guest_would_own_reaches_the_person_in_the_language_they_practise() -> None:
     # Sam is at home in English and practises Portuguese, and says "adiar" in an English sentence.
     # The rules give "postpone (adiar)" to the guest, who is nobody. Sam needs "adiar" (what Sam is
-    # learning), with "postpone" as its meaning (D-44).
+    # learning), with "postpone" as its meaning (D-60).
     client, harness = _client()
     sam = _new_user(client, "Sam", comfortable_language="en", target_language="pt-BR")
     client.post(f"/api/sessions/{WEB}/start", json={"user_id": sam})
@@ -278,7 +275,7 @@ def test_a_word_the_guest_would_own_reaches_the_person_in_the_language_they_prac
 
 
 def test_a_phrase_papear_teaches_becomes_something_to_practise() -> None:
-    # The person asks how to say a phrase; Papear answers with it and tags it, silently (D-45).
+    # The person asks how to say a phrase; Papear answers with it and tags it, silently (D-61).
     line = (
         "[mood happy] You can say: my sneakers are nice."
         "[phrase: my sneakers are nice | meus tênis são bonitos] Now try it about your own shoes."
@@ -327,7 +324,7 @@ def test_a_quiet_web_session_explains_an_idiom_without_being_asked_and_saves_it(
     turn = client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM}).json()
     assert turn["decision"]["decision"] == "SPEAK"
     assert "very hard" in turn["reply"] and "phrase" not in turn["reply"]
-    assert character.requests[0].explains and not character.requests[0].woken
+    assert character.requests[0].explains and not character.requests[0].conversing
     [saved] = client.get(f"/api/users/{person}/words").json()
     assert saved["expression"] == "raining cats and dogs"
 
@@ -355,4 +352,8 @@ def test_the_pi_and_a_woken_web_session_do_not_explain_on_their_own() -> None:
     person = _new_user(client, "Luis")
     _start(client, WEB, person)  # woken ("hey mochi"): it is a conversation
     client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM})
-    assert character.requests and character.requests[0].woken and not character.requests[0].explains
+    assert (
+        character.requests
+        and character.requests[0].conversing
+        and not character.requests[0].explains
+    )

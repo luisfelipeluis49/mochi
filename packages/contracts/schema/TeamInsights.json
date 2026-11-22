@@ -1,0 +1,608 @@
+{
+  "$defs": {
+    "Company": {
+      "additionalProperties": false,
+      "description": "A company that uses Papear. PROPOSAL (v0.7, DECISIONS D-45).",
+      "properties": {
+        "company_id": {
+          "title": "Company Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "company_id",
+        "name"
+      ],
+      "title": "Company",
+      "type": "object"
+    },
+    "ExplainedTerm": {
+      "additionalProperties": false,
+      "description": "An idiom or technical term Mochi explained in the team's meetings, and how often.\n\nIt says what the team's own way of talking is hard on, not who did not understand it.",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkKind"
+        },
+        "last_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Last At",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expression",
+        "meaning",
+        "kind",
+        "times",
+        "last_at"
+      ],
+      "title": "ExplainedTerm",
+      "type": "object"
+    },
+    "Highlight": {
+      "additionalProperties": false,
+      "description": "One thing worth an administrator's attention. The screen writes the sentence from it.",
+      "properties": {
+        "expression": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expression"
+        },
+        "kind": {
+          "enum": [
+            "shared_gap",
+            "repeated_gap",
+            "false_friend",
+            "words_sticking",
+            "review_backlog"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "people": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "People"
+        },
+        "share": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Share"
+        },
+        "times": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Times"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Highlight",
+      "type": "object"
+    },
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "LearningFunnel": {
+      "additionalProperties": false,
+      "description": "How many saved words got at least this far (every card of every member, all time).",
+      "properties": {
+        "assisted": {
+          "title": "Assisted",
+          "type": "integer"
+        },
+        "discovered": {
+          "title": "Discovered",
+          "type": "integer"
+        },
+        "reinforced": {
+          "title": "Reinforced",
+          "type": "integer"
+        },
+        "used_independently": {
+          "title": "Used Independently",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "discovered",
+        "assisted",
+        "reinforced",
+        "used_independently"
+      ],
+      "title": "LearningFunnel",
+      "type": "object"
+    },
+    "MarkKind": {
+      "description": "What Mochi noticed in a sentence of the live transcript (PROPOSAL, D-51 to D-53).\n\n`code_switch`: a word of the other language (the speaker also gets a hint for it).\n`idiom` and `technical_term`: something the people listening may not understand.",
+      "enum": [
+        "code_switch",
+        "idiom",
+        "technical_term"
+      ],
+      "title": "MarkKind",
+      "type": "string"
+    },
+    "MemberProgress": {
+      "additionalProperties": false,
+      "description": "One member's numbers for an administrator: counts only, no words and no sentences.",
+      "properties": {
+        "assisted": {
+          "title": "Assisted",
+          "type": "integer"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "last_active_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Active At"
+        },
+        "meetings": {
+          "title": "Meetings",
+          "type": "integer"
+        },
+        "moments": {
+          "title": "Moments",
+          "type": "integer"
+        },
+        "reinforced": {
+          "title": "Reinforced",
+          "type": "integer"
+        },
+        "reviews": {
+          "title": "Reviews",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/MemberRole"
+        },
+        "speaking_turns": {
+          "title": "Speaking Turns",
+          "type": "integer"
+        },
+        "target_language": {
+          "$ref": "#/$defs/Language"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Team"
+        },
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
+        },
+        "words": {
+          "title": "Words",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "user_id",
+        "display_name",
+        "role",
+        "team",
+        "target_language",
+        "meetings",
+        "reviews",
+        "speaking_turns",
+        "moments",
+        "words",
+        "assisted",
+        "reinforced",
+        "last_active_at"
+      ],
+      "title": "MemberProgress",
+      "type": "object"
+    },
+    "MemberRole": {
+      "description": "What a person may see of their company: `admin` also sees the team view.",
+      "enum": [
+        "admin",
+        "member"
+      ],
+      "title": "MemberRole",
+      "type": "string"
+    },
+    "MistakeCount": {
+      "additionalProperties": false,
+      "description": "A kind of mistake the team makes: by how many people and how often. Never a sentence.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/MistakeKind"
+        },
+        "people": {
+          "title": "People",
+          "type": "integer"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        },
+        "topic": {
+          "$ref": "#/$defs/MistakeTopic"
+        }
+      },
+      "required": [
+        "topic",
+        "kind",
+        "people",
+        "times"
+      ],
+      "title": "MistakeCount",
+      "type": "object"
+    },
+    "MistakeKind": {
+      "description": "What kind of mistake a sentence had (PROPOSAL, DECISIONS D-54).",
+      "enum": [
+        "grammar",
+        "word_choice",
+        "false_friend"
+      ],
+      "title": "MistakeKind",
+      "type": "string"
+    },
+    "MistakeTopic": {
+      "description": "The group a mistake belongs to, so the same mistake can be counted across sentences and\npeople. A fixed list: the screen writes the label in the reader's language.",
+      "enum": [
+        "verb_tense",
+        "verb_form",
+        "agreement",
+        "articles",
+        "prepositions",
+        "pronouns",
+        "plurals",
+        "word_order",
+        "word_choice",
+        "false_friend",
+        "other"
+      ],
+      "title": "MistakeTopic",
+      "type": "string"
+    },
+    "Reason": {
+      "description": "Why a hint was made (`reason` / `detection_signal`).",
+      "enum": [
+        "code_switch",
+        "says_unknown",
+        "asks_partner",
+        "asks_mochi",
+        "trails_off",
+        "talks_around",
+        "restarts",
+        "look_alike",
+        "not_understood"
+      ],
+      "title": "Reason",
+      "type": "string"
+    },
+    "ReasonCount": {
+      "additionalProperties": false,
+      "description": "How often people got stuck in one way. `share` is of all moments, 0 to 1.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/Reason"
+        },
+        "share": {
+          "title": "Share",
+          "type": "number"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reason",
+        "times",
+        "share"
+      ],
+      "title": "ReasonCount",
+      "type": "object"
+    },
+    "SharedGap": {
+      "additionalProperties": false,
+      "description": "An expression the team needed: by how many people, how often, and why. Never by whom.",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "last_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Last At",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "people": {
+          "title": "People",
+          "type": "integer"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/ReasonCount"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "target_language": {
+          "$ref": "#/$defs/Language"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expression",
+        "meaning",
+        "target_language",
+        "people",
+        "times",
+        "reasons",
+        "last_at"
+      ],
+      "title": "SharedGap",
+      "type": "object"
+    },
+    "TeamTotals": {
+      "additionalProperties": false,
+      "description": "The headline numbers of a team view, for its period.",
+      "properties": {
+        "active_members": {
+          "title": "Active Members",
+          "type": "integer"
+        },
+        "meeting_minutes": {
+          "title": "Meeting Minutes",
+          "type": "integer"
+        },
+        "meetings": {
+          "title": "Meetings",
+          "type": "integer"
+        },
+        "members": {
+          "title": "Members",
+          "type": "integer"
+        },
+        "moments": {
+          "title": "Moments",
+          "type": "integer"
+        },
+        "reviews": {
+          "title": "Reviews",
+          "type": "integer"
+        },
+        "words": {
+          "title": "Words",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "members",
+        "active_members",
+        "meetings",
+        "reviews",
+        "meeting_minutes",
+        "moments",
+        "words"
+      ],
+      "title": "TeamTotals",
+      "type": "object"
+    },
+    "WeekActivity": {
+      "additionalProperties": false,
+      "description": "One week of the period. `week_start` is its Monday, e.g. \"2026-11-16\".",
+      "properties": {
+        "meetings": {
+          "title": "Meetings",
+          "type": "integer"
+        },
+        "moments": {
+          "title": "Moments",
+          "type": "integer"
+        },
+        "new_words": {
+          "title": "New Words",
+          "type": "integer"
+        },
+        "people": {
+          "title": "People",
+          "type": "integer"
+        },
+        "week_start": {
+          "title": "Week Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "week_start",
+        "meetings",
+        "moments",
+        "people",
+        "new_words"
+      ],
+      "title": "WeekActivity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Response of `GET /api/companies/{id}/insights`: the team view (DECISIONS D-45).\n\nAggregated from every member's learning data. Expressions carry how many people needed\nthem, never who; per-member rows carry counts only.",
+  "properties": {
+    "company": {
+      "$ref": "#/$defs/Company"
+    },
+    "explained": {
+      "items": {
+        "$ref": "#/$defs/ExplainedTerm"
+      },
+      "title": "Explained",
+      "type": "array"
+    },
+    "false_friends": {
+      "items": {
+        "$ref": "#/$defs/SharedGap"
+      },
+      "title": "False Friends",
+      "type": "array"
+    },
+    "funnel": {
+      "$ref": "#/$defs/LearningFunnel"
+    },
+    "generated_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "highlights": {
+      "items": {
+        "$ref": "#/$defs/Highlight"
+      },
+      "title": "Highlights",
+      "type": "array"
+    },
+    "members": {
+      "items": {
+        "$ref": "#/$defs/MemberProgress"
+      },
+      "title": "Members",
+      "type": "array"
+    },
+    "mistakes": {
+      "items": {
+        "$ref": "#/$defs/MistakeCount"
+      },
+      "title": "Mistakes",
+      "type": "array"
+    },
+    "period_days": {
+      "title": "Period Days",
+      "type": "integer"
+    },
+    "shared_gaps": {
+      "items": {
+        "$ref": "#/$defs/SharedGap"
+      },
+      "title": "Shared Gaps",
+      "type": "array"
+    },
+    "signals": {
+      "items": {
+        "$ref": "#/$defs/ReasonCount"
+      },
+      "title": "Signals",
+      "type": "array"
+    },
+    "totals": {
+      "$ref": "#/$defs/TeamTotals"
+    },
+    "weekly": {
+      "items": {
+        "$ref": "#/$defs/WeekActivity"
+      },
+      "title": "Weekly",
+      "type": "array"
+    }
+  },
+  "required": [
+    "company",
+    "generated_at",
+    "period_days",
+    "totals",
+    "funnel",
+    "signals",
+    "shared_gaps",
+    "false_friends",
+    "mistakes",
+    "explained",
+    "weekly",
+    "members",
+    "highlights"
+  ],
+  "title": "TeamInsights",
+  "type": "object"
+}

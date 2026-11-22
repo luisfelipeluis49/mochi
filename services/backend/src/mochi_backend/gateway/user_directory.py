@@ -1,4 +1,4 @@
-"""The people the backend knows: `ana` and `ben` (the Pi's), and users the web app creates (D-42).
+"""The people the backend knows: `ana` and `ben` (the Pi's), and users the web app creates (D-56).
 
 A web user's id is a slug of the name plus 6 random hex characters, so it never equals `ana`, `ben`
 or `guest`. `guest` is reserved: it is the second participant of every web session, with the user's

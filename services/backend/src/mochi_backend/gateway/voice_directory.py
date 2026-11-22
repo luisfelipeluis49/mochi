@@ -9,8 +9,9 @@ writes are queued to storage by `WriteBehindStorage`.
 
 import math
 
+from mochi_backend.gateway.roster import Roster
 from mochi_backend.storage.port import Storage, voice_key
-from mochi_contracts import User, VoiceLanguage, VoiceprintUpload, VoiceProfile
+from mochi_contracts import VoiceLanguage, VoiceprintUpload, VoiceProfile
 
 MAX_VECTOR_LENGTH = 1024  # the speaker model gives 192 numbers; this only stops runaway bodies
 
@@ -37,9 +38,9 @@ class VoiceDirectory:
 
     `voices` are the ones storage held at startup (read once by `storage_for`)."""
 
-    def __init__(self, storage: Storage, voices: list[VoiceProfile], users: list[User]) -> None:
+    def __init__(self, storage: Storage, voices: list[VoiceProfile], roster: Roster) -> None:
         self._storage = storage
-        self._users = users
+        self._roster = roster
         self._voices = {voice_key(v.name): v for v in voices}
 
     def all(self) -> list[VoiceProfile]:
@@ -48,8 +49,7 @@ class VoiceDirectory:
 
     def owner_of(self, name: str) -> str | None:
         """The `user_id` whose display name is this voice name (any case), or None."""
-        wanted = voice_key(name)
-        return next((u.user_id for u in self._users if voice_key(u.display_name) == wanted), None)
+        return self._roster.named(name)
 
     def link(self, name: str, language: VoiceLanguage) -> VoiceProfile:
         """A voice was learned: remember who it belongs to. An earlier vector is kept."""

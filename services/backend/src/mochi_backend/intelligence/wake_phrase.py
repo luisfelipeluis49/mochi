@@ -2,7 +2,7 @@
 
 import re
 
-# Greetings that always call Mochi, then closings that only do so outside a round.
+# Greetings that call Mochi, then closings that do so too ("Thanks, Mochi").
 _GREETING = r"hi|hey(?:\s+there)?|hello|hallo|oie?|ol[áa]|ei|eai|e\s+a[íi]|opa|ok(?:ay)?|yo|oh|ow"
 _THANKS = r"thanks|thank\s+you|thx|obrigad[oa]|valeu"
 # Speech-to-text writes Moshi, Mochie, Motchi, Moxi, Mo-chi ... Never "mocha" (a drink; AGENTS 7.2).
@@ -14,7 +14,6 @@ def _phrase(words: str) -> re.Pattern[str]:
     return re.compile(rf"\b(?:{words}){_SEPARATOR}{_LOOSE_NAME}\b", re.IGNORECASE)
 
 
-_WAKE = _phrase(_GREETING)
 _WAKE_OR_THANKS = _phrase(f"{_GREETING}|{_THANKS}")
 # Its name alone. Speech-to-text often loses the greeting: "Oi Mochi" arrived as "Wait, Mochi."
 # Strict on purpose: "Moji" or "mocha" alone is a cat or a drink, not Mochi.
@@ -26,14 +25,12 @@ def says_mochi(text: str) -> bool:
     return _NAME.search(text) is not None
 
 
-def has_wake_phrase(text: str, round_active: bool = False) -> bool:
+def has_wake_phrase(text: str) -> bool:
     """True when the turn addresses Mochi. Example: `has_wake_phrase("Oi Moshi, ...")` is True.
 
-    "Thanks, Mochi" counts only outside a round; during one only the greetings wake it.
+    "Thanks, Mochi" counts too.
     """
-    return _WAKE.search(text) is not None or (
-        not round_active and _WAKE_OR_THANKS.search(text) is not None
-    )
+    return _WAKE_OR_THANKS.search(text) is not None
 
 
 def without_wake_phrase(text: str) -> str:

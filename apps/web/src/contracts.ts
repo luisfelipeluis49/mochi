@@ -12,7 +12,9 @@ export type DetectionReason =
   | "talks_around" | "restarts" | "look_alike" | "not_understood";
 export type SpeakReason = "asks_mochi" | "activity_host";
 export type SessionStatus = "created" | "active" | "paused" | "ended";
-export type SessionMode = "together" | "activity";
+// "meeting" and "review" are what the backend sends since contracts v0.7 (docs/DECISIONS.md D-58);
+// the two older names are kept for the mock and for a backend that has not moved yet.
+export type SessionMode = "together" | "activity" | "meeting" | "review";
 export type GameState = "IDLE" | "ACTIVE_ROUND" | "ROUND_RESULT";
 export type RoundResult = "guessed" | "skipped";
 export type WordSource = "learning_event" | "stock";
@@ -162,7 +164,7 @@ const isLearningState = oneOf(LEARNING_STATES);
 
 export function isSessionState(v: unknown): v is SessionState {
   return isObj(v) && oneOf<SessionStatus>(["created", "active", "paused", "ended"])(v.status)
-    && oneOf<SessionMode>(["together", "activity"])(v.mode) && isLang(v.focus)
+    && oneOf<SessionMode>(["together", "activity", "meeting", "review"])(v.mode) && isLang(v.focus)
     && typeof v.capturing === "boolean" && Array.isArray(v.participants) && v.participants.every(isStr);
 }
 

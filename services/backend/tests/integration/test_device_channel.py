@@ -5,10 +5,13 @@ import json
 from fastapi.testclient import TestClient
 
 from mochi_backend.app import create_app
-from mochi_backend.gateway.agora.client_port import AgentStartRequest, SpeechTuning
+from mochi_backend.gateway.agora.client_port import AgentStartRequest, AgoraError, SpeechTuning
 from mochi_backend.gateway.agora.rest_client import join_body
 from mochi_backend.gateway.device_commands import split_commands
+from mochi_backend.gateway.turn_pipeline import hint_card
 from mochi_backend.settings import DEV_DEVICE_KEY, load_settings
+from mochi_contracts import HintCandidate
+from tests.factories import make_hint
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.harness import HOME, Harness, make_harness
 
@@ -73,7 +76,17 @@ async def test_a_hint_reaches_the_device_as_a_card_with_its_language_and_meaning
         "language": "en",
         "meaning": "adiar",
         "example": "I need to postpone my meeting.",
+        "why": "code_switch",  # the face draws a code switch as "adiar -> postpone" (D-52)
     }
+
+
+def test_a_hint_with_other_words_that_fit_carries_them_to_the_device() -> None:
+    """Someone who stopped at "I forgot my" named no word: Mochi's own screen showed only the
+    first guess, the glasses all of them (D-42). A hint with one word is the card it always was."""
+    words = [HintCandidate(expression=word, meaning=None) for word in ("umbrella", "raincoat")]
+    open_search = make_hint(0).model_copy(update={"expression": "umbrella", "candidates": words})
+    assert json.loads(hint_card(open_search))["candidates"] == ["raincoat"]  # not the word again
+    assert "candidates" not in json.loads(hint_card(make_hint(0)))
 
 
 async def test_saying_the_word_they_were_given_makes_the_face_cheer() -> None:
@@ -175,18 +188,50 @@ def test_a_learned_voice_is_confirmed_out_loud_in_its_language() -> None:
     assert client.post("/api/devices/pi_99/voices", json=learned, headers=KEY).status_code == 404
 
 
-def test_woken_by_its_wake_phrase_mochi_greets_in_that_language_and_listens() -> None:
-    mochi = FakeCharacterModel("[mood happy] Tudo ótimo!")
+def test_woken_by_its_wake_phrase_mochi_greets_in_that_language_and_the_meeting_begins() -> None:
+    mochi = FakeCharacterModel("[mood happy] A gente fala fila.")
     harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
     client = TestClient(create_app(harness.container))
     client.post("/api/sessions/demo/start", json={"woken_by": "oi mochi"})
-    assert harness.agora.started[0].greeting == "Oi! O que você quer fazer hoje?"
-    reply = client.post("/dev/sessions/demo/turn", json={"text": "Tudo bem com você?"}).json()
-    assert reply["reply"] == "Tudo ótimo!" and mochi.requests[0].named is False
-    assert mochi.requests[0].woken is True and mochi.requests[0].language.value == "pt-BR"
+    assert harness.agora.started[0].greeting.startswith("Oi! Estou ouvindo.")
+    # people talk to each other: a sentence without its name is not for Mochi
+    overheard = client.post("/dev/sessions/demo/turn", json={"text": "Tudo bem com você?"}).json()
+    assert overheard["reply"] == "" and mochi.requests == []
+    asked = client.post("/dev/sessions/demo/turn", json={"text": "Mochi, você está aí?"}).json()
+    assert asked["reply"] == "A gente fala fila." and mochi.requests[0].conversing is False
+    assert mochi.requests[0].reviewing is False and mochi.requests[0].language.value == "pt-BR"
     client.post("/api/sessions/demo/stop")
     client.post("/api/sessions/demo/start", json={"woken_by": "hey mochi"})
-    assert harness.agora.started[1].greeting == "Hi! What would you like to do today?"
+    assert harness.agora.started[1].greeting.startswith("Hi! I'm listening.")
+
+
+def test_vamos_papear_is_greeted_in_portuguese_and_lets_chat_in_english() -> None:
+    harness = make_harness()
+    client = TestClient(create_app(harness.container))
+    for phrase, opening in (
+        ("vamos papear", "Oi! Estou ouvindo."),
+        ("let s chat", "Hi! I'm listening."),
+    ):
+        client.post("/api/sessions/demo/start", json={"woken_by": phrase})
+        assert harness.agora.started[-1].greeting.startswith(opening), phrase
+        client.post("/api/sessions/demo/stop")
+
+
+def test_in_a_review_mochi_greets_its_person_and_every_sentence_is_for_it() -> None:
+    mochi = FakeCharacterModel("[mood curious] Qual foi a palavra para adiar?")
+    harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/demo/start")
+    client.post("/dev/sessions/demo/turn", json={"text": "I need to adiar my meeting tomorrow."})
+    client.post("/api/sessions/demo/stop")
+    review = {"mode": "review", "user_id": "ana"}
+    assert client.post("/api/sessions/p-ana/start", json=review).status_code == 200
+    assert harness.agora.started[-1].greeting == "Oi! Vamos rever as suas palavras?"
+    reply = client.post("/dev/sessions/p-ana/turn", json={"text": "Tudo bem, vamos lá."}).json()
+    assert reply["reply"] == "Qual foi a palavra para adiar?"
+    request = mochi.requests[-1]
+    assert request.conversing and request.reviewing and request.named is False
+    assert [(w.expression, w.meaning) for w in request.review] == [("postpone", "adiar")]
 
 
 def test_started_by_the_operator_mochi_says_nothing_and_waits_for_its_name() -> None:
@@ -238,3 +283,54 @@ def test_mochi_can_be_told_to_finish_its_answer_before_the_next_sentence() -> No
     assert isinstance(body, dict) and isinstance(body["properties"], dict)
     expected = {"enable": False, "disabled_config": {"strategy": "append"}}
     assert body["properties"]["interruption"] == expected
+
+
+def test_someone_talking_over_mochi_stops_it_and_it_goes_back_to_listening() -> None:
+    mochi = FakeCharacterModel("[mood happy] In English we say queue.", "[mood happy] Sure!")
+    harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
+    client = TestClient(create_app(harness.container))
+    assert client.post("/api/sessions/demo/interrupt").json() == {
+        "interrupted": False
+    }  # nothing runs
+    client.post("/api/sessions/demo/start")
+    asked = client.post(
+        "/dev/sessions/demo/turn", json={"text": "Oi Mochi, what's the word for fila?"}
+    ).json()
+    assert asked["reply"].startswith("In English we say")
+    assert client.post("/api/sessions/demo/interrupt").json() == {"interrupted": True}
+    assert harness.agora.interrupted == ["agent-1"]
+    # what the person says next is said to the room, not an answer to Mochi: it stays quiet
+    after = client.post("/dev/sessions/demo/turn", json={"text": "Anyway, as I was saying."}).json()
+    assert after["reply"] == "" and len(mochi.requests) == 1
+    assert client.post("/api/sessions/nobody/interrupt").json() == {"interrupted": False}
+
+
+def test_without_the_interruption_the_next_sentence_may_still_be_for_mochi() -> None:
+    """The control for the test above: Mochi listens for an answer for a while after it spoke."""
+    mochi = FakeCharacterModel("[mood happy] In English we say queue.", "[mood happy] Sure!")
+    harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/demo/start")
+    client.post("/dev/sessions/demo/turn", json={"text": "Oi Mochi, what's the word for fila?"})
+    after = client.post("/dev/sessions/demo/turn", json={"text": "Anyway, as I was saying."}).json()
+    assert after["reply"] == "Sure!" and len(mochi.requests) == 2
+
+
+def test_in_a_review_an_interruption_stops_mochi_and_it_still_answers_its_person() -> None:
+    mochi = FakeCharacterModel("[mood curious] Qual era a palavra?", "[mood happy] Isso!")
+    harness = make_harness(character=mochi, env={"MOCHI_ENABLE_DEV_ROUTES": "true"})
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/p-ana/start", json={"mode": "review", "user_id": "ana"})
+    client.post("/dev/sessions/p-ana/turn", json={"text": "Vamos lá."})
+    assert client.post("/api/sessions/p-ana/interrupt").json() == {"interrupted": True}
+    again = client.post("/dev/sessions/p-ana/turn", json={"text": "Espera, eu sei essa."}).json()
+    assert again["reply"] == "Isso!"
+
+
+def test_an_interruption_agora_refuses_still_makes_mochi_go_quiet() -> None:
+    harness = make_harness()
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/demo/start")
+    harness.agora.interrupt_error = AgoraError("POST .../interrupt returned 500")
+    assert client.post("/api/sessions/demo/interrupt").json() == {"interrupted": False}
+    assert "agora_interrupt_failed" in harness.logger.names()

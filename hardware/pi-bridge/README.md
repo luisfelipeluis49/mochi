@@ -50,8 +50,13 @@ Then join the channel Luís's Agora agent uses: speech into the M1A should show 
 ## Wake phrases (offline)
 
 `./scripts/mochi.sh` runs the supervisor: the Pi listens locally, starts an Agora session when it
-hears a wake phrase ("oi Mochi", "hi Mochi", ...) and ends it on a goodbye phrase or a timeout.
+hears a wake phrase ("vamos papear", "let's chat"; `[wake]` in `config/mochi.toml`) and ends it on a goodbye
+phrase ("tchau Mochi", "bye Mochi") or a timeout.
 Phrases and tolerances are in `config/mochi.toml`.
+
+In Papear the device sits on the table in a company's meetings. A session it starts is a meeting
+(meeting mode: Mochi listens, knows the voices it learned in advance, and shows a word when someone
+is stuck). The other mode, review, happens on a person's phone and never on the device.
 
 ```text
 mic -> Silero VAD -> ZIPA phone recogniser -> phrase matcher     (mochi_device/wakeword.py, phrases.py)
@@ -87,7 +92,8 @@ for one device without touching the shared file, put only the keys that differ i
   - `speaker_muted` true: the speaker is silent.
   - `commands`: what Mochi wants its body to do, each once: `mood` and `show` go to the face,
     `volume` to the speaker, `temp` shows the temperature, `enroll` / `forget` learn and forget a
-    voice.
+    voice, `hint` / `used` show a word someone needed and cheer when they then say it, `caption` shows the sentence just said (the live transcript; `[face] captions`), `explain` shows what an idiom or a technical term means, `suggest` shows the whole sentence someone was reaching for (a touch on the screen then has Mochi say it), `bye` ends
+    the session after Mochi's goodbye.
   The Pi reports its volume, temperature, the voices it knows and who is talking
   (`POST .../status`) whenever one changes, and how learning a voice ended (`POST .../voices`).
   Set `mochi_backend_url` to where the backend runs. If the backend cannot start a session (down,
@@ -97,7 +103,7 @@ for one device without touching the shared file, put only the keys that differ i
   Pi; the agent then decides on the device, so use it for demos only).
   When the backend requires a device key, put it in `.env` as `MOCHI_DEVICE_KEY` (or `device_key` in
   `[backend]`); it is sent as `Authorization: Bearer <key>` on `POST .../status` and `.../voices`
-  and on `GET .../state` (without it a round of the game arrives without its secret word), and never
+  and on `GET .../state`, and never
   logged. A wake-up that has not produced a session after `[session] start_timeout_s`
   (25 s) is given up and Mochi goes back to listening.
 - `test_agent` (the default): a stand-in agent, for working without the backend.
@@ -236,28 +242,19 @@ supervisor the face just sleeps and reconnects by itself.
 ../pi-setup/kiosk.sh off            # black page for the night; ../pi-setup/kiosk.sh brings the face back
 ```
 
-### Describe & Guess on the screen
+The screen takes no input: a touch only makes the face react (a small jump and a heart), and
+nothing is sent to the supervisor or the backend.
 
-With the backend running the session, "let's play" starts a round (the backend decides that; the
-stand-in agent can only chat). The round reaches the Pi as a `round` command in the device state
-and is drawn in front of the face (`mochi_device/game.py`, AGENTS.md 7.5):
+A session ends on a goodbye phrase, after `inactivity_timeout_s` without a voice, or at
+`max_session_s` (one hour).
 
-| The screen shows | A touch |
-|---|---|
-| "Ben" / "turn me towards you and tap" | tap: the secret word is shown |
-| the secret word / "tap when Ana gets it" | tap: guessed; held 0.6 s or more: skipped |
-| the word / "Ana got it!" for 8 s, then the face | tap: another round (the two swap) |
+Talking over Mochi: when someone starts to speak while Mochi is speaking, its speaker is silenced at
+once, its agent is told to stop, and the microphone is sent on again (`[barge_in]` in
+`config/mochi.toml`; docs/DECISIONS.md D-50). Raise `level_ratio` if Mochi cuts itself off.
 
-The page only reports touches (`GET /tap?kind=tap|long` on the face server); the supervisor decides
-what one means and tells the backend (`POST /api/sessions/demo/activity/result`, `.../start`). A
-second touch within 1.5 s of the reveal is ignored, so one bouncing tap cannot end the round. The
-word is never logged. A round that is no longer in the device state (a reset, or a result older
-than 30 s) leaves the screen; a round that arrived without its word (no `MOCHI_DEVICE_KEY`) says so
-and can be left with a long press. Try the cards without a backend:
-`face.html#mode=awake&round={"tone":"secret","big":"umbrella","small":"tap when Ana gets it"}`.
-
-A session ends on a goodbye phrase, after `inactivity_timeout_s` without a voice (a touch during a
-round counts as someone being there), or at `max_session_s`. Stop the service before running `wake-test.sh` or `mochi.sh` by hand: only one
+Who said what: during a session the voice tracker judges every stretch of speech between two
+pauses on its own and the Pi reports it with the next status (`heard`: who, how much speech, how
+long ago). The backend puts names on the meeting's sentences with these (docs/DECISIONS.md D-46). Stop the service before running `wake-test.sh` or `mochi.sh` by hand: only one
 program can hold the microphone.
 
 If Mochi misses someone, run `wake-test.sh`, have them say the phrase, and look at the `heard` line:

@@ -1,4 +1,4 @@
-"""A phrase Mochi taught becomes something to practise (DECISIONS D-45).
+"""A phrase Mochi taught becomes something to practise (DECISIONS D-61).
 
 Training is meant to hold what a person had a hard time saying or understanding, and that is often
 a whole phrase, not one word: "how do I say my sneakers are nice?". The character writes a silent

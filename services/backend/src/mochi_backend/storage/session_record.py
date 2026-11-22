@@ -1,4 +1,4 @@
-"""One finished web session of one person (DECISIONS D-42). Gateway and storage share this model.
+"""One finished web session of one person (DECISIONS D-56). Gateway and storage share this model.
 
 Proposed to move to `packages/contracts` (Matheus) in v0.5; until then it lives here, so the storage
 port can use it without importing `gateway`.

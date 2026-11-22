@@ -108,7 +108,7 @@ def _events_ana_sees(route: str) -> list[str]:
     client.post("/api/sessions/demo/start")
     sentence = "I need to adiar my meeting"
     with client.websocket_connect("/ws?user=ana") as ana:
-        snapshot = [ana.receive_json()["type"] for _ in range(2)]
+        snapshot = [ana.receive_json()["type"]]
         if route == "dev":
             client.post("/dev/sessions/demo/turn", json={"text": sentence})
         else:
@@ -138,7 +138,7 @@ def test_dev_route_is_absent_unless_enabled() -> None:
     assert client.post("/dev/sessions/demo/turn", json={"text": "hi"}).status_code == 404
 
 
-def test_session_device_and_activity_endpoints() -> None:
+def test_session_and_device_endpoints() -> None:
     client, _ = _client()
     assert client.get("/api/devices/home_pi_01/state").json() == {
         "capturing": False,
@@ -149,10 +149,8 @@ def test_session_device_and_activity_endpoints() -> None:
     started = client.post("/api/sessions/demo/start").json()
     assert started["capturing"] is True and started["status"] == "active"
     assert client.get("/api/devices/home_pi_01/state").json()["agora"]["channel"] == "mochi-demo"
-    round_ = client.post("/api/sessions/demo/activity/start").json()
-    assert round_["state"] == "ACTIVE_ROUND" and round_["revealed_word"] is None
-    done = client.post("/api/sessions/demo/activity/result", json={"result": "guessed"}).json()
-    assert done["state"] == "ROUND_RESULT" and done["revealed_word"] == "umbrella"
+    assert started["mode"] == "meeting" and started["participants"] == ["ana", "ben"]
+    assert client.post("/api/sessions/demo/activity/start").status_code == 404  # the game is gone
     assert client.post("/api/sessions/demo/stop").json()["capturing"] is False
     assert client.post("/api/demo/reset").json()["capturing"] is False
 
@@ -262,8 +260,11 @@ def test_a_timeout_is_not_tried_again_with_other_ears() -> None:
 def test_error_statuses_are_readable() -> None:
     client, harness = _client()
     assert client.get("/api/devices/pi_99/state").status_code == 404
-    conflict = client.post("/api/sessions/demo/activity/result", json={"result": "guessed"})
-    assert conflict.status_code == 409 and "expected ACTIVE_ROUND" in conflict.json()["detail"]
+    review = client.post("/api/sessions/p-1/start", json={"mode": "review", "user_id": "zed"})
+    assert review.status_code == 422 and "known user_id" in review.json()["detail"]
+    assert harness.container.registry.peek("p-1") is None  # nothing was left behind
+    conflict = client.get("/api/sessions/demo/agora")
+    assert conflict.status_code == 409 and "not capturing" in conflict.json()["detail"]
     harness.agora.start_error = AgoraError("POST /join returned 401")
     bad = client.post("/api/sessions/demo/start")
     assert bad.status_code == 502 and "could not start the Agora agent" in bad.json()["detail"]
@@ -285,8 +286,6 @@ def test_websocket_sends_the_snapshot_then_live_events_for_that_person_only() ->
         client.websocket_connect("/ws?user=ben") as ben,
     ):
         assert ana.receive_json()["type"] == "session.state.changed"
-        assert ana.receive_json()["type"] == "activity.state.changed"
-        ben.receive_json()
         ben.receive_json()
         client.post("/dev/sessions/demo/turn", json={"text": "I need to adiar my meeting"})
         # AGENTS 9.2 order: learning events are saved and published before the hint.
@@ -315,7 +314,7 @@ def test_websocket_glasses_get_session_and_hints_only() -> None:
     with client.websocket_connect("/ws?user=ana&surface=ar") as glasses:
         assert glasses.receive_json()["type"] == "session.state.changed"
         client.post("/dev/sessions/demo/turn", json={"text": "I need to adiar my meeting"})
-        assert glasses.receive_json()["type"] == "hint.created"  # no card, no activity state
+        assert glasses.receive_json()["type"] == "hint.created"  # no card
 
 
 def test_websocket_unknown_surface_closes_4400_naming_it() -> None:

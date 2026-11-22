@@ -1,117 +1,5 @@
 {
   "$defs": {
-    "Activity": {
-      "additionalProperties": false,
-      "description": "Payload of `activity.state.changed`. Never carries the secret word while active.\n\nPROPOSAL: the round fields are nullable so an IDLE state can be published\n(AGENTS 6.2 only shows an active example). See docs/DECISIONS.md D-03.",
-      "properties": {
-        "activity_id": {
-          "const": "describe_and_guess",
-          "title": "Activity Id",
-          "type": "string"
-        },
-        "describer_user_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Describer User Id"
-        },
-        "guesser_user_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Guesser User Id"
-        },
-        "public_instruction": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Public Instruction"
-        },
-        "result": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RoundResult"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "revealed_word": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Revealed Word"
-        },
-        "round_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Round Id"
-        },
-        "state": {
-          "$ref": "#/$defs/GameState"
-        },
-        "word_source": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WordSource"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "activity_id",
-        "round_id",
-        "state",
-        "describer_user_id",
-        "guesser_user_id",
-        "public_instruction",
-        "result",
-        "revealed_word",
-        "word_source"
-      ],
-      "title": "Activity",
-      "type": "object"
-    },
-    "GameState": {
-      "description": "Describe & Guess states.",
-      "enum": [
-        "IDLE",
-        "ACTIVE_ROUND",
-        "ROUND_RESULT"
-      ],
-      "title": "GameState",
-      "type": "string"
-    },
     "Hint": {
       "additionalProperties": false,
       "description": "One word or short expression shown to help a stuck speaker.\n\nPROPOSAL (not yet signed off, see docs/DECISIONS.md): `candidates` and `context` are\nadditive and optional. They are set only for a hint with no single known word (reasons\ntrails_off, restarts, talks_around): up to three plausible completions instead of one\nguess, plus the sentence they stopped in. Every other reason leaves both `None`, and a\nclient that does not know them still shows `expression`/`meaning` as before.",
@@ -334,7 +222,7 @@
     },
     "Participant": {
       "additionalProperties": false,
-      "description": "One of the two people in the session.",
+      "description": "One of the people in the session (a meeting's members, or the one person reviewing).",
       "properties": {
         "comfortable_languages": {
           "items": {
@@ -375,20 +263,11 @@
       "title": "Reason",
       "type": "string"
     },
-    "RoundResult": {
-      "description": "How a round ended.",
-      "enum": [
-        "guessed",
-        "skipped"
-      ],
-      "title": "RoundResult",
-      "type": "string"
-    },
     "SessionMode": {
-      "description": "Whether people talk freely or play a game.",
+      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
       "enum": [
-        "together",
-        "activity"
+        "meeting",
+        "review"
       ],
       "title": "SessionMode",
       "type": "string"
@@ -415,7 +294,7 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "One finished transcribed sentence. No speaker and no language (AGENTS 6.5).",
+      "description": "One finished transcribed sentence. No language; the speaker only when a voice was known.\n\nPROPOSAL (v0.7, DECISIONS D-44): `speaker_user_id` is the person whose registered voice the\ndevice recognised while the sentence was said. `None` when nobody was recognised (a phone's\nmicrophone, an unknown voice), exactly as before.",
       "properties": {
         "received_at": {
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
@@ -425,6 +304,18 @@
         "segment_id": {
           "title": "Segment Id",
           "type": "string"
+        },
+        "speaker_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker User Id"
         },
         "text": {
           "title": "Text",
@@ -438,30 +329,11 @@
       ],
       "title": "Turn",
       "type": "object"
-    },
-    "WordSource": {
-      "description": "Where a round's secret word came from.",
-      "enum": [
-        "learning_event",
-        "stock"
-      ],
-      "title": "WordSource",
-      "type": "string"
     }
   },
   "additionalProperties": false,
-  "description": "Everything `decide()` and `handle()` may look at.",
+  "description": "Everything `decide()` may look at.",
   "properties": {
-    "activity": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Activity"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
     "focus": {
       "$ref": "#/$defs/Language"
     },
@@ -511,7 +383,6 @@
     "participants",
     "recent_turns",
     "recent_hints",
-    "activity",
     "learning_events"
   ],
   "title": "SessionContext",

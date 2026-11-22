@@ -21,8 +21,14 @@ class FakeVoices(Voices):
 
 
 def named(events):
-    """What was reported, leaving out the "could not tell yet" notes for the log."""
-    return [e[:2] for e in events if e[0] != "unsure"]
+    """What was reported about who is talking, leaving out the "could not tell yet" notes for the
+    log and the per-stretch verdicts (see said())."""
+    return [e[:2] for e in events if e[0] not in ("unsure", "said")]
+
+
+def said(events):
+    """The verdicts on each stretch of speech: (who, seconds of speech)."""
+    return [(e[1], round(e[2], 1)) for e in events if e[0] == "said"]
 
 
 def talk(tracker, level, seconds, speech=True):
@@ -81,7 +87,7 @@ class VoiceTrackerTest(unittest.TestCase):
         self.enrol("Ana", 0.1)
         events = talk(self.t, 0.3, 1) + talk(self.t, 0, 0.5, speech=False)
         self.assertEqual(named(events), [])                          # whoever was talking stays
-        self.assertEqual({e[0] for e in events}, {"unsure"})         # ...and the log has the scores
+        self.assertEqual({e[0] for e in events if e[0] != "said"}, {"unsure"})         # ...and the log has the scores
 
     def test_keeps_trying_while_someone_talks_until_it_knows_them(self):
         self.enrol("Ana", 0.1)
@@ -91,7 +97,7 @@ class VoiceTrackerTest(unittest.TestCase):
         self.voices.min_score = 0.35
         events = talk(self.t, 0.1, 0.5)                              # 1.5 s of speech: asked again
         self.assertEqual(named(events), [("speaker", "Ana")])
-        self.assertEqual(talk(self.t, 0.1, 3), [])                   # known: no more guessing
+        self.assertEqual(named(talk(self.t, 0.1, 3)), [])            # known: no more guessing who is talking
 
     def test_a_score_just_under_the_bar_does_not_take_a_recognition_back(self):
         self.enrol("Ana", 0.1)
@@ -140,7 +146,8 @@ class VoiceTrackerTest(unittest.TestCase):
     def test_silent_while_mochi_speaks_or_no_session(self):
         self.enrol("Ana", 0.1)
         self.t.hold = True
-        self.assertEqual(talk(self.t, 0.1, 2), [])
+        heard = talk(self.t, 0.1, 2)
+        self.assertEqual([e for e in heard if e[0] != "over"], [])   # ("over": someone talking over Mochi, test_bargein.py)
         self.t.hold, self.t.on = False, False
         self.assertEqual(talk(self.t, 0.1, 2), [])
 
@@ -182,3 +189,58 @@ class VoiceSharingTest(unittest.TestCase):
         self.voices.saved["Ana"] = "2026-11-21 15:00"
         self.assertTrue(self.voices.forget("ana"))
         self.assertEqual(self.voices.saved, {})
+
+
+class WhoSaidEachStretchTest(unittest.TestCase):
+    """("said", name, seconds, ended): each stretch between two pauses, judged on its own."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.voices = FakeVoices(Path(self.dir.name) / "voices.json")
+        self.t = VoiceTracker(self.voices)
+        self.t.on = True
+        for name, level in (("Ana", 0.1), ("Ben", 0.2)):
+            self.t.start_enroll(name)
+            talk(self.t, level, 10)
+            talk(self.t, 0, 1, speech=False)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_a_stretch_is_reported_at_its_pause_with_who_and_how_long(self):
+        events = talk(self.t, 0.1, 2) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(said(events)[-1], ("Ana", 2.0))
+        when = [e[3] for e in events if e[0] == "said"]
+        self.assertTrue(when and all(isinstance(t, float) for t in when))  # time.monotonic()
+
+    def test_someone_recognised_while_still_talking_is_reported_before_the_pause(self):
+        events = talk(self.t, 0.2, 1.2)  # no pause yet
+        self.assertEqual(said(events), [("Ben", 0.8)])
+
+    def test_a_quick_answer_is_the_second_persons_not_the_firsts(self):
+        """Half a second between two people is one "utterance" for the who-is-talking report,
+        which then keeps the first name; the stretch verdict looks at the answer alone."""
+        talk(self.t, 0.1, 2)
+        talk(self.t, 0, 0.4, speech=False)             # shorter than the 0.7 s that ends an utterance
+        events = talk(self.t, 0.2, 1.5) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(said(events), [("Ben", 1.5)])
+
+    def test_a_stranger_or_a_cough_gets_no_name(self):
+        events = talk(self.t, 0.3, 2) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(said(events), [(None, 2.0)])
+        talk(self.t, 0, 1, speech=False)
+        cough = talk(self.t, 0.1, 0.2) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(said(cough), [])               # too little speech for a verdict
+
+    def test_speech_that_never_pauses_still_gets_a_verdict_every_two_seconds(self):
+        """In a room where other people are talking too, the voice detector never hears a pause:
+        waiting for one left a whole meeting without a single verdict (22 in 100 sentences named)."""
+        events = talk(self.t, 0.1, 4.5)                 # Ana, 4.5 s without a breath
+        self.assertEqual(said(events), [("Ana", 0.8), ("Ana", 2.0), ("Ana", 2.0)])   # early, then every 2 s
+        events = talk(self.t, 0.2, 2.1)                 # Ben takes over without a pause
+        self.assertEqual(said(events)[-1][0], "Ben")
+
+    def test_nothing_is_reported_while_mochi_itself_speaks(self):
+        self.t.hold = True
+        events = talk(self.t, 0.1, 2) + talk(self.t, 0, 0.5, speech=False)
+        self.assertEqual(said(events), [])

@@ -1,4 +1,4 @@
-"""The web app's people (D-42): create one, read one, their saved words and their sessions."""
+"""The web app's people (D-56): create one, read one, their saved words and their sessions."""
 
 import unicodedata
 
@@ -46,7 +46,7 @@ class NewUserBody(BaseModel):
 
 
 def _known(container: AppContainer, user_id: str) -> User:
-    user = container.users.find(user_id)
+    user = container.users.find(user_id) or container.roster.user(user_id)
     if user is None:
         raise NotFoundError(f"unknown user {user_id!r}; create one with POST /api/users")
     return user

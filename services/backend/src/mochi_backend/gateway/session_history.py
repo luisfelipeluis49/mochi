@@ -1,4 +1,4 @@
-"""Finished web sessions, per person (D-42). Read from storage at startup, kept in memory, and each
+"""Finished web sessions, per person (D-56). Read from storage at startup, kept in memory, and each
 new record is written through storage, so a backend that spins down keeps them."""
 
 from mochi_backend.storage.port import Storage

@@ -8,7 +8,7 @@ from mochi_backend.intelligence.language_guess import strip_proper_nouns
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.tokens import folded, lowered, normalized
 from mochi_backend.platform.clock import parse_iso_z
-from mochi_contracts import GameState, Hint, SessionContext, Turn
+from mochi_contracts import Hint, SessionContext, Turn
 
 _SERIOUS = re.compile(
     r"\b(?:funeral|passed away|died|death|cancer|divorce|hospital|diagnos\w*|depress\w*|"
@@ -22,11 +22,6 @@ _ONLY_THINKING = re.compile(
 _SELF_CORRECTION = re.compile(
     r"\w[\w'’]*[\s,.…]+(?:i mean|no, wait|no wait|sorry, i meant|quer dizer|ou melhor)\b"
 )
-
-
-def round_is_active(context: SessionContext) -> bool:
-    """True while a Describe & Guess round is running."""
-    return context.activity is not None and context.activity.state is GameState.ACTIVE_ROUND
 
 
 def hints_of_last_turns(context: SessionContext, ttl_seconds: float) -> list[Hint]:
@@ -75,11 +70,10 @@ def is_deliberate_switch(text: str, context: SessionContext, lexicon: Lexicon) -
 def lasting_quiet_reason(text: str, context: SessionContext, lexicon: Lexicon) -> str | None:
     """Name of the first quiet rule other than the cooldown that applies, else None.
 
-    These hold whatever was shown before: a round, a serious talk, thinking aloud, a name.
+    These hold whatever was shown before: a serious talk, thinking aloud, a name.
     """
     asked = asks_for_word(text)
     checks = (
-        ("round_active", round_is_active(context)),
         ("serious_conversation", is_serious(text)),
         ("thinking_or_self_correction", is_just_thinking(text)),
         # "How do you say feijoada in English?" is a question, not a dish dropped in on purpose
@@ -92,6 +86,6 @@ def quiet_reason(
     text: str, context: SessionContext, lexicon: Lexicon, ttl_seconds: float
 ) -> str | None:
     """Name of the first quiet rule that applies, else None (so the flow may continue)."""
-    if not round_is_active(context) and cooldown_active(context, ttl_seconds):
+    if cooldown_active(context, ttl_seconds):
         return "cooldown"
     return lasting_quiet_reason(text, context, lexicon)

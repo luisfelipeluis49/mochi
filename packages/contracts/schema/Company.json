@@ -1,0 +1,20 @@
+{
+  "additionalProperties": false,
+  "description": "A company that uses Papear. PROPOSAL (v0.7, DECISIONS D-45).",
+  "properties": {
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "company_id",
+    "name"
+  ],
+  "title": "Company",
+  "type": "object"
+}

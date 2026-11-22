@@ -1,4 +1,4 @@
-"""Phrases Mochi teaches become learning events (DECISIONS D-45)."""
+"""Phrases Mochi teaches become learning events (DECISIONS D-61)."""
 
 from mochi_backend.intelligence.hint_builder import HintFactory
 from mochi_backend.intelligence.saved_phrase import MAX_PHRASES, PhraseSaver, phrases_in
@@ -34,12 +34,11 @@ def _saver() -> PhraseSaver:
 def _context() -> SessionContext:
     return SessionContext(
         session_id="s",
-        mode=SessionMode.TOGETHER,
+        mode=SessionMode.MEETING,
         focus=Language.EN,
         participants=[ANA, BEN],
         recent_turns=[],
         recent_hints=[],
-        activity=None,
         learning_events={"ana": [], "ben": []},
     )
 

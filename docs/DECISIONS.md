@@ -800,7 +800,607 @@ out of scope unless a human asks; Luís asked ("multiple connections that do not
   Kauê's directory (a copy of one object, no behaviour change). The web change is Tasnim's and is
   kept in its own commit.
 
-## D-42: the web app has its own users and sessions; session records (2026-11-21)
+## D-42: stuck without asking: hints before anyone says "how do you say" (2026-11-21)
+
+Asked for by Suhuai ("we only get a hint when we explicitly ask; detect the difficulty in advance, and make
+the analysis faster"). It changes `intelligence/` and `packages/fixtures` (Kauê's), one constant in
+`platform/` and two lines of `composition.py` (Luís's): **for the owners to accept or change**, as D-27 and
+D-29 were. No contract changes: `ModelRequest` is internal to `intelligence/`.
+
+**Yardstick** (`~/.cache/mochi-wake-eval/hint_bench/implicit.json` on the Pi, 145 sentences written the way
+the recogniser writes them, real gpt-5.4-mini, Mochi only watching): 63 where someone is stuck and does not
+ask (stops before the word with no "…", describes the thing, starts the sentence over, looks for the word
+aloud, uses a false friend, or the listener did not understand), 82 that must stay silent (ordinary
+sentences that look the same: "It's the place where I grew up.", "Can you pass me the", "Who are you going
+with?"). 37 of the 145 were never used for tuning. The same sentence can flip between runs, so every number
+is from two or three runs (the third "now" run with the real 2 s limit, the others with 6 s so that a
+slow network on the Pi is not counted as a wrong answer).
+
+| | before | now |
+|---|---|---|
+| stuck, right word shown (63) | 12 and 21 | 54, 55 and 55 |
+| of those, never tuned on (19) | 5 and 8 | 16, 15 and 16 |
+| ordinary, stayed silent (82) | 81 | 82, 82 and 82 |
+| D-29's set of 72 (as heard, explicit asks, code switches) | 67 and 69 | 68, 68 and 69 |
+| `scripts/eval_intelligence.py` | 141/146 | 174/178 (142 of the same 146; 32 rows added) |
+| one judge call, first token / IGNORE / whole hint | 0.56 / 0.61 / 0.76 s | 0.60 / 0.65 / 0.79 s (inside the run-to-run spread) |
+
+While someone talks WITH Mochi nothing changes: its own spoken reply already names or hints at the word in
+most of these sentences (same set, `--woken`), so the silent judge is still not asked there.
+
+What changed, all in `intelligence/`:
+- **The instructions** (`openai_hint_model.SYSTEM_PROMPT`) did most of it. They now say that most stuck
+  people never ask; that a turn ends when the speaker pauses, so a sentence that simply stops was stopped
+  there; and they spell out trails_off, restarts, talks_around and not_understood with examples on both
+  sides, with one test for a stopped sentence: would most listeners fill in the same word, or one of two or
+  three? ("I need to cut this paper. Do you have a" yes; "Can you pass me the" no.) The model judges
+  `sentence` only, never something in `recent`. IGNORE is still the answer for everything else.
+- **Signs** (`stuck_signs.py`, no model): `stops_short`, `starts_over`, `describes`, `searches`,
+  `partner_lost`. They are sent with the sentence as `noticed`, as clues (without them 105 of the first 117
+  were right, with them 109; the gain is the mid-sentence "como é que fala"), and they are a check on the
+  answer (`answer_screen.unseen`): a "trails_off" needs a sentence that stops short, a "restarts" one that
+  starts over, a "not_understood" a listener who says so. "A what?" is two words and still goes to the
+  model when a sentence came before it.
+- **False friends** were found by the lexicon and then lost: the confirming call was not told what was
+  suspected and had to name the same word unprompted ("I pretend to travel in July." got nothing). The
+  suspicion now goes with the request (`ModelRequest.suspect`, instructions in `SUSPECT_NOTE`, sent only
+  then), and the model's word must still be the rule's (`same_family`). Whether a word is used with its
+  look-alike's meaning needs a moment of thought: answering at once the model was right 20 times in 27
+  (it confirmed "sensible" for someone who never cries, and let "I pretend to travel" pass), with
+  `reasoning_effort: low` 26 in 27, for 0.14 s more. Only a request with a suspect is asked that way.
+  Four more entries (assist/watch, sensible/sensitive, fabric/factory, excitado/animado), each triggered
+  by a collocation, not the bare word: with a bare "sensible" the model confirmed "He's a sensible guy, I
+  trust him." four times in six. "pretender que" and "realizei que" were tried and taken out: the model
+  did not confirm them. A false friend the rules did not suspect is still dropped (D-29). Suspects are not
+  followed up while someone who woke Mochi talks with it (`attentive`): its reply puts the word right,
+  and a silent hint there races that reply (D-40). The false-friend instructions are not in the standing
+  prompt: there, their example sentence made the model answer about a "pretend" two sentences back.
+- **Smaller fixes found on the way:** a hint after "A what?" is in the language of the sentence that was
+  not understood, whatever language the listener answered in, and never a word that sentence already had
+  ("...go to the beach tomorrow?", "Sorry, what?" had got "beach"); "the, how do you say, ..." in the middle of
+  a sentence is a search for the missing word, not a question about what follows; a hint the model repeats
+  as its own "meaning" is kept without a meaning; the question itself is never the word ("Como se fala..."
+  got "How do you say"); the lexicon's describing rule no longer shows "receipt" for a sentence that says
+  receipt. The checks on the answer moved to `answer_screen.py` (`decision_flow.py` was at its size limit).
+- **Changed on purpose:** "I wanted to go, but..." (fixture `trails_off-67`, D-31) is now IGNORE with the
+  real model: nothing before the stop points to a word. The unit fixture with the scripted model still
+  passes. **For Kauê and the glasses:** if candidates after a bare "but..." are wanted, say so.
+
+**Speed.** One judge call takes 0.55 to 0.65 s to its first token from this Pi whatever the instructions'
+length (a one-line prompt: 0.64 s in the same minute; the instructions grew from 1.5 k to 2.6 k tokens at no cost), and OpenAI's priority
+tier gave nothing. So the call itself is at its floor from here; what was slow around it:
+- **The first sentence of a session** paid for a new connection, twice when the hedge fired (1.6 s on the
+  deployed backend against 0.8 s later). `Intelligence.session_started` now opens two connections for each
+  model in the background (`warm_start.py`: a GET for the model's name, no tokens).
+- **After a lull** the same: connections were dropped after 30 s idle. Measured against the API, one idle
+  for 120 s was still reused; `KEEP_ALIVE_SECONDS` is 90, with a margin (it holds for every `HttpxClient`).
+- IGNORE is answered as `{"decision": "IGNORE"}` and nothing else, and a candidate list no longer repeats
+  the first word.
+- **Not done, with reasons:** releasing a hint before the model has finished writing it would save about
+  0.2 s and lose the example sentence; skipping the model for sentences with no sign would be instant and
+  free but loses every description without a general word ("He is the doctor for the teeth.").
+- **Where the rest of the time is** (not touched): the 600 ms pause that ends a turn and the recogniser
+  (0.65 s with ARES).
+- **From the decision to Mochi's own screen** (`hardware/`): the Pi opened a new connection for every
+  read of its state, which to the hosted backend is a TLS handshake each time. `MochiBackend._state` now
+  keeps one open (measured from this Pi to Render: 0.24 s a read instead of 0.38 s; if the kept one fails
+  the read is made the old way), and this Pi reads every 0.15 s again instead of 0.3 s (its untracked
+  `mochi.local.toml`). A hint is on the screen about 0.3 s sooner on average.
+
+**Limits, for the team:**
+- **A pause is not always a problem.** Someone who stops for half a second and then finds the word alone
+  still gets the hint a moment later, and with it a card; saying the word then counts as "Used with help"
+  (7.4). A wrong guess is a card too, and from M4 a card can be drawn as a round's secret word. The newer
+  sentence only cancels the older one's judging while that is still running (D-37). How often this
+  happens in real talk is **not measured**: the yardstick has single sentences, and two typed pairs.
+- **No speaker in a turn** (6.5): Ben trailing off in his own English gets a hint that is filed as Ana's.
+  The Pi knows who is talking (D-34); it is not passed to `decide()`.
+- **Mochi's own screen showed one word**, the glasses all of them. **Proposal (owners: Matheus for the
+  shape, Luís for the gateway):** the device's `hint` card gains `candidates`, the other words that fit,
+  only when there are any (`gateway/turn_pipeline.hint_card`, AGENTS 6.6); the face draws up to two of
+  them as a third line under the word (`face.html`, `mochi_device.main.hint_more`). An older backend
+  sends none and an older device ignores the field.
+- The yardstick is typed text. How ARES writes a sentence that trails off was seen in two real
+  transcripts ("...não entendi..."), not measured. `hint_cooldown` and every setting are unchanged.
+
+## D-43: Papear: Mochi for a company's meetings; two modes; the game is removed (2026-11-21)
+
+**Why.** The team changed the product on 2026-11-21: Papear is language learning for companies. Mochi
+(the device, or a phone with the app) sits in the company's meetings; people register their voice in
+advance; when one of them is stuck a word appears; afterwards each person checks their progress and
+does a review on their phone; administrators get a company view. Two kinds of session only, meeting
+and review. "Since we will have only two main modes, we will delete the play mode, anything related
+to games should be erased." The web app is being changed by its owners; this is everything else.
+- **Removed, outside `apps/web`:** contracts `Activity`, `PrivatePrompt`, `ActivityCommand`,
+  `ActivityResult`, the enums `GameState`, `RoundResult`, `WordSource`, events `activity.state.changed`
+  and `activity.private_prompt`, Speak reason `activity_host`; `intelligence/round_engine.py` and
+  `handle()` on the port; `gateway/activity_service.py`, `routes/activity.py`, `secret_guard.py`,
+  `secret_screen.py` and every use of them in the hub, the pipeline, the store and Stop; the `round`
+  device command and the device key's role on `GET /state`; `[play]`; the round rules in the quiet
+  rules and the wake phrase ("Thanks, Mochi" no longer has a round to stay out of); on the Pi
+  `mochi_device/game.py`, the round card on the face page and touch reporting (nothing else used a
+  touch; the face still hops when touched).
+- **Session modes are `meeting` and `review`** (were `together` and `activity`; `practice` and
+  `choosing` were never in the backend's contract). The schema version is 0.7. **This breaks
+  `apps/web` as it is today**; what it has to change is listed in `docs/TEAM_VIEW.md`, section 6.
+- **Waking Mochi starts a meeting.** It says one line ("Hi! I'm listening. Call me if you need a
+  word." / "Oi! Estou ouvindo. Me chama se precisar de uma palavra.", `MOCHI_GREETING_EN|PT`) and then
+  only watches. It no longer asks what to do, and the sentence after the greeting is the meeting's,
+  not an answer to Mochi. It still answers when called by name, and for a short while after it spoke.
+- **Mochi's character** (`intelligence/character.md`) keeps its voice, moods and silent commands; the
+  part about three things to do is replaced by the two sessions, and it is told with every sentence
+  which one this is. In a meeting it answers what was asked and hands the talk back.
+- **Kept on purpose:** `[listen]` and `[chat]`; the stand-in agent on the Pi (`backend.kind =
+  "test_agent"`), reworded only where it named the game or the three modes; `LearningState.REINFORCED`
+  (D-44 gives it a new way in); the Audience view's connection; `MOCHI_AGENTS.md` (the original v0.4
+  text) and `vision/` (the earlier vision), as history.
+- **Open, for the team:**
+  - `apps/web` (Home view game states, "Play", `activityStart`/`activityResult`, the mock's demo).
+  - The Pi ends a session after ten minutes, or 30 seconds without a voice (`[session]` in
+    `hardware/pi-bridge/config/mochi.toml`), and the Agora agent leaves 60 seconds after the Pi
+    (`MOCHI_AGENT_IDLE_TIMEOUT_SECONDS`). A meeting needs more; more costs Agora minutes. Not changed.
+  - The stand-in agent's prompt is still a near copy of `character.md` written for two friends; whether
+    a meeting wants a quieter stand-in is a product call.
+  - Whether the app is still called Mochi anywhere a customer sees it. Code, routes, variables and
+    the wake phrase keep the name; only the documents say Papear.
+- **Owners:** contracts and `hardware/` (Matheus's directories); gateway (Luís) and intelligence
+  (Kauê) are changed too, by deleting what served the game. Needs their yes.
+
+## D-44: who said it: the recognised voice on each turn; a review brings a word back (2026-11-21)
+
+**Why.** A turn had no speaker (AGENTS 6.5), and the whose-word rule (7.3) only works for two people
+learning each other's language. In a meeting several people learn the same language; then every hint
+had `target_user_id: null`, reached everybody's phone and was saved for nobody. And with the game gone
+nothing could move a card to `REINFORCED`.
+- **`Turn.speaker_user_id`** (additive, optional). The Pi already tells the backend whose registered
+  voice it hears (`POST .../status`, `speaker`, sent when it changes and kept until the next one). The
+  gateway keeps the person that name belongs to (`Roster.named`, matched to `display_name`) and puts
+  them on each turn. `null` when no voice is recognised, and for a phone's microphone.
+- **Rule 7.3 gains a first step:** the recognised speaker owns the word when they are in the session
+  and are learning the language being spoken; otherwise the old rule; otherwise nobody
+  (`intelligence/word_owner.py`). The condition keeps the two-person demo safe from a late report:
+  "ben" on Ana's "I need to adiar my meeting" still files postpone for Ana.
+- **A review** is a session with `mode: "review"` and a `user_id` (`POST .../start`; 422 for an
+  unknown person). Its one participant is that person, its focus the language they are learning, and
+  Mochi is their partner from the first sentence (`session_started(conversing=True)`; the parameter
+  was called `woken`). Mochi is given up to six of their cards that are `DISCOVERED` or `ASSISTED`,
+  newest first (`learning_rules.words_to_review`, `REVIEW_NOTE`), and asks for each through its
+  meaning. A card whose expression the person says moves to `REINFORCED`
+  (`learning_rules.recalled_updates`), unless that word was shown as a hint in the last few turns.
+  The UI label for `REINFORCED` becomes "Recalled in a review".
+- **People are no longer only Ana and Ben.** `gateway/roster.py` holds the people known (the stored
+  users, else the two demo people); sessions, the WebSocket (`?user=`) and saved words use it.
+  Members are added through the company routes (D-45).
+- **Limits, for the team:**
+  - **Timing is not measured.** The turn carries the last speaker the Pi reported. A report that
+    arrives after the turn, or two people speaking in quick succession, can file a word for the
+    wrong one of two people learning the same language. Nobody has tried it with two voices yet.
+  - Someone stuck in the language they are at home in (Ben trailing off in English) still gets a
+    hint that is filed for the learner, as before (D-42's limit stands for that case).
+  - A phone's microphone recognises nobody: its meetings fall back to the old rule.
+  - The review counts a word as recalled when it is in the sentence. A word Mochi itself gave away
+    in a free reply (not as a hint) is not excluded. Reviews were tested with typed sentences and a
+    scripted model only.
+  - `USED_INDEPENDENTLY` is still never set.
+- **Owners:** contract shape (Matheus), gateway (Luís), `intelligence/` (Kauê: `word_owner.py`,
+  `learning_rules.py`, `mochi_talk.py`, `decision_flow.py`, the character prompt). Needs their yes.
+
+## D-45: the company: members, session records, word moments and the team view (2026-11-21)
+
+**Why.** Administrators are to see how their people are doing, and Papear is to learn which words
+and mistakes come up in a company's work. The request: "design the database and backend logic for
+that part too, namely how we can aggregate each individual person's learning data and have an
+insightful analysis for the administrators". The whole design, with the tables and an example of
+every answer, is `docs/TEAM_VIEW.md`; this entry is the decisions in it.
+- **Two new kinds of fact.** A learning event is one card per person and word, so it cannot say how
+  often a word was needed. A **word moment** is written for every hint shown or answer spoken; a
+  **session record** for every session (when, who, how many sentences each recognised voice said).
+  The same word shown again within a minute is one moment ("say it again?").
+- **Four tables:** `companies`, `company_members`, `session_records`, `word_moments`, created at
+  start-up like the others (D-32), each fact row with `company_id` and its contract object in a
+  `jsonb` body. Loaded once, answered from memory, written behind: the same arrangement as saved
+  words, in a new package `mochi_backend/team/` that imports neither half of the backend.
+- **The team view is computed, not stored** (`team/team_view.py`, pure functions): totals, how far
+  saved words got, how people get stuck, the expressions the team needed (by how many people and how
+  often), false friends as a list of their own, a row per week, a row of counts per member, and a
+  few highlights as kind-plus-numbers for the screen to phrase.
+- **What an administrator cannot see:** who needed a word, anyone's sentences, or which words a
+  member has. `MOCHI_TEAM_MIN_PEOPLE` (default 1, for the two-person demo) leaves out expressions
+  fewer people needed.
+- **Routes** (`gateway/routes/companies.py`): members (list, add), insights, sessions, and a person's
+  own moments. `viewer=<user_id>` says who is looking; the roles are enforced (admin, member, self),
+  but without sign-in it is a claim, exactly like `/ws?user=`.
+- **Not stored:** the meeting's sentences (only the one a person was stuck in, with their moment)
+  and audio. AGENTS rule 4 says so now.
+- **`POST /api/demo/reset`** also clears session records and word moments. People, companies and
+  voices stay.
+- **Open, for the team:**
+  - **Per-member rows for administrators.** They are in because each person's data was to be added
+    up; whether a manager should see "Ana: 9 moments" is a product and privacy decision. A company
+    that records meetings also needs the consent of the people in them.
+  - **Sign-in.** Until there is one, anyone who knows the address and a `user_id` can read that
+    person's words (already true of `/ws?user=`) and, as `viewer=ana`, the team view.
+  - **One company per deployment.** The demo company `demo` (Ana admin, Ben member) is seeded and
+    every session is attached to it. The tables are ready for more; choosing a session's company is not.
+  - **The written summary after a meeting and grammar corrections** (`apps/web/PROPOSAL_contracts_
+    v0.5.md`) are not built; the moments are the facts they would start from.
+  - **Using the data** (the recogniser's keywords, a company lexicon, what a review picks): described
+    in `docs/TEAM_VIEW.md` section 7, not built.
+  - The database on Render is a free one that expires on 2026-12-21 (D-32).
+- **Owners:** to be agreed. It adds to the contracts (Matheus), `gateway/` and `storage/` (Luís); the
+  aggregation is closest to Kauê's side. Needs their yes.
+
+## D-46: who said each sentence: stretches of speech matched by time; sentences are stored (2026-11-22)
+
+**Asked for:** see whether each speaker and what they said in a meeting can be told apart correctly, and
+record it in the database.
+
+**Measured first** (`~/.cache/mochi-wake-eval/spk/meeting_sim.py` on the Pi: real recorded voices from the
+kit's corpus, three people registered and two strangers, 60 stretches of 1 to 6 s per meeting with 0.3 to 3 s
+between them, the Pi's real voice-activity detector and `VoiceTracker`; the backend's delays modelled):
+
+| | right person | wrong person | no name |
+|---|---|---|---|
+| Each stretch judged on its own audio, true boundaries (what the voice model can do) | 295 of 300 | 0 | 5 |
+| D-44 as built: the speaker last reported when the sentence arrives (sentences with one speaker) | 331 of 368 | 35 | 2 |
+| This entry (sentences with one speaker) | 351 of 368 | 0 | 17 |
+| This entry, sentences two people shared (no right answer exists; "right" is whoever spoke most) | 28 of 46 | 11 | 7 |
+
+The voice model was never the problem. The wrong names came from two places: the tracker judges a whole
+utterance, and someone who answers within about 0.7 s is still "the same utterance", so the answer went to the
+person before; and "the speaker last reported" is whoever was named last, however long ago.
+
+**Decided:**
+
+- **The Pi reports every stretch of speech** (`speakers.py`, event `said`): the speech between two pauses of
+  0.25 s, judged on that stretch alone, with who it was (a registered name, or nobody), how much speech, and
+  when it ended. Someone recognised while still talking is reported at once as well. The who-is-talking
+  report for Mochi's face and character (`speaker`) is unchanged. `MochiBackend` sends the stretches with the
+  next status as `heard: [{speaker, seconds, ago_ms}]` (how long ago, so the two clocks need not agree) and
+  sends them again when a report failed.
+- **The gateway matches by time** (`team/timeline.py`, `team/journal.py`): a sentence is the person's who
+  spoke most in the stretches that ended since the sentence before it and at least 0.3 s before it arrived
+  (a turn arrives about a second after its speech). At least 60 % of the named speech must be theirs, and
+  "could not tell" speech does not outvote a name unless there is more than twice as much of it. With no
+  stretch in that time the sentence is nobody's: a wrong name is worse than none. A device that reports no
+  stretches at all (older code) keeps the D-44 behaviour.
+- **A second look at Stop:** a report can arrive after its sentence, so every sentence of the session is
+  matched again when the session ends, and the record's speaking counts are made from that.
+- **Sentences are stored** (contract `Utterance`, table `utterances`): each with its speaker. This reverses
+  what D-45 said ("not stored: the meeting's sentences") because it was asked for. `GET /api/users/{id}/
+  utterances?viewer=` gives a person their own; nobody gets another's; the team view carries none.
+  `GET /dev/sessions/{id}/transcript` (dev routes only) shows a running session's sentences with speakers.
+- `Turn.received_at` is now when the sentence reached the backend, not when its turn came up behind the one
+  before it (they differ by the time the earlier turn took to decide).
+
+**Not done, and what the numbers do not say:**
+
+- **A real meeting has not been measured.** The recordings are read speech, close to the microphone, one
+  voice at a time. A room, people talking over each other and Agora's own turn timing will cost something;
+  the live check is two or three registered people talking through the Pi with the backend's dev routes on,
+  reading `/dev/sessions/demo/transcript`.
+- **Two people in one sentence.** Agora closes a turn after 0.6 s of silence; a quick answer lands in the
+  same turn and the text cannot be split (no word timings reach us). Such a sentence goes to whoever spoke
+  most, or to nobody.
+- **A hint's owner is decided when the sentence arrives** and is not changed by the second look.
+- **Consent and retention.** Storing what people say at work needs their agreement and a rule for how long it
+  is kept; there is neither yet. A sentence no known voice said is stored and nobody can read it.
+- **Owners:** contracts (Matheus), `gateway/` and `storage/` (Luís), `hardware/` (Matheus). Needs their yes.
+
+## D-47: the hint judge is told it is a meeting; sessions may last an hour (2026-11-22)
+
+- **The hint judge's instructions** (`intelligence/openai_hint_model.py`) no longer say that two people are
+  practising with each other: "several people talk to each other" in a work meeting, some learning English,
+  some Portuguese, and it does not know who is speaking. Two other mentions of "the other person" were
+  reworded the same way. Measured before and after with `JUDGE_TIMEOUT=6` on the two yardsticks (D-29, D-42):
+  "stuck without asking" 138 of 145 before, 136 and 136 after; "as really heard" 68 of 72 before, 67 and 67
+  after; no unwanted hint in any run. Of the sentences that differ, all but two flip between runs of the
+  same wording; "take money from the machine" (ATM) was lost in both runs after, and "passar o salt" was
+  gained in both. Within what one run to the next differs by, and the instructions are no longer wrong
+  about who is in the room.
+- **Session length:** `[session] max_session_s` is 3600 (was 600), and the Agora tokens live two hours
+  (`MOCHI_TOKEN_TTL_SECONDS` default 7200, was 3600; the stand-in agent's tokens too) so that a token does
+  not end a meeting at the hour. `inactivity_timeout_s` is still 30: a meeting with half a minute of
+  silence ends. Not tried: a session that really lasts an hour.
+
+## D-48: a session starts with "vamos papear" or "let's chat" (2026-11-22)
+
+**Asked for:** the wake expression is "vamos papear", with its English equivalent.
+
+- **The matcher finds a phrase by its own last word** (`hardware/pi-bridge/mochi_device/phrases.py`): until now
+  every phrase had to end in the one name ("mochi"). A phrase with the name in it is still found by the name
+  ("tchau mochi"); any other by its last word, with the words before it as the cue. `[wake] phrases` is now
+  `["vamos papear", "let's chat", "let's papear"]`; the greetings ("oi mochi", ...) no longer start a session
+  and come back by adding them to that list. Goodbye phrases are unchanged, and so is asking Mochi something
+  by name during a session (that is the backend reading the transcript, not the Pi).
+- **How the recogniser writes it** was taken from 458 spoken clips made for this (the kit's voices;
+  `~/.cache/mochi-wake-eval/papear/`): the v of "vamos" is the least reliable sound (heard as b, d, z, l or
+  not at all, and its a as o), so the cue is also accepted from its vowel on; "papear" is written papea,
+  papia, papie, papiar, and with a t for its second p.
+- **Measured through the real streaming listener** (clean, and "far": room reverb with noise 15 dB under the
+  speech):
+
+  | | heard, clean | heard, far | woke on something else |
+  |---|---|---|---|
+  | "vamos papear" (Portuguese voices) | 74 of 90 | 72 of 90 | 0 of 258 near-misses ("vamos passear", "vamos parar", "gosto de papear", ...) |
+  | "let's chat" (English voices) | 48 of 66 | 22 of 66 | "Let's shut the door" 4 of 5 times; "That's a chat app" once |
+  | for comparison, "oi/olá mochi" and "hi/hey mochi" on the kit's older clips (whole-clip scoring) | 80 of 105, 115 of 126 | 72 of 105, 97 of 126 | |
+
+  "let's papear" could not be judged: the synthetic English voices do not say "papear" the way a person would.
+- **Nothing else started a session** in 2.34 hours of real recorded speech (the kit's FLEURS English and
+  Brazilian Portuguese, 780 recordings, through the streaming listener): 0 wake hits, 0 goodbye hits.
+- **Greeting language:** "vamos" / "vamo" count as Portuguese on the Pi and in the backend, so "vamos papear"
+  is greeted in Portuguese and "let's chat" in English.
+- **Open:** "let's chat" is short and ordinary: it is missed more in noise and has look-alikes that start a
+  session nobody asked for ("let's shut ..."). Restricting the start to registered voices, or a longer
+  English phrase, would cut that; neither is done. Nobody has said either phrase to the device yet.
+
+## D-50: someone talking over Mochi stops it at once (2026-11-22)
+
+**The bug:** when a person started to speak while Mochi was still talking, Mochi talked on. The cause is
+D-35: while Mochi speaks the Pi sends silence instead of the microphone (its own voice comes back in the
+microphone and was written down as sentences), so nothing upstream could notice the person.
+
+**Built:**
+
+- **The Pi notices it itself** (`hardware/pi-bridge/mochi_device/bargein.py`, `[barge_in]` in `mochi.toml`):
+  - by loudness: the level of Mochi's own voice in the microphone is learned while it speaks (D-35 measured
+    it at about the level of the room); a voice `level_ratio` (3.5) times louder than that, and at least
+    `level_floor`, for 240 ms of 400 ms, with the voice detector agreeing, is a person;
+  - by voice: the tracker goes on listening while Mochi speaks and reports a registered person it
+    recognises in what it hears (event `over`, after about 0.8 s of speech). Mochi's own voice is nobody's.
+- **Then, at once:** the speaker is silenced on the Pi (no waiting for the network), the backend is told
+  (`POST /api/sessions/{id}/interrupt`), and the microphone is sent on again so the person is heard. The
+  speaker is given back when Mochi's voice has stopped arriving, or after 4 s.
+- **The backend** calls Agora's `POST .../agents/{id}/interrupt` ("the agent stops talking and thinking
+  immediately") and tells intelligence (`interrupted()`, a seventh port method): in a meeting Mochi goes
+  back to just listening, so what the person says next is not taken as an answer to it (it waits for its
+  name again); in a review the person keeps its attention and gets an answer to what they said.
+- The stand-in agent on the Pi is interrupted through its SDK session.
+
+**Tested:** the detector, the tracker event, the supervisor's sequence (hush, interrupt, microphone back,
+speaker back, once per stretch) and the backend route, with fakes. **Not tested:** with a real voice at the
+real device, and the Agora call against the real service. Two things to watch at the first try:
+
+- Mochi cutting itself off with nobody talking (its own voice louder in the microphone than assumed):
+  raise `level_ratio`, or set `enabled = false`.
+- Not stopping when talked over: lower `level_ratio` (2.5). Registered voices are caught by the second way
+  regardless, about a second in.
+- The first quarter second of what the person says is not sent on (it was said before the Pi noticed), so
+  the recogniser may miss their first word.
+
+## D-49: a noisy room: what holds, what does not, and two things built for it (2026-11-22)
+
+**Asked:** can the demo work where there is noise?
+
+**Measured** (offline, on the Pi; recorded voices, the delays between Pi, Agora and backend modelled):
+
+- **Starting a session.** "vamos papear" is heard 72 times of 90 with room reverb and noise 15 dB under the
+  speech, 74 of 90 without (D-48). "let's chat": 22 of 66 and 48 of 66. Nothing else started a session in
+  2.34 hours of other speech.
+- **Who said each sentence** (`spk/meeting_sim.py`, three meetings, 134 sentences with one speaker each;
+  "voices" are three other people talking all the time in the background, so many dB under the meeting):
+
+  | | right | wrong person | no name |
+  |---|---|---|---|
+  | quiet | 124 | 0 | 10 |
+  | room reverb and noise | 121 | 1 | 12 |
+  | the same, voices registered close up | 118 | 3 | 13 |
+  | background voices, 15 dB under | 102 | 11 | 21 |
+  | background voices, 10 dB under | 95 | 9 | 30 |
+  | background voices, 5 dB under | 70 | 8 | 56 |
+  | room and background voices, 10 dB under | 95 | 9 | 30 |
+
+  The same sentences with the rule of D-44 (the speaker last reported): 116, 104, 100, 34, 34, 26, 36 right.
+
+**Built for it:**
+
+- **A verdict every two seconds of unbroken speech** (`speakers.py`, `SAID_EVERY`). D-46 judged a stretch
+  when it paused; with other people talking in the room the voice detector never hears a pause, and a whole
+  meeting went by with hardly a verdict (30 of 134 right with background voices, as measured before this
+  change). It also helps in a reverberant room, where one person's echo ran into the next person's words
+  (108 right and 12 wrong before, 121 and 1 after).
+- **`MOCHI_MEETING_VOICES=registered`** (default `all`): in a meeting on the device, a sentence no
+  registered voice clearly said is neither looked at nor stored. The people at the next table then get no
+  hints, no cards and no place in the database. The price is that a member's sentence the device could not
+  name is dropped too (the "no name" column above), so it is a setting for a noisy room, not the default.
+
+**What a noisy room still breaks, and nothing here fixes:**
+
+- **The recogniser writes down what it hears.** In the earlier live test (D-36) 4 of 10 faint background
+  recordings came back as sentences. With `registered` they are dropped when the Pi does not know the voice;
+  without it they are judged like anyone's.
+- **Turns.** Agora ends a turn after 0.6 s of silence. With people talking nearby there may be no silence,
+  so sentences arrive late or several at once. Not measured; the simulation above cuts turns where the
+  meeting's own speech pauses, which is kinder than Agora will be.
+- **Agora's own filter** (`advanced_features.enable_sal` with `sal.sal_mode`, Beta; join page read
+  2026-11-22) locks onto ONE speaker and blocks other voices: right for a review on a phone, wrong for a
+  meeting, where it would shut out the colleagues. Not used.
+- **Steady noise is the easy case** (fans, traffic, a hum): everything above holds up in it. Other people's
+  speech is the hard one.
+
+**For the demo:** put Mochi close to the people speaking and away from other tables; register the voices
+on the spot, in that room; run the backend with `MOCHI_MEETING_VOICES=registered`; start with "vamos papear"
+or the phone's Start rather than "let's chat". And try it there before showing it: none of this has been
+heard through a real room yet.
+
+
+## D-51: the live transcript: every finished sentence goes to the screens of its session (2026-11-22)
+
+**Asked:** show what is being said during a meeting, as it is said.
+
+**Proposed, built:** a new event, `transcript.line`, with one finished sentence (`TranscriptLine`:
+`utterance_id`, `user_id` or null, `text`, `at`, `marks`). The gateway publishes it when the sentence's
+turn is committed, to every connection of that session except AR glasses, and hands the device a
+`caption` command that the Pi draws as a small strip under the face for eight seconds
+(`[face] captions` in `mochi.toml`). `MOCHI_LIVE_TRANSCRIPT=false` switches both off.
+
+**Why at the commit and not the moment the sentence arrives:** a turn can be dropped after it arrived (a
+Stop, a Reset, or with `MOCHI_CANCEL_STALE_TURNS` a newer request from Agora that covers the same speech
+again under a new id, D-37). Published earlier, such a sentence would show twice, or after Stop. The price
+is the time the hint judge takes, usually under a second.
+
+**"Live" means per sentence.** Agora gives the backend finished sentences. Word-by-word captions would
+have to come from Agora's own interim transcripts inside the channel, read by the Pi and by each phone;
+not built.
+
+**What it changes in the product rules (AGENTS section 1):** rule 3 said a person's sentences are shown
+only to them. What is *stored* still is (the `Utterance`, D-46). The live line is shown, while it is being
+said, to the screens of the session it was said in. Rule 2 ("show nothing unless a hint is worth it") now
+names the transcript as the one thing always shown.
+
+**Meetings only.** In a review one person talks to Mochi on their phone; nobody else heard it, so no line
+and no caption is sent for it.
+
+**Open, for the team:**
+- **Who can read it.** There is no sign-in: anyone who opens `/ws?user=<a known id>` or `?view=audience`
+  on a running session reads the meeting, where before they saw a hint now and then. Until sign-in exists
+  the switch is the only protection. Is on-by-default right for the deployed backend?
+- A sentence no registered voice said is in the transcript too (on a phone's microphone that is every
+  sentence). `MOCHI_MEETING_VOICES=registered` (D-49) already drops those before anything sees them.
+- Serious or personal talk (7.2) keeps Mochi from hinting, and is captioned like anything else.
+- Lines are not replayed to a screen that connects mid-meeting.
+
+## D-52: a code switch is marked for everyone; the hint stays the speaker's (2026-11-22)
+
+**Asked:** make people take notice when someone switches language.
+
+**Proposed, built:** when a sentence gets a `code_switch` hint, its transcript line carries a mark: the
+word that was said and the word in the language being spoken (`adiar` → `postpone`). The device's hint card
+carries `why` (the hint's reason), and Mochi's screen draws a code switch with an amber frame and the line
+"adiar → English" instead of "English · adiar". Still no sound.
+
+**Considered and not done:** sending the `code_switch` hint itself to every phone. The web app shows any
+hint it receives as the phone owner's, so Ben's phone would have presented Ana's word as his, and AGENTS
+6.2 and the 9.2 test ("not on `?user=ben`") would no longer hold. The mark reaches everyone without that.
+
+**Open:** only a switch the hint rules catch is marked: a word of the other language inside a sentence,
+said by someone learning the language of the sentence. A whole sentence in the other language is not a
+"code switch" to the rules, so it is captioned and nothing else; translating it for the others is not built.
+
+## D-53: idioms and technical terms are explained to the people listening (2026-11-22)
+
+**Asked:** explain idioms and hard technical terms.
+
+**Proposed, built:** a second model, the *explainer* (`intelligence/explaining.py`,
+`openai_explain_model.py`), reads a sentence and names at most one expression an intermediate learner
+would not understand, with its meaning in the listeners' language and the same in plain words. The result
+is a mark on the sentence's transcript line (`kind` `idiom` or `technical_term`; the line is published a
+second time) and an `explain` card on Mochi's screen. A new port method, `explain(turn, context)`.
+
+**It is not a hint, on purpose.** The first design made it a `Hint` with two new `reason` values, so that
+every existing screen would show it unchanged. A review of that plan found what it would have cost: an
+explanation would sit in the session's five remembered hints and count for the cooldown, for "the same
+word was just shown", for "used with help" and for every sum in the team view, each needing its own
+exception; and the hint judge accepts any `reason` it is given back. So nothing in `Hint`, `Reason`,
+`decide()` or the hint judge's instructions changed.
+
+**It never makes anything wait.** The gateway asks for an explanation after the turn is committed, in a
+task of its own, and only for a sentence that got no hint and no answer. The result is shown only if the
+session is still the same one, and its card is not queued while a hint is on screen.
+
+**When it is asked** (AGENTS 7.6): a meeting, five words or more, someone other than the speaker learning
+that sentence's language, not serious talk, not for Mochi, not while someone talks with
+Mochi, 20 s since the last explanation; each expression once per session; confidence at least 0.75 and the
+expression really in the sentence.
+
+**Tried** (2026-11-22, `gpt-5.4-mini`, no thinking, 24 written sentences of my own, 12 with an idiom or a
+term in English or Portuguese and 12 ordinary ones, among them a code switch and a company name): 24 of 24
+right, 0.74 s on average. Not a measurement: no machine transcripts, no real meeting, one run.
+
+**Cost:** one more model call for every sentence of five words or more that needed nothing else, about the
+size of the hint judge's. `MOCHI_EXPLAIN_TERMS=false` switches it off.
+
+**Kept for the company:** the mark is stored with the sentence (`Utterance.marks`), and the team view lists
+what was explained and how often (`TeamInsights.explained`): a company's own jargon, as its learners meet
+it. Who said it is not in the list.
+
+**Open:** an explained expression is saved as nobody's word (a learner might want to keep it); what
+"intermediate" should mean per person; a company's own terms (product names, internal abbreviations) are
+not known to the model.
+
+## D-54: what was wrong in what someone said: a private report after the session (2026-11-22)
+
+**Asked:** some analysis of a person's speech when they say something wrong or inaccurate; not shown in
+the meeting, kept in their learning profile.
+
+**Proposed, built:** when a session stops, in the background, each person whose recognised voice said
+three sentences or more gets a `ConversationReport` (AGENTS 6.2 and 7.7). It follows the shape the web
+app's owner proposed for v0.5 (`apps/web/PROPOSAL_contracts_v0.5.md`, 3b), with these differences: `mode`
+(`meeting` | `review`) instead of `context`; no `title`; `topic` is one of a fixed list instead of free
+text, so that the same mistake can be counted across people; each mistake has an `explanation`; sentences
+carry their `utterance_id`; `company_id` and `record_id` are there.
+
+**Why at Stop, once, and not sentence by sentence:** who said a sentence is settled only when the session
+ends (D-46), and a report built earlier could put one person's sentence into another's; one call per
+person is cheap and sees the whole of what they said; and nothing here is wanted during the meeting.
+
+**How:** the gateway builds a draft from the stored sentences and the session's word moments
+(`gateway/after_session.py`); a new port method `coach(draft, person)` has a third model, the *coach*
+(`openai_coach_model.py`), put the wrong sentences right; `intelligence/speech_report.py` keeps only
+corrections that hold up (a real sentence, a real change, a kind we know, a sentence in the language the
+person is learning) and groups them. No answer from the model means no report.
+
+**Who sees it:** the person. Their phone gets `conversation.report.created` (and the five newest on
+connect), and `GET /api/users/{id}/reports?viewer={id}` refuses anyone else. The team view counts kinds of
+mistake (`TeamInsights.mistakes`) only when **at least three people** made them: a kind one person makes
+names that person, and one that two people make tells whichever of them is looking about the other. The
+two-person demo company therefore shows none. A report's `unknown_words[].said_instead` is the person's
+sentence only when their own voice said it: a word can be theirs although a colleague's voice said the
+sentence (AGENTS 7.3, rule 2), and that sentence is not theirs to read.
+
+**Tried** (same model, thinking "low", twelve written sentences): six mistakes, all real (tense,
+agreement, an uncountable noun, a false friend, two wrong constructions), with fillers, a Portuguese
+sentence and a code switch left alone. It missed "until Friday" for "by Friday". One run, written
+sentences.
+
+**Open:**
+- **The same leak exists in what D-45 built and was not touched here:** `GET /api/users/{id}/moments`
+  returns `WordMoment.heard`, the sentence the word was needed in, whoever's voice said it. When the hint
+  went to the only learner of the language and not to the speaker, that is a colleague's sentence. The
+  fix is the one used for reports (keep `heard` only when the moment's person said it); it changes
+  D-45's stored rows, so it is left for the team to decide.
+- With few people a count can still be worked back to a person (a one-day period and a meeting of three).
+- **A misheard word looks like a mistake.** The instructions say to skip what looks misheard; how often a
+  real transcript still gets someone blamed for the recogniser's error is unmeasured (AGENTS 12.9).
+- A session on a phone's microphone recognises no voice, so nobody gets a report there; a review does
+  (every sentence is the reviewer's).
+- A session that ends without Stop being called gets no report.
+- The first 150 sentences of a person are looked at; an hour-long meeting can hold more.
+- `MOCHI_REPORT_MODEL_NAME` lets reports use a stronger model than the hint judge's; which one is worth
+  its price has not been compared.
+
+## D-55: "Used on your own": a saved word said later with no hint (2026-11-22)
+
+**Asked:** optionally, more help during a meeting. This one is the last state of AGENTS 7.4, which was
+listed as not built, so the funnel in the team view always ended in a zero.
+
+**Proposed, built:** when a meeting stops, a card moves to `USED_INDEPENDENTLY` when its person's own
+recognised voice said the word in that meeting, the card was last touched before the meeting began, the
+word was on no screen during it (as a hint, or as one of the other words on a hint's card; the journal
+keeps that list, `words_shown`), and the sentence did not follow someone else saying the word (one of
+the two sentences before). A new port method, `used_alone(said, shown, began)`; the gateway publishes
+`learning_event.updated` as for any other change.
+
+**Why at Stop and not as it is said:** the first design moved the card live and had the device cheer.
+The change cannot be undone, and the speaker of a sentence is provisional until the session ends (in a
+noisy room the first verdict is wrong one time in ten, D-49). So it is decided with the final speakers,
+and there is no cheer on the device for it.
+
+**A fix that came with it:** `ASSISTED` ("said within the next three turns") counted turns from the
+current session only, so a card from last week said in the first sentences of a new meeting became "used
+with help" with no hint in sight, and would then never count as used on its own. The hint must now also
+be at most three minutes old.
+
+**Open:** it needs a recognised voice, so it never happens on a phone's microphone; a common word
+("return") will move the first time its person says it, which is what the state says but may feel cheap.
+
+**Not built, from the same question:** translating a whole sentence said in the other language for the
+others; word-by-word captions; asking Mochi "what did she just say?".
+
+## D-56: the web app has its own users and sessions; session records (2026-11-21)
+
+*Written on `main` as D-42 (PR #22) while this file's D-42 to D-55 were being written on `hardware`; renumbered when the two were merged (D-58). `apps/web` and the commits of that PR still say D-42.*
 
 **Why.** Luís asked for `apps/web` to be rebuilt as one app that does in a browser what Mochi Home does on the
 Pi, for any person and not only `ana` and `ben`. That needs people the backend can create, a session that
@@ -856,9 +1456,11 @@ made by a second builder, in its own commits, against the same written contract.
   - `asks_partner` matches names only for `ana` and `ben`.
 - **Owners:** gateway and storage (Luís); web (Tasnim's directory, rebuilt at Luís's request).
 
-## D-43: Papear for companies: barge-in, a weekly digest, a sober look (2026-11-22)
+## D-57: Papear for companies: barge-in, a weekly digest, a sober look (2026-11-22)
 
-**Why.** The web app (D-42) is now meant for companies, and a first round of use found four problems.
+*Written on `main` as D-43 (PR #23); renumbered when it was merged with `hardware` (D-58). `apps/web` still says D-43.*
+
+**Why.** The web app (D-56) is now meant for companies, and a first round of use found four problems.
 - **Barge-in.** Web sessions inherited the Pi's `MOCHI_INTERRUPTION=append` (D-40): Papear finished its answer and
   then answered the sentence that was meant to cut it off. `SessionConfig.for_session` now gives every non-demo
   session Agora's default interruption (`""`), on the first and the fallback ears. The Pi's `demo` session keeps
@@ -875,20 +1477,119 @@ made by a second builder, in its own commits, against the same written contract.
   their own first language, so it was tried and left out). Needs the live `decision` log lines to settle.
 - **Digest is weekly.** `/digest` is a wrap-up of one calendar week (Monday to Sunday, the browser's time zone) across
   all the person's sessions: sessions, minutes, active days, minutes per day, the change against the week before,
-  words by state, and what to practise next. It uses only data the backend already stores (D-42).
+  words by state, and what to practise next. It uses only data the backend already stores (D-56).
 - **Name and look.** The web product is **Papear**. The cartoon face became a sober status panel (monogram, state text,
   audio meter); corners and shadows are flatter. The backend, the Pi and Mochi's own lines keep "Mochi": the wake phrase
   and `asks_mochi` match only "Mochi", and the character prompt (`intelligence/`) still names itself Mochi. Whether
   Papear should answer to its own name is a decision for Kauê and the team.
 - **Not built.** A company account (several people, an admin view, team totals) needs sign-in; today anyone who knows a
-  user id can read that person's words (D-42). The digest is per person, not per team.
+  user id can read that person's words (D-56). The digest is per person, not per team.
 
-## D-44: in a web session, words the guest would learn go to the person, swapped (2026-11-22)
+## D-58: `hardware` and `main` are one again: what was decided where they disagreed (2026-11-22)
+
+**What happened.** While D-43 to D-55 were built on `hardware`, `main` got a rebuilt web app and, in the
+backend, web users, per-user sessions and their records (PRs #22 and #23, D-56 and D-57). Both sides had
+changed the same 22 backend files, and three things could not both stay as they were. Suhuai asked for the
+two to be reconciled now; these are the choices, each one open to the owners' veto.
+
+- **Session modes.** The backend says `meeting` and `review` (D-43). The web app's type guard accepted only
+  `together` and `activity`, so its Start would have failed. `apps/web/src/contracts.ts` now also accepts
+  `meeting` and `review` (the type and the guard, nothing else: the app never reads the mode). That is the
+  only change made in `apps/web`. The game's events are still typed there and are simply never sent; the
+  web app never called the game's routes.
+- **Two tables called `session_records`.** The web's (one row per finished web session of a person) was
+  deployed first and keeps the name. The company's (one row per meeting or review, D-45) is now
+  `company_sessions`. Its contract is still called `SessionRecord`, and so is the web's Python class in
+  `storage/session_record.py`: two different shapes with one name. Files that need both import the web's
+  as `WebSessionRecord`. Renaming one of them for good is for Matheus and Luís.
+- **Who is in a meeting.** D-44 made a meeting's participants "everyone the backend knows". With web users
+  that would put every person who ever opened the web app, and `guest`, into the device's meetings. The
+  roster (meeting participants, voice owners) is now the company's members; the user directory (D-56)
+  knows everybody. A web user's session has its own two people (the user and `guest`), a review its one.
+  `/ws?user=`, `GET /api/users/{id}` and a review accept a person from either.
+- **`Storage.save_user`** replaces a user that exists (a member's languages or name can be changed, D-45);
+  on `main` it left an existing user alone. No caller on `main` relied on that (a new web user always gets
+  a fresh id), and the two tests that asserted it were changed.
+- **The snapshot on connect** sends only the connecting person's words (D-56) and newest reports (D-54),
+  no longer everyone's filtered by the hub. No `activity.state.changed` on connect: three tests of D-56
+  that waited for one were changed.
+- **A web user's session** is also written into the company's history (a `company_sessions` row, its
+  sentences and word moments) under the one company there is. The team view counts its moments in the
+  totals and the gaps; its member rows are members only. Whether a web user should belong to a company is
+  the question D-57 already asks ("a company account needs sign-in").
+- **Decision numbers.** `main`'s two entries were renumbered D-56 and D-57, because `hardware` had fourteen
+  entries and their references in code against two.
+
+**A second round, the same day.** While the first merge was in CI, `main` got PRs #24 and #25 (words the
+guest would learn go to the person; phrases Mochi teaches are saved; a web session's quiet listener that
+explains an idiom aloud). They are D-60 to D-62 below. Merged the same way, with two decisions:
+- A web user's session started **with** the wake phrase is a conversation with Mochi, started without it
+  a quiet listener that may explain aloud (D-62), as on `main`. The device's meeting is neither (D-43).
+- The silent explainer of D-53 stands back in a web session's quiet listener: there Mochi explains aloud
+  itself (D-62), and two explanations of one idiom would be one too many.
+
+**Checked:** the merged backend passes both sides' tests with lint, strict types and the schema check. The
+Postgres tests, skipped until now for want of a database, were run against a throwaway PostgreSQL 17 on
+the Pi (the Debian packages unpacked into a folder, no install): all 7 pass. And the deploy was rehearsed:
+a database made with `main`'s schema and holding a web user and a web session was opened by this code,
+which created its six tables beside them, kept the web session, wrote a company session, a moment, a
+sentence and a report, and read all of it back after a restart.
+**Not checked here:** the web app's own tests (no Node on the Pi; CI runs them), and Render's real database.
+
+## D-59: one-touch assistance: the sentence someone was reaching for, and Mochi saying it (2026-11-22)
+
+**Asked** (Suhuai, from the team's product notes): when someone has trouble expressing themselves, suggest
+a natural sentence from the context, and let one touch have Mochi say it aloud so that everyone understands
+and the talk goes on. The example: "Why is the integration delayed?" / "Because we need to… como é que
+fala… destravar a autenticação." → "We need to unblock the authentication process."
+
+**Proposed, built** (AGENTS 7.8):
+
+- **The sentence.** After a turn that got a silent hint, a model call writes the whole sentence the speaker
+  meant, from their sentence, the sentences before it and the hint's word (`intelligence/phrasing.py`,
+  `openai_phrase_model.py`; port method `suggest`). Like an explanation (D-53) it is asked after the turn is
+  committed, in a task of its own, so the hint is never later for it.
+- **Where it goes.** A new event `phrase.suggested` (`SuggestedPhrase`: `hint_id`, `target_user_id`,
+  `language`, `text`, `expires_at`), routed exactly like the hint it follows, and a device command `suggest`.
+  Mochi's screen shows the sentence in a bar with a speaker sign.
+- **The touch.** `POST /api/sessions/{id}/hints/{hint_id}/say` has Agora's agent say the sentence (the same
+  `speak` call that announces a learned voice), publishes `agent.speak.requested` and answers
+  `{"said": true}`. Once per suggestion, for 20 seconds, only in a running session. The Pi's face page
+  reports a touch to the supervisor again (`GET /tap` on the face server, as the game did), and the
+  supervisor calls the route when a suggestion is showing.
+- **Quiet by default is kept:** Mochi says nothing unless someone touches. The Speak `reason` is `asks_mochi`
+  (someone asked, with a finger); no new enum value, so a client that checks the reason still accepts it.
+
+**Why not put the sentence into the hint.** `Hint.example` is nearly this for a hint the judge made, but a
+lexicon hint (the instant ones) carries a stock example, not the speaker's sentence; and the hint is
+published before a sentence exists. A second event keeps the hint's timing and shape as they are.
+
+**Tried** (2026-11-22, `gpt-5.4-mini`, no thinking, ten written cases in English and Portuguese: code
+switches with and without "how do you say", a sentence that trails off, a false friend, restarts, and a
+plain question about a word): nine sentences a colleague would say ("Because we need to unblock the
+authentication.", "Not yet, I need to finish the spreadsheet first.", "Vamos marcar a reunião para
+sexta-feira de manhã."), and IGNORE for the question; 0.7 s on average. One of the nine dropped a detail
+("the client asked for" became "they want"). One run, written sentences.
+
+**Open:**
+- **Mochi speaks into the meeting.** Its sentence goes through the same speaker as its other speech, so
+  everything known about Mochi hearing itself (D-35, AGENTS 12.3) applies; the Pi sends silence while it
+  speaks, but a phone's microphone in the room may not.
+- The touch is anyone's: whoever is nearest the device decides that Mochi speaks for the stuck person.
+- A suggestion can put words in someone's mouth. It is shown first, and said only on a touch, for that
+  reason; whether it should also be shown on the shared screen or only on the person's own phone is a
+  product choice (today: wherever the hint goes).
+- Nothing is kept: neither the suggestion nor that it was said is in the person's history or the team view.
+- `apps/web` does not show it yet (AGENTS 9.4).
+
+## D-60: in a web session, words the guest would learn go to the person, swapped (2026-11-22)
+
+*Written on `main` under an earlier number (D-44, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
 
 **Why.** Render logs of a real session showed why Training stayed empty. The person (Portuguese at home, learning
 English) said "tênis" inside an English sentence and the hint model produced `tênis (sneakers)`. The whose-word rule
 (AGENTS 7.3) gives a word to the one participant learning the language of the sentence, and in a web session that was
-the invented `guest` (the opposite languages, D-42). The card and its learning event were saved for the guest, so the
+the invented `guest` (the opposite languages, D-56). The card and its learning event were saved for the guest, so the
 person's Training, My words and screen never saw them. Assigning the pair to the person as it was would teach them
 `tênis`, which they know.
 - **Rule (`gateway/guest_reown.py`, applied to every decision of a session that has a person):** a hint or learning
@@ -903,11 +1604,13 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   Training. Saving those phrases needs the character reply to carry a structured "save this phrase"; that is the next
   step and a change in `intelligence/`.
 
-## D-45: phrases Papear teaches become Training material (2026-11-22)
+## D-61: phrases Papear teaches become Training material (2026-11-22)
+
+*Written on `main` under an earlier number (D-45, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
 
 **Why.** Training is meant to hold what a person had a hard time saying or understanding, often a whole phrase
 ("how do I say my sneakers are nice?"). Only hints became learning events, so a person who just chats with Papear
-(`SPEAK`, no hint) had an empty Training even after D-44.
+(`SPEAK`, no hint) had an empty Training even after D-60.
 - **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: TEXT | MEANING]`: a word,
   phrase or sentence the person needed (asked how to say it, did not know it, or got it wrong), in the language they
   learn, with its meaning in their own, at most twelve words, written next to the line it speaks. It is used for single
@@ -915,7 +1618,7 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   said. `intelligence/saved_phrase.py` (`PhraseSaver`) reads it from the spoken line in `DecisionFlow.run` and adds a
   DISCOVERED `LearningEvent` (`detection_signal: asks_mochi`, `hint_id: null`) for the one participant learning the
   phrase's language (AGENTS 7.3). At most two per line; the same phrase is not saved twice; a line with no tag, or
-  no speech, changes nothing. In a web session a phrase in the wrong language lands on the guest and D-44 swaps it.
+  no speech, changes nothing. In a web session a phrase in the wrong language lands on the guest and D-60 swaps it.
 - **Contracts.** No new event, field or enum: a phrase is a `LearningEvent` whose `expression` has several words.
   Training, My words and the digest show it as they show a word.
 - **Unverified.** The tag is only as good as the model's habit of writing it. It was tested with a scripted character
@@ -929,11 +1632,13 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   saved, because a woken session sends every sentence to the character and the hint path is skipped, and nothing the
   character says was stored. That is what this entry fixes, if the model writes the tag.
 - **Open:** the person switched between practising English and Portuguese inside one session while the profile has one
-  target language. A phrase in the language that is not their profile target is swapped by D-44 into the profile
+  target language. A phrase in the language that is not their profile target is swapped by D-60 into the profile
   target, which is wrong for someone pretending to learn the other language. A per-session choice of language is a
   product decision.
 
-## D-46: a web session listens quietly or talks, as the Pi does (2026-11-22)
+## D-62: a web session listens quietly or talks, as the Pi does (2026-11-22)
+
+*Written on `main` under an earlier number (D-46, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
 
 **Why.** Every web session started "woken" (the Start button sent `woken_by`), which is the Pi's "Oi Mochi": Papear
 then chats about every sentence and never watches in silence. The Pi has both ways (Companhia: quiet; Praticar: talks),
@@ -947,7 +1652,7 @@ and the product needs both on the web.
   `session_started(..., explains=True)`. While it is not a conversation, a sentence of four or more words that the
   hint rules and the hint model left without a hint is also shown to the character with a note that says: speak only
   to explain an idiom, a figure of speech or an expression the other person may not understand, or one used wrongly,
-  in a sentence or two, with a `[phrase: …]` tag (D-45); otherwise answer `[quiet]`. Grammar slips and small mistakes are
+  in a sentence or two, with a `[phrase: …]` tag (D-61); otherwise answer `[quiet]`. Grammar slips and small mistakes are
   never commented on. The Pi's session (no person) and a woken session never do this. It reuses `SpeakReason.ASKS_MOCHI`
   for the spoken line, as other spoken lines already do.
 - **AGENTS 1, rule 2** gets one sentence for this exception; it is proposed until the owners agree.

@@ -1,0 +1,16 @@
+{
+  "utterance_id": "seg_009",
+  "company_id": "demo",
+  "record_id": "rec_001",
+  "user_id": "ana",
+  "text": "I need to adiar my meeting tomorrow",
+  "at": "2026-11-19T16:00:04.500Z",
+  "marks": [
+    {
+      "kind": "code_switch",
+      "text": "adiar",
+      "gloss": "postpone",
+      "plain": null
+    }
+  ]
+}

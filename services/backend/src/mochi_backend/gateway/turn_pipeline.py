@@ -6,16 +6,18 @@ Order: take the text -> decide -> apply learning events -> publish -> reply -> r
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.guest_reown import hand_guest_words_to_person
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
+from mochi_backend.gateway.live_transcript import LiveTranscript, switch_marks
+from mochi_backend.gateway.one_touch import OneTouch
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
-from mochi_backend.gateway.secret_screen import leaked_channel
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.gateway.spoken_release import SpokenOutlet
@@ -24,17 +26,18 @@ from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.json_logging import EventLogger
+from mochi_backend.team.journal import SessionJournal
 from mochi_contracts import (
     Decision,
     DecisionKind,
     EventType,
-    GameState,
     Hint,
     Language,
     LearningEvent,
     LearningState,
     SessionContext,
     Speak,
+    TranscriptMark,
     Turn,
 )
 
@@ -54,13 +57,20 @@ def hint_card(hint: Hint) -> str:
     """What the device shows for a hint, as JSON: a word alone tells too little.
 
     Example: `{"word": "fork", "language": "en", "meaning": "garfo", "example": null}`.
+    When the speaker named no word and others fit as well (`Hint.candidates`), those go along as
+    "candidates": someone who stopped at "I forgot my" may need umbrella, raincoat or jacket,
+    and Mochi's own screen showed only the first (PROPOSAL, DECISIONS D-42).
     """
-    card = {
+    card: dict[str, str | None | list[str]] = {
         "word": hint.expression,
         "language": hint.target_language.value,
         "meaning": hint.meaning,
         "example": hint.example,
+        "why": hint.reason.value,  # a code switch is drawn as "adiar -> postpone" (D-52)
     }
+    others = [c.expression for c in hint.candidates or [] if c.expression != hint.expression]
+    if others:
+        card["candidates"] = others
     return json.dumps(card, ensure_ascii=False)
 
 
@@ -71,10 +81,6 @@ def used_card(event: LearningEvent) -> str:
     """
     card = {"word": event.expression, "language": event.target_language.value}
     return json.dumps(card, ensure_ascii=False)
-
-
-PLAY = "[play]"  # Mochi was asked for a game: a round starts with this turn
-RoundStarter = Callable[[], Awaitable[Speak | None]]  # starts a round, returns the host's line
 
 
 def silent_decision() -> Decision:
@@ -103,6 +109,10 @@ class PipelineDeps:
     voices: VoiceDirectory | None = None  # forgetting a voice also deletes the stored copy
     cancel_stale_turns: bool = False  # MOCHI_CANCEL_STALE_TURNS (DECISIONS D-37)
     streamer: StreamingDecider | None = None  # set only with MOCHI_STREAM_REPLY (D-37)
+    journal: SessionJournal | None = None  # the company's learning history (D-45)
+    registered_voices_only: bool = False  # MOCHI_MEETING_VOICES=registered (D-49)
+    transcript: LiveTranscript | None = None  # the live transcript and what is explained (D-51)
+    one_touch: OneTouch | None = None  # the sentence someone was reaching for (D-59)
 
 
 class TurnPipeline:
@@ -122,21 +132,30 @@ class TurnPipeline:
         self._commit = deps.commit_lock
         self._voices = deps.voices
         self._ears_prompt, self._ears_words = deps.ears_prompt, deps.ears_words
-        self._start_round: RoundStarter | None = None
+        self._journal = deps.journal
+        self._registered_only = deps.registered_voices_only
+        self._transcript = deps.transcript
+        self._one_touch = deps.one_touch
         self._stale = StaleTurns(deps.cancel_stale_turns)
         self._streamer = deps.streamer
         self._speaking: set[asyncio.Task[None]] = set()  # streamed turns still running
 
-    def play_with(self, start_round: RoundStarter) -> None:
-        """Give the pipeline the way to start a round when Mochi writes `[play]`.
+    async def settle(self) -> None:
+        """Wait for what is still being worked out behind the turns: an explanation of an idiom
+        or a term (tests, and a clean shutdown). Example: `await pipeline.settle()`."""
+        if self._transcript is not None:
+            await self._transcript.settle()
+        if self._one_touch is not None:
+            await self._one_touch.settle()
 
-        Example: `pipeline.play_with(activity.start_in_turn)`.
-        """
-        self._start_round = start_round
+    async def say_suggestion(self, hint_id: str) -> bool:
+        """One touch: Mochi says aloud the sentence suggested after this hint (D-59). False when
+        there is none to say. Example: `await pipeline.say_suggestion("hint_017")`."""
+        return self._one_touch is not None and await self._one_touch.say(hint_id)
 
     def build_context(self) -> SessionContext:
-        """The context for intelligence: history plus the saved words of this session's people."""
-        people = [participant.user_id for participant in self._store.participants]
+        """The context for intelligence: history plus each person's saved words."""
+        people = [person.user_id for person in self._store.people()]
         words = {user: self._intelligence.words_for(user) for user in people}
         return self._store.context(words)
 
@@ -209,10 +228,8 @@ class TurnPipeline:
             outlet.close()
 
     def _may_speak(self, generation: int) -> bool:
-        """No Stop or Reset since the turn began, and no round whose word must stay secret."""
-        store = self._store
-        playing = store.activity.state is GameState.ACTIVE_ROUND
-        return generation == store.generation and store.capturing and not playing
+        """No Stop or Reset since the turn began."""
+        return generation == self._store.generation and self._store.capturing
 
     async def _heard(
         self, heard: str, position: int, arrived: float | None, ticket: Ticket
@@ -236,18 +253,64 @@ class TurnPipeline:
         if not text or not self._store.capturing:
             self._logger.log("turn_ignored_not_capturing", {"text_len": len(text)})
             return TurnOutcome("", silent_decision())
-        turn = Turn(
-            segment_id=self._ids.new("seg"), text=text, received_at=iso_z(self._clock.now())
-        )
-        self._logger.log("turn", {"segment_id": turn.segment_id, "text": text})
+        turn = self._new_turn(text, arrived)
+        if self._not_ours(turn):
+            self._logger.log("turn_ignored_unknown_voice", {"segment_id": turn.segment_id})
+            return TurnOutcome("", silent_decision())
         generation = self._store.generation
-        decision = await self._decide_unless_stale(turn, ticket)
+        context = self.build_context()
+        decision = await self._decide_unless_stale(turn, context, ticket)
         if decision is None:
             why = ticket.why if ticket else None
             self._logger.log("turn_dropped_stale", {"segment_id": turn.segment_id, "why": why})
             return TurnOutcome("", silent_decision(), turn.segment_id, stale=True)
-        async with self._commit:  # Stop, Reset and round changes wait until this turn is done
-            return await self._commit_turn(turn, decision, generation, arrived)
+        async with self._commit:  # Stop and Reset wait until this turn is done
+            outcome = await self._commit_turn(turn, decision, generation, arrived)
+        if outcome.segment_id is not None:
+            self._afterwards(turn, context, outcome.decision, generation)
+        return outcome
+
+    def _afterwards(
+        self, turn: Turn, context: SessionContext, decision: Decision, generation: int
+    ) -> None:
+        """Off the turn's path, so nothing waits: an idiom is explained a moment later (D-53),
+        and a stuck speaker is offered the whole sentence (D-59)."""
+        if self._transcript is not None:
+            self._transcript.explain_later(turn, context, decision, generation)
+        if self._one_touch is not None:
+            self._one_touch.suggest_later(turn, context, decision, generation)
+
+    def _new_turn(self, text: str, arrived: float | None) -> Turn:
+        """The turn, stamped with when it reached us and whose voice the device heard say it."""
+        heard_at = self._arrival_time(arrived)
+        turn = Turn(
+            segment_id=self._ids.new("seg"),
+            text=text,
+            received_at=iso_z(heard_at),
+            speaker_user_id=self._speaker_of(heard_at),
+        )
+        said = {"segment_id": turn.segment_id, "text": text, "speaker": turn.speaker_user_id}
+        self._logger.log("turn", said)
+        return turn
+
+    def _not_ours(self, turn: Turn) -> bool:
+        """With MOCHI_MEETING_VOICES=registered: a sentence no registered voice clearly said, on
+        a device that tells voices apart. It is neither judged nor kept (the next table's talk)."""
+        if not self._registered_only or self._journal is None or turn.speaker_user_id is not None:
+            return False
+        return self._store.reviewer is None and self._journal.reports_voices()
+
+    def _arrival_time(self, arrived: float | None) -> datetime:
+        """When the sentence reached us (a turn can wait behind the one before it)."""
+        waited = 0.0 if arrived is None else max(0.0, time.monotonic() - arrived)
+        return self._clock.now() - timedelta(seconds=waited)
+
+    def _speaker_of(self, heard_at: datetime) -> str | None:
+        """Whose sentence it is: from the stretches of speech the device reported, else the
+        speaker it last named (an older device, a review), else nobody."""
+        if self._journal is None or self._store.reviewer is not None:
+            return self._store.speaker
+        return self._journal.speaker_of(heard_at, self._store.speaker)
 
     async def _commit_turn(
         self, turn: Turn, decision: Decision, generation: int, arrived: float | None = None
@@ -261,73 +324,56 @@ class TurnPipeline:
                     "arrived_to_decided_ms": round((time.monotonic() - arrived) * 1000, 1),
                 },
             )
-        if self._superseded(decision, generation):
+        if self._superseded(generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
-        decision = await self._with_round(self._without_secret(decision))
         await self._publish_results(decision)
         reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
+        marks = self._note(turn, decision)
+        if self._transcript is not None:
+            await self._transcript.show(turn, marks)
         return TurnOutcome(reply, decision, turn.segment_id)
 
-    def _without_secret(self, decision: Decision) -> Decision:
-        """Silence a decision that would give the live round's secret word away."""
-        secrets = self._store.round_secrets
-        if not secrets or self._store.activity.state is not GameState.ACTIVE_ROUND:
-            return decision
-        channel = leaked_channel(decision, secrets)
-        if channel is None:
-            return decision
-        self._logger.log("secret_leak_blocked", {"channel": channel})
-        return silent_decision()
+    def _note(self, turn: Turn, decision: Decision) -> list[TranscriptMark]:
+        """Keep what was said and by whom, and the moment when a word was needed (D-45, D-46).
+        Returns what was noticed in the sentence: the word of a code switch (D-52)."""
+        marks = switch_marks(decision.hint)
+        if self._journal is None:
+            return marks
+        self._journal.heard(turn, marks)
+        if decision.hint is not None:
+            self._journal.needed(decision.hint, turn)
+        return marks
 
-    async def _with_round(self, decision: Decision) -> Decision:
-        """Mochi wrote `[play]`: start the round now, and let the host's line follow its own.
+    def _superseded(self, generation: int) -> bool:
+        """True when Stop or Reset came while this turn was being decided."""
+        return generation != self._store.generation or not self._store.capturing
 
-        Example: "[play] Let's play!" is said as "Let's play! Ben describes. Ana guesses!".
-        """
-        speak = decision.speak
-        if speak is None or PLAY not in speak.text.lower() or self._start_round is None:
-            return decision
-        host = await self._start_round()
-        if host is None:
-            return decision
-        if leaked_channel(decision, self._store.round_secrets) is not None:
-            # Mochi's line was written before the word was drawn, and can hold it by chance (a
-            # word it just taught is the likeliest pick): only the host's line is said then.
-            self._logger.log("secret_leak_blocked", {"channel": "play"})
-            return silent_decision().model_copy(
-                update={"decision": DecisionKind.SPEAK, "speak": host}
-            )
-        both = speak.model_copy(update={"text": f"{speak.text} {host.text}"})
-        return decision.model_copy(update={"speak": both})
-
-    def _superseded(self, decision: Decision, generation: int) -> bool:
-        """True when Stop/Reset came while deciding, or a round started (wake phrases may speak)."""
-        if generation != self._store.generation or not self._store.capturing:
-            return True
-        playing = self._store.activity.state is GameState.ACTIVE_ROUND
-        return playing and decision.decision is not DecisionKind.SPEAK
-
-    async def _decide_unless_stale(self, turn: Turn, ticket: Ticket | None) -> Decision | None:
+    async def _decide_unless_stale(
+        self, turn: Turn, context: SessionContext, ticket: Ticket | None
+    ) -> Decision | None:
         """The decision, or None when Agora gave up on this turn while it was being decided."""
         if ticket is None:
-            return await self._decide(turn)
-        return await self._stale.decide(ticket, self._decide(turn, ticket.outlet))
+            return await self._decide(turn, context)
+        return await self._stale.decide(ticket, self._decide(turn, context, ticket.outlet))
 
-    def _deciding(self, turn: Turn, outlet: SpokenOutlet | None) -> Awaitable[Decision]:
-        """`decide`, or with MOCHI_STREAM_REPLY and no round on, the one that may stream."""
-        context = self.build_context()
-        playing = self._store.activity.state is GameState.ACTIVE_ROUND
-        if outlet is None or self._streamer is None or playing:
+    def _deciding(
+        self, turn: Turn, context: SessionContext, outlet: SpokenOutlet | None
+    ) -> Awaitable[Decision]:
+        """`decide`, or with MOCHI_STREAM_REPLY the one that may stream."""
+        if outlet is None or self._streamer is None:
             return self._intelligence.decide(turn, context)
         outlet.segment_id = turn.segment_id
         return self._streamer.decide_streaming(turn, context, outlet)
 
-    async def _decide(self, turn: Turn, outlet: SpokenOutlet | None = None) -> Decision:
+    async def _decide(
+        self, turn: Turn, context: SessionContext, outlet: SpokenOutlet | None = None
+    ) -> Decision:
         started = self._clock.now()
         try:
-            decision = await asyncio.wait_for(self._deciding(turn, outlet), self._timeout)
+            waiting = self._deciding(turn, context, outlet)
+            decision = await asyncio.wait_for(waiting, self._timeout)
         except TimeoutError:
             self._logger.log("decide_failed", {"segment_id": turn.segment_id, "error": "timeout"})
             return silent_decision()
@@ -366,7 +412,7 @@ class TurnPipeline:
     async def save_learning_events(self, proposals: list[LearningEvent]) -> None:
         """`apply()` the proposals, then publish `created` (first state) or `updated`."""
         saved = self._intelligence.apply(proposals)
-        self._store.note_saved(saved)  # for the session record (D-42)
+        self._store.note_saved(saved)  # for the web session's record (D-56)
         for stored in saved:
             first = len(stored.state_history) == 1
             kind = EventType.LEARNING_EVENT_CREATED if first else EventType.LEARNING_EVENT_UPDATED

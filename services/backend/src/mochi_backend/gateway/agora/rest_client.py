@@ -98,6 +98,17 @@ class AgoraRestClient:
         if reply.status != HTTP_OK:
             raise AgoraError(_describe(url, reply, self._secrets, "200"))
 
+    async def interrupt(self, agent_id: str) -> None:
+        """POST /agents/{id}/interrupt: "the agent stops talking and thinking immediately".
+
+        Agora interrupt page, read 2026-11-22 (VERIFIED.md). Sent twice at most: stopping what
+        has already stopped is harmless.
+        """
+        url = f"{self._root}/agents/{agent_id}/interrupt"
+        reply = await self._post(url, None, attempts=2)
+        if reply.status != HTTP_OK:
+            raise AgoraError(_describe(url, reply, self._secrets, "200"))
+
     async def _post(self, url: str, payload: JsonValue, attempts: int = 1) -> HttpResponse:
         """POST once, or up to `attempts` times for calls that are safe to repeat (/leave only)."""
         last_error: HttpTransportError | None = None

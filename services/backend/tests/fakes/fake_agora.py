@@ -17,6 +17,8 @@ class FakeAgoraClient:
         self.started: list[AgentStartRequest] = []
         self.stopped: list[str] = []
         self.spoken: list[tuple[str, str]] = []
+        self.interrupted: list[str] = []
+        self.interrupt_error: AgoraError | None = None
         self.start_error: AgoraError | None = None
         self.refused_ears: set[str] = set()  # speech-to-text vendors Agora "does not accept"
         self.attempts: list[AgentStartRequest] = []  # every start, refused ones included
@@ -58,6 +60,12 @@ class FakeAgoraClient:
         if self.speak_error is not None:
             raise self.speak_error
         self.spoken.append((agent_id, text))
+
+    async def interrupt(self, agent_id: str) -> None:
+        """Record the interruption (or raise the scripted error)."""
+        if self.interrupt_error is not None:
+            raise self.interrupt_error
+        self.interrupted.append(agent_id)
 
 
 class FakeTokenIssuer:

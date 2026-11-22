@@ -5,7 +5,8 @@ import re
 from mochi_backend.intelligence.clear_cases import find_entry
 from mochi_backend.intelligence.hint_builder import CaseMatch, match_from_entry
 from mochi_backend.intelligence.lexicon import Lexicon
-from mochi_backend.intelligence.tokens import lowered
+from mochi_backend.intelligence.model_port import Suspect
+from mochi_backend.intelligence.tokens import has_phrase, lowered, normalized
 from mochi_contracts import Language, Reason, SessionContext
 
 _TRAILING = re.compile(r"(?:…|\.\.\.|\b(?:um+|uh+|hmm+|er+)\b)[\s.…]*$")
@@ -35,12 +36,22 @@ def marker_for(text: str) -> Reason | None:
 
 
 def _look_alike(text: str, lexicon: Lexicon, focus: Language) -> CaseMatch | None:
-    if focus is not Language.EN:
-        return None  # the false friends we know are English words Portuguese speakers misuse
-    friend = lexicon.false_friend_in(lowered(text))
+    friend = lexicon.false_friend_in(lowered(text), focus)
     if friend is None:
         return None
     return CaseMatch(Reason.LOOK_ALIKE, friend.intended, friend.meaning, friend.example)
+
+
+def suspect_in(text: str, lexicon: Lexicon, focus: Language) -> Suspect | None:
+    """The false friend the lexicon finds in a sentence, as the hint model is told about it.
+
+    Example: "I pretend to travel in July." -> used "pretend", meant "intend", look-alike
+    "pretender". None when the lexicon knows no false friend in the sentence.
+    """
+    friend = lexicon.false_friend_in(lowered(text), focus)
+    if friend is None:
+        return None
+    return Suspect(used=friend.used, meant=friend.intended, look_alike=friend.meaning)
 
 
 def _from_history(
@@ -57,7 +68,10 @@ def _from_cues(
     text: str, reason: Reason, context: SessionContext, lexicon: Lexicon
 ) -> CaseMatch | None:
     entry = lexicon.entry_for_cues(lowered(text))
-    return match_from_entry(entry, reason, context) if entry else None
+    if entry is None or has_phrase(normalized(text), entry.word(context.focus)):
+        # "When you pay, they always give you a receipt." has the cues and the word: not stuck
+        return None
+    return match_from_entry(entry, reason, context)
 
 
 def detect_subtle(

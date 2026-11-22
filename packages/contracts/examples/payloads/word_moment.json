@@ -1,0 +1,12 @@
+{
+  "moment_id": "mom_001",
+  "company_id": "demo",
+  "record_id": "rec_001",
+  "user_id": "ana",
+  "expression": "postpone",
+  "meaning": "adiar",
+  "target_language": "en",
+  "reason": "code_switch",
+  "at": "2026-11-19T16:00:04.700Z",
+  "heard": "I need to adiar my meeting tomorrow"
+}

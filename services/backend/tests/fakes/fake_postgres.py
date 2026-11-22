@@ -1,8 +1,8 @@
 """A `PostgresStorage` with no database whose reads can fail, for the startup fallback."""
 
 from mochi_backend.storage.postgres import PostgresStorage
-from mochi_backend.storage.session_record import SessionRecord
-from mochi_contracts import LearningEvent, User, VoiceProfile
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
+from mochi_contracts import Company, LearningEvent, Member, User, VoiceProfile
 
 
 class ReadFailsPostgres(PostgresStorage):
@@ -14,6 +14,9 @@ class ReadFailsPostgres(PostgresStorage):
     def seed_users(self, users: list[User]) -> None:
         """Pretend the users were added."""
 
+    def seed_company(self, company: Company, members: list[Member]) -> None:
+        """Pretend the company was added."""
+
     def load_users(self) -> list[User]:
         """No users."""
         return []
@@ -22,7 +25,7 @@ class ReadFailsPostgres(PostgresStorage):
         """No voices."""
         return []
 
-    def load_sessions(self) -> list[SessionRecord]:
+    def load_sessions(self) -> list[WebSessionRecord]:
         """No records."""
         return []
 

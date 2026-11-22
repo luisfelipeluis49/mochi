@@ -1,4 +1,4 @@
-"""MOCHI_STREAM_REPLY parts: what may be said yet, [quiet] and [play], model SSE, our SSE."""
+"""MOCHI_STREAM_REPLY parts: what may be said yet, [quiet], model SSE, our SSE."""
 
 import json
 
@@ -80,13 +80,6 @@ async def test_quiet_after_words_stops_passing_on() -> None:
     assert sink.pieces == ["Oh, hello", " there. [qu"]  # the gateway holds "[qu" back
 
 
-async def test_play_holds_the_whole_line_for_the_commit() -> None:
-    sink = ListSink()
-    model = FakeStreamingCharacterModel("[mood excited]", "[play]", " Yay,", " let's play!")
-    line = await streamed_line(model, REQUEST, sink)
-    assert line == "[mood excited][play] Yay, let's play!" and sink.pieces == ["[mood excited]"]
-
-
 async def test_a_broken_stream_is_no_line_and_the_model_is_closed() -> None:
     model = FakeStreamingCharacterModel("Hello there,", " friend.", " More", fail_after=2)
     assert await streamed_line(model, REQUEST, ListSink()) is None
@@ -97,7 +90,7 @@ async def test_the_outlet_stops_once_it_may_no_longer_speak() -> None:
     allowed = [True]
     outlet = SpokenOutlet(lambda: allowed[0])
     outlet.put("Hello there, ")
-    allowed[0] = False  # a Stop, a Reset or a round
+    allowed[0] = False  # a Stop or a Reset
     outlet.put("my friend, ")
     allowed[0] = True  # silenced for good
     outlet.put("again. ")

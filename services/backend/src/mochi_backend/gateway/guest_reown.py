@@ -1,10 +1,10 @@
 """In a web session the guest is nobody: what the rules give to the guest is the person's to learn.
 
-A web session has the person and a `guest` with the opposite languages (D-42), so that the
+A web session has the person and a `guest` with the opposite languages (D-56), so that the
 whose-word rule (AGENTS 7.3) still works. When the person says a word of their own language inside
 a sentence, the rules name the guest as the learner and give the pair as "their language, then the
 meaning": `tênis (sneakers)` for someone learning English. That card is useless to the person, who
-needs `sneakers (tênis)`. D-44 hands the pair to the person with the two sides swapped.
+needs `sneakers (tênis)`. D-60 hands the pair to the person with the two sides swapped.
 """
 
 from mochi_backend.gateway.roster import GUEST_ID

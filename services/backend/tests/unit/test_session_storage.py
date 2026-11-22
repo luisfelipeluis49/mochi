@@ -1,4 +1,4 @@
-"""Users and session records in every storage (D-42): round trips, order, and what a reset keeps."""
+"""Users and session records in every storage (D-56): round trips, order, and what a reset keeps."""
 
 from pathlib import Path
 
@@ -40,7 +40,7 @@ def test_the_local_file_keeps_users_and_records_across_a_restart_and_a_reset(
     path = tmp_path / "mochi.json"
     first = LocalFileStorage(path, FakeEventLogger())
     first.save_user(LUIS)
-    first.save_user(LUIS.model_copy(update={"display_name": "Other"}))  # never overwrites
+    first.save_user(LUIS)  # saved again: still one row (D-58: a member's change replaces it)
     first.save_session(_record())
     first.save_session(_record())  # written once
     first.save_event(_event("learn_002", user="luis-3f9c1a"))

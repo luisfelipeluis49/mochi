@@ -15,8 +15,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import AsyncMock, MagicMock
 
 from mochi_device.backends import TAG, Body, JoinInfo, MochiBackend, TestAgentBackend, WithFallback
-from mochi_device.game import RoundScreen
-from mochi_device.main import Supervisor, hint_note
+from mochi_device.bargein import LevelWatch
+from mochi_device.face import Face
+from mochi_device.main import Supervisor, caption_line, hint_flag, hint_more, hint_note
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
 
@@ -34,7 +35,6 @@ class FakeBackend:
         self.puts: list[tuple[str, dict]] = []  # voiceprints sent: (path, body)
         self.commands: list[dict] = []  # what Mochi wants its body to do
         self.auth: dict[str, list] = {}  # Authorization header seen, per POST action (and "state" for the GET)
-        self.rounds: list[tuple] = []   # Describe & Guess calls: ("start" | "result", body)
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -53,9 +53,6 @@ class FakeBackend:
                 if action in ("status", "voices"):
                     (fake.statuses if action == "status" else fake.voices).append(body)
                     return self.reply({})
-                if "/activity/" in self.path:
-                    fake.rounds.append((action, body))
-                    return self.reply({"detail": "no active round"}, 409) if fake.broken else self.reply({})
                 fake.posts.append(action)
                 fake.bodies.append(body)
                 fake.capturing = action == "start"
@@ -216,6 +213,39 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.statuses[-1], {"volume": 60, "temperature": 52, "voices": ["Ana"], "speaker": "Ana"})
         await self.backend.stop()
 
+    async def test_each_stretch_of_speech_is_reported_with_who_said_it_and_how_long_ago(self):
+        """What the backend names a meeting's sentences with: sent with the next status, once."""
+        self.backend.STATUS_EVERY_S = 3600
+        await self.backend.start()
+        self.backend.heard("Ana", 2.41, time.monotonic() - 0.3)
+        self.backend.heard(None, 1.0, time.monotonic())
+        self.assertTrue(await until(lambda: len(self.fake.statuses) == 2))
+        heard = self.fake.statuses[-1]["heard"]
+        self.assertEqual([(h["speaker"], h["seconds"]) for h in heard], [("Ana", 2.41), (None, 1.0)])
+        self.assertTrue(250 <= heard[0]["ago_ms"] <= 1500 and 0 <= heard[1]["ago_ms"] <= 1200)
+        self.assertTrue(await until(lambda: self.backend._heard == []))   # sent: not sent again
+        self.backend.set_voices([], "Ana")
+        self.assertTrue(await until(lambda: len(self.fake.statuses) == 3))
+        self.assertNotIn("heard", self.fake.statuses[-1])
+        await self.backend.stop()
+
+    async def test_stretches_that_could_not_be_reported_are_sent_with_the_next_report(self):
+        self.backend.STATUS_EVERY_S = 0.05
+        await self.backend.start()
+        sent = self.backend._req
+
+        def flaky(method, path, *args, **kwargs):
+            if path.endswith("/status") and flaky.fail:
+                flaky.fail = False
+                raise OSError("timed out")
+            return sent(method, path, *args, **kwargs)
+        flaky.fail = True
+        self.backend._req = flaky
+        self.backend.heard("Ana", 2.0, time.monotonic())
+        self.assertTrue(await until(lambda: any(s.get("heard") for s in self.fake.statuses)))
+        self.assertEqual(self.fake.statuses[-1]["heard"][0]["speaker"], "Ana")
+        await self.backend.stop()
+
     async def test_who_is_talking_is_reported_at_once(self):
         """The backend writes Mochi's reply about a second after a sentence ends: who said it must
         be there by then, not at the next once-a-second report."""
@@ -225,24 +255,6 @@ class MochiBackendTest(unittest.IsolatedAsyncioTestCase):
         self.backend.set_voices(["Ana"], "Ana")
         self.assertTrue(await until(lambda: len(self.fake.statuses) == 2))
         self.assertEqual(self.fake.statuses[-1]["speaker"], "Ana")
-        await self.backend.stop()
-
-    async def test_a_round_ends_with_a_touch_and_another_can_be_asked_for(self):
-        self.assertTrue(await self.backend.round_result("guessed"))
-        self.assertTrue(await self.backend.next_round())
-        self.assertEqual(self.fake.rounds, [("result", {"result": "guessed"}), ("start", {})])
-        self.fake.broken = True
-        self.assertFalse(await self.backend.round_result("skipped"))   # said so: the screen can be touched again
-
-    async def test_a_round_that_left_the_state_is_taken_off_the_screen(self):
-        """Reset on the backend, or a result too old to show: no card comes, so its absence is the news."""
-        await self.backend.start()
-        self.fake.commands = [{"command_id": "round_1:ACTIVE_ROUND", "kind": "round", "value": json.dumps(CARD)}]
-        self.assertTrue(await until(lambda: ("round", CARD) in self.events))
-        self.fake.commands = []
-        self.assertTrue(await until(lambda: ("round", {"state": "IDLE"}) in self.events))
-        await asyncio.sleep(0.1)
-        self.assertEqual(self.events.count(("round", {"state": "IDLE"})), 1)
         await self.backend.stop()
 
     async def test_a_lost_report_of_who_is_talking_is_sent_again(self):
@@ -353,7 +365,7 @@ class DeviceKeyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fake.auth["status"][0], "Bearer s3cret")
         self.assertEqual(self.fake.auth["voices"][0], "Bearer s3cret")
         self.assertEqual(self.fake.auth["start"], [None])  # the other calls do not carry it
-        self.assertEqual(set(self.fake.auth["state"]), {"Bearer s3cret"})  # a round's secret word needs it
+        self.assertEqual(set(self.fake.auth["state"]), {"Bearer s3cret"})  # the state read carries it too
 
     async def test_without_a_key_no_header_is_sent(self):
         backend = MochiBackend(self.fake.url, "home_pi_01", FakeSpeaker(), None, 0.02)
@@ -515,9 +527,81 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.face = MagicMock()
         sup.on_agent_event("hint", {"word": "fork", "language": "en", "meaning": "garfo"})
-        sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo")
+        sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo", more="", flag="")
         sup.on_agent_event("show", "queue")           # a bare word clears an older note
-        sup.face.show_for.assert_called_with(10, word="queue", note="")
+        sup.face.show_for.assert_called_with(10, word="queue", note="", more="", flag="")
+
+    def test_other_words_that_fit_are_a_third_line(self):
+        """Someone who stopped at "I forgot my" may need more than the first guess (D-42)."""
+        card = {"word": "umbrella", "language": "en", "meaning": "guarda-chuva", "candidates": ["raincoat", "jacket", "hat"]}
+        self.assertEqual(hint_more(card), "raincoat · jacket")  # two: the screen is small
+        self.assertEqual(hint_more({"word": "fork"}), "")       # an older backend sends none
+        self.assertEqual(hint_more({"word": "fork", "candidates": "raincoat"}), "")
+        self.assertEqual(hint_more({"word": "fork", "candidates": [None, 3, "spoon"]}), "spoon")
+        sup = Supervisor.__new__(Supervisor)
+        sup.face = MagicMock()
+        sup.on_agent_event("hint", card)
+        sup.face.show_for.assert_called_once_with(10, word="umbrella", note="English · guarda-chuva",
+                                                  more="raincoat · jacket", flag="")
+
+
+class KeptConnectionTest(unittest.TestCase):
+    """The device state is read over one connection that stays open: a hint is on the screen only
+    once the next read is back, and a new TLS handshake for every read cost 0.3 to 0.65 s."""
+
+    def setUp(self):
+        self.connections = 0
+        self.fail_next = False
+        test = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"  # keeps the connection open, as a real backend does
+
+            def setup(self):
+                test.connections += 1
+                super().setup()
+
+            def do_GET(self):
+                if test.fail_next:
+                    test.fail_next = False
+                    self.close_connection = True
+                    return self.wfile.close()  # the far end hangs up without answering
+                data = json.dumps({"capturing": False, "agora": None, "commands": []}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.backend = MochiBackend(f"http://127.0.0.1:{self.server.server_port}", "home_pi_01")
+
+    def tearDown(self):
+        self.backend._drop_line()
+        self.server.shutdown()
+        self.server.server_close()
+
+    def test_three_reads_use_one_connection(self):
+        for _ in range(3):
+            self.assertEqual(self.backend._state(3)["capturing"], False)
+        self.assertEqual(self.connections, 1)
+
+    def test_a_connection_the_far_end_closed_does_not_cost_the_read(self):
+        self.backend._state(3)
+        self.fail_next = True
+        self.assertEqual(self.backend._state(3)["capturing"], False)  # read again, the old way
+        self.assertEqual(self.backend._state(3)["capturing"], False)  # and on a new kept one after
+        self.assertEqual(self.connections, 3)  # the kept one, the fresh one, a new kept one
+        self.assertIsNotNone(self.backend._line)
+
+    def test_a_stop_closes_it(self):
+        self.backend._state(3)
+        self.assertIsNotNone(self.backend._line)
+        asyncio.run(self.backend.stop())
+        self.assertIsNone(self.backend._line)
 
 
 class RestoredVoicesTest(unittest.TestCase):
@@ -542,6 +626,97 @@ class RestoredVoicesTest(unittest.TestCase):
         sup.backend.voice_enrolled.assert_awaited_once_with("Ana", "pt", True, {"voiceprint": [0.1], "saved": None})
 
 
+class MeetingHelpTest(unittest.IsolatedAsyncioTestCase):
+    """The live transcript, a code switch that catches the eye, and an idiom explained (D-51 to D-53)."""
+
+    async def test_captions_and_explanations_reach_the_supervisor_as_cards(self):
+        events = []
+        body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
+        await body.act("caption", '{"who": "Ana", "text": "I need to adiar my meeting"}')
+        await body.act("caption", '{"who": "Ana"}')   # no sentence: nothing to show
+        await body.act("caption", "not a card")
+        await body.act("explain", '{"word": "circle back", "meaning": "voltar ao assunto", "plain": "talk again", "kind": "idiom"}')
+        await body.act("explain", '{"meaning": "x"}')  # no expression: nothing to explain
+        self.assertEqual([kind for kind, _ in events], ["caption", "explain"])
+        self.assertEqual(events[0][1]["who"], "Ana")
+
+    def test_a_caption_names_the_speaker_and_keeps_the_end_of_a_long_sentence(self):
+        self.assertEqual(caption_line({"who": "Ana", "text": "I  need to adiar\nmy meeting"}), "Ana: I need to adiar my meeting")
+        self.assertEqual(caption_line({"who": None, "text": "Hello there"}), "Hello there")
+        long = caption_line({"who": "Ben", "text": "word " * 60 + "the end"})
+        self.assertTrue(long.startswith("Ben: …") and long.endswith("the end") and len(long) <= 110)
+
+    def test_a_code_switch_says_which_word_was_said_and_is_flagged(self):
+        card = {"word": "postpone", "language": "en", "meaning": "adiar", "why": "code_switch"}
+        self.assertEqual(hint_note(card), "adiar → English")
+        self.assertEqual(hint_flag(card), "switch")
+        self.assertEqual(hint_flag({"word": "fork", "language": "en", "meaning": "garfo", "why": "says_unknown"}), "")
+        self.assertEqual(hint_flag({"word": "fork"}), "")   # an older backend sends no "why"
+
+    def test_the_face_shows_all_three_and_captions_can_be_switched_off(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.face, sup.captions = MagicMock(), True
+        sup.on_agent_event("hint", {"word": "postpone", "language": "en", "meaning": "adiar", "why": "code_switch"})
+        sup.face.show_for.assert_called_with(10, word="postpone", note="adiar → English", more="", flag="switch")
+        sup.on_agent_event("explain", {"word": "circle back", "meaning": "voltar ao assunto", "plain": "talk again"})
+        sup.face.show_for.assert_called_with(10, word="circle back", note="voltar ao assunto", more="talk again", flag="explain")
+        sup.on_agent_event("caption", {"who": "Ben", "text": "Shall we start?"})
+        sup.face.show_for.assert_called_with(8, caption="Ben: Shall we start?")
+        sup.captions, calls = False, sup.face.show_for.call_count
+        sup.on_agent_event("caption", {"who": "Ben", "text": "Not shown"})
+        self.assertEqual(sup.face.show_for.call_count, calls)
+
+
+class OneTouchTest(unittest.IsolatedAsyncioTestCase):
+    """A suggested sentence shows on the screen; one touch and Mochi says it (D-59)."""
+
+    async def test_the_sentence_reaches_the_supervisor_and_a_touch_has_the_backend_say_it(self):
+        events = []
+        body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
+        await body.act("suggest", '{"hint_id": "hint_7", "text": "We need to unblock it.", "language": "en"}')
+        await body.act("suggest", '{"hint_id": "hint_8"}')   # no sentence: nothing to offer
+        self.assertEqual(events, [("suggest", {"hint_id": "hint_7", "text": "We need to unblock it.", "language": "en"})])
+        sup = Supervisor.__new__(Supervisor)
+        sup.face, sup.state, said = MagicMock(), "ACTIVE", []
+
+        class Backend:
+            async def say_suggestion(self, hint_id):
+                said.append(hint_id)
+                return True
+
+        sup.backend = Backend()
+        sup.on_tap()                                         # nothing is showing: a touch means nothing
+        sup.on_agent_event("suggest", events[0][1])
+        sup.face.show_for.assert_called_with(20, say="We need to unblock it.")
+        sup.on_tap()
+        sup.on_tap()                                         # once: the second touch says nothing
+        await asyncio.sleep(0)
+        self.assertEqual(said, ["hint_7"])
+        sup.face.set.assert_called_with(say="")
+
+    async def test_a_touch_after_the_sentence_has_gone_or_outside_a_session_says_nothing(self):
+        sup = Supervisor.__new__(Supervisor)
+        sup.face, sup.state, sup.backend = MagicMock(), "ACTIVE", MagicMock()
+        sup.suggestion = ("hint_7", time.monotonic() - 30)
+        sup.on_tap()
+        sup.suggestion, sup.state = ("hint_7", time.monotonic()), "IDLE"
+        sup.on_tap()
+        sup.backend.say_suggestion.assert_not_called()
+
+    async def test_the_face_server_passes_a_tap_on(self):
+        face, taps = Face({"port": 0}), []
+        face.on_tap = lambda: taps.append(1)
+        await face.start()
+        port = face._server.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /tap HTTP/1.1\r\nHost: x\r\n\r\n")
+        await writer.drain()
+        self.assertIn(b"204", await reader.readline())
+        writer.close()
+        await face.stop()
+        self.assertEqual(taps, [1])
+
+
 class UsedWordTest(unittest.IsolatedAsyncioTestCase):
     """Someone says a word they were just given: the face cheers, silently."""
 
@@ -556,9 +731,9 @@ class UsedWordTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.face = MagicMock()
         sup.on_agent_event("used", {"word": "fork", "language": "en"})
-        sup.face.show_for.assert_called_once_with(5, word="fork", note="★ you used it!", mood="proud")
+        sup.face.show_for.assert_called_once_with(5, word="fork", note="★ you used it!", more="", flag="", mood="proud")
         sup.on_agent_event("used", {"word": "carteira", "language": "pt-BR"})
-        sup.face.show_for.assert_called_with(5, word="carteira", note="★ você usou!", mood="proud")
+        sup.face.show_for.assert_called_with(5, word="carteira", note="★ você usou!", more="", flag="", mood="proud")
 
 
 class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
@@ -571,7 +746,7 @@ class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
         sup.kws = MagicMock(last_voice=now)
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
-        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.face = MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
@@ -607,156 +782,6 @@ class GoodbyeTest(unittest.IsolatedAsyncioTestCase):
         sup.bye_asked = time.monotonic() - 9
         await sup.on_frame(b"\0" * 640)
         self.assertEqual(sup.state, "IDLE")
-
-
-CARD = {"round_id": "round_1", "state": "ACTIVE_ROUND", "describer_user_id": "ben", "guesser_user_id": "ana",
-        "secret_word": "umbrella", "result": None, "revealed_word": None, "language": "en"}
-RESULT = {**CARD, "state": "ROUND_RESULT", "secret_word": None, "result": "guessed", "revealed_word": "umbrella"}
-
-
-class RoundScreenTest(unittest.TestCase):
-    """Describe & Guess on Mochi's own screen (AGENTS.md 7.5)."""
-
-    def test_tap_turns_the_word_over_and_the_next_tap_means_guessed(self):
-        g = RoundScreen()
-        g.show(CARD, 100)
-        self.assertEqual(g.view(), {"tone": "ask", "big": "Ben", "small": "turn me towards you and tap"})
-        self.assertNotIn("umbrella", json.dumps(g.view()))        # the page does not have the word yet
-        self.assertIsNone(g.touched("tap", 101))
-        self.assertEqual(g.view()["big"], "umbrella")
-        self.assertIn("Ana", g.view()["small"])
-        self.assertIsNone(g.touched("tap", 101.4))                # the same touch bouncing: not "guessed"
-        self.assertEqual(g.touched("tap", 110), "guessed")
-        self.assertIsNone(g.touched("tap", 110.2))                # sent: a second tap does nothing
-
-    def test_a_long_press_skips(self):
-        g = RoundScreen()
-        g.show(CARD, 100)
-        g.touched("long", 101)                                    # holding to turn it over only turns it over
-        self.assertEqual(g.touched("long", 105), "skipped")
-
-    def test_the_result_then_a_tap_for_another_round(self):
-        g = RoundScreen()
-        g.show(RESULT, 100)
-        self.assertEqual(g.view(), {"tone": "result", "big": "umbrella", "small": "Ana got it! Tap for another round."})
-        self.assertEqual(g.touched("tap", 103), "next")
-        g.show(RESULT, 100)
-        self.assertTrue(g.over(109))
-        self.assertIsNone(g.touched("tap", 109))                  # the face is back: a tap is just a tap
-
-    def test_a_refused_touch_can_be_made_again(self):
-        g = RoundScreen()
-        g.show(CARD, 100)
-        g.touched("tap", 101)
-        self.assertEqual(g.touched("tap", 105), "guessed")
-        g.refused(106)                                            # the backend could not be reached
-        self.assertEqual(g.touched("tap", 108), "guessed")
-
-    def test_portuguese(self):
-        g = RoundScreen()
-        g.show({**CARD, "language": "pt-BR"}, 100)
-        self.assertEqual(g.view()["small"], "vire-me para você e toque")
-
-    def test_a_round_without_its_word_can_still_be_left(self):
-        """No device key, no word: the round would otherwise sit there, and hints stay off meanwhile."""
-        g = RoundScreen()
-        g.show({**CARD, "secret_word": None}, 100)
-        self.assertEqual(g.view(), {"tone": "ask", "big": "Ben", "small": "I cannot see the word\nhold to skip"})
-        self.assertIsNone(g.touched("tap", 101))
-        self.assertEqual(g.stage, "hidden")                       # nothing to turn over
-        self.assertEqual(g.touched("long", 102), "skipped")
-        g.refused(103)
-        self.assertEqual(g.stage, "hidden")
-
-    def test_a_round_that_is_gone_leaves_the_screen(self):
-        g = RoundScreen()
-        g.show(CARD, 100)
-        g.touched("tap", 101)
-        g.show({"state": "IDLE"}, 102)                            # reset on the backend
-        self.assertIsNone(g.view())
-
-
-class RoundOnTheDeviceTest(unittest.IsolatedAsyncioTestCase):
-    def _supervisor(self):
-        now = time.monotonic()
-        sup = Supervisor.__new__(Supervisor)
-        sup.cfg = {"session": {"inactivity_timeout_s": 30, "max_session_s": 600}, "audio": {"chimes": False}}
-        sup.face, sup.game = MagicMock(), RoundScreen()
-        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
-        sup.loss_said = False
-        sup.backend = MagicMock(spec=["round_result", "next_round"], round_result=AsyncMock(return_value=True),
-                                next_round=AsyncMock(return_value=True))
-        sup.state, sup.last_speech = "ACTIVE", now - 20
-        return sup
-
-    async def test_the_card_reaches_the_supervisor_and_the_word_is_not_logged(self):
-        events = []
-        await Body(FakeSpeaker(), lambda kind, value: events.append((kind, value))).act("round", json.dumps(CARD))
-        await Body(FakeSpeaker(), lambda kind, value: events.append((kind, value))).act("round", "{}")
-        self.assertEqual(events, [("round", CARD)])
-        sup, printed = self._supervisor(), io.StringIO()
-        with contextlib.redirect_stdout(printed):
-            sup.on_agent_event("round", CARD)
-        self.assertNotIn("umbrella", printed.getvalue())
-        sup.face.keep.assert_called_with(round={"tone": "ask", "big": "Ben", "small": "turn me towards you and tap"})
-
-    async def test_two_taps_tell_the_backend_it_was_guessed(self):
-        sup = self._supervisor()
-        sup.on_agent_event("round", CARD)
-        sup.on_tap("tap")
-        self.assertEqual(sup.face.keep.call_args.kwargs["round"]["big"], "umbrella")
-        self.assertGreater(sup.last_speech, time.monotonic() - 1)  # playing counts as being there
-        sup.game.since -= 2                                        # ...some describing later
-        sup.on_tap("tap")
-        await asyncio.sleep(0)
-        sup.backend.round_result.assert_awaited_once_with("guessed")
-        sup.on_agent_event("round", RESULT)
-        sup.face.show_for.assert_called_with(8.0, round={"tone": "result", "big": "umbrella",
-                                                        "small": "Ana got it! Tap for another round."})
-        sup.on_tap("tap")
-        await asyncio.sleep(0)
-        sup.backend.next_round.assert_awaited_once()
-
-    async def test_a_touch_outside_a_round_or_a_session_is_nothing(self):
-        sup = self._supervisor()
-        sup.on_tap("tap")
-        sup.state = "IDLE"
-        sup.game.show(CARD, time.monotonic())
-        sup.on_tap("tap")
-        await asyncio.sleep(0)
-        sup.backend.round_result.assert_not_awaited()
-        self.assertEqual(sup.game.stage, "hidden")
-
-    async def test_a_result_the_backend_did_not_take_can_be_sent_again(self):
-        sup = self._supervisor()
-        sup.backend.round_result = AsyncMock(return_value=False)
-        sup.on_agent_event("round", CARD)
-        sup.on_tap("tap")
-        sup.game.since -= 2
-        sup.on_tap("long")
-        await asyncio.sleep(0.01)
-        sup.backend.round_result.assert_awaited_once_with("skipped")
-        self.assertEqual(sup.game.stage, "shown")
-
-
-class FaceTapTest(unittest.IsolatedAsyncioTestCase):
-    async def test_the_page_reports_touches_and_a_kept_round_outlives_an_old_timer(self):
-        from mochi_device.face import Face
-        face, taps = Face({"port": 0}), []
-        face.on_tap = taps.append
-        face._server = await asyncio.start_server(face._serve, "127.0.0.1", 0)
-        port = face._server.sockets[0].getsockname()[1]
-        for path in ("/tap?kind=tap", "/tap?kind=long"):
-            reader, writer = await asyncio.open_connection("127.0.0.1", port)
-            writer.write(f"GET {path} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
-            self.assertIn(b"204", await reader.readline())
-            writer.close()
-        self.assertEqual(taps, ["tap", "long"])
-        face.show_for(0.05, round={"tone": "result"})            # a result on its way out...
-        face.keep(round={"tone": "ask"})                          # ...and the next round begins
-        await asyncio.sleep(0.1)
-        self.assertEqual(face.state["round"], {"tone": "ask"})
-        face._server.close()
 
 
 class SharingVoiceprintsTest(unittest.IsolatedAsyncioTestCase):
@@ -877,7 +902,7 @@ class LookingAfterItselfTest(unittest.IsolatedAsyncioTestCase):
         sup = self._supervisor([False])                              # it looks once more, to be sure
         said = self._awake_to_alerts(sup)
         sup.cfg, sup.online, sup.told = {"audio": {"chimes": False}}, False, {"offline": time.monotonic()}
-        sup.kws, sup.game = MagicMock(known_voices=[]), RoundScreen()
+        sup.kws = MagicMock(known_voices=[])
         sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
         sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(), start=AsyncMock())
         sup.state, sup.backend_end, sup.bye_asked, sup.start_timeout_s = "STARTING", None, None, 5
@@ -970,7 +995,6 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.feed.return_value = ("wake", "OI MOCHI")
         sup.kws.voice_events.return_value = [("speaker", "Ana", 0.6)]
         sup.face = MagicMock()
-        sup.game = RoundScreen()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
@@ -992,21 +1016,18 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws.forget.assert_called_once_with("ana")
         sup.backend.set_voices.assert_called_once_with(["Ben"], None)
 
-    async def test_a_failed_start_leaves_no_caller_and_no_round_behind(self):
+    async def test_a_failed_start_leaves_no_caller_behind(self):
         sup = Supervisor.__new__(Supervisor)
         sup.cfg = {"audio": {"chimes": False}}
-        sup.kws, sup.face, sup.game = MagicMock(known_voices=[]), MagicMock(), RoundScreen()
+        sup.kws, sup.face = MagicMock(known_voices=[]), MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
-        sup.game.show(CARD, 1)                        # the backend already had a round on
         sup.bridge = MagicMock(start=AsyncMock(side_effect=OSError("no bridge")), stop=AsyncMock())
         sup.backend = MagicMock(spec=["start", "stop", "set_voices"], stop=AsyncMock(),
                                 start=AsyncMock(return_value=JoinInfo("app", "mochi-test", 1001, "tok")))
         sup.state, sup.backend_end, sup.bye_asked, sup.start_timeout_s = "STARTING", None, None, 5
         await sup.start_session("hi mochi")
         self.assertEqual(sup.state, "IDLE")
-        self.assertIsNone(sup.game.stage)
-        sup.face.keep.assert_called_with(round=None)
         sup.kws.voice_events.assert_called()          # whoever called this one is not the next one's caller
 
     async def test_what_mochi_says_is_not_sent_to_the_recogniser(self):
@@ -1018,7 +1039,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws = MagicMock(last_voice=now, known_voices=[])
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
-        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.face = MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
@@ -1039,6 +1060,78 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         await sup.on_frame(frame)
         sup.bridge.send.assert_called_with(frame)
 
+    def _talking_supervisor(self, now):
+        """A supervisor in a session, with Mochi speaking and its level in the microphone learned."""
+        sup = Supervisor.__new__(Supervisor)
+        sup.cfg = {"session": {"inactivity_timeout_s": 30, "max_session_s": 600}, "audio": {"chimes": False}}
+        sup.kws = MagicMock(last_voice=now, known_voices=["Ana"])
+        sup.kws.feed.return_value = None
+        sup.kws.voice_events.return_value = []
+        sup.face = MagicMock()
+        sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
+        sup.loss_said = False
+        sup.bridge = MagicMock(running=True, stop=AsyncMock())
+        sup.backend = MagicMock(spec=["stop", "interrupt", "hush_speaker"], stop=AsyncMock(),
+                                interrupt=AsyncMock(), hush_speaker=AsyncMock())
+        sup.state, sup._start_task, sup.backend_end, sup.bye_asked = "ACTIVE", None, None, None
+        sup.session_started = sup.last_speech = now
+        sup.heard_at, sup.bye_until = 0.0, 0.0
+        sup.barge_in, sup.barge_by_voice, sup.level_watch = True, True, LevelWatch()
+        return sup
+
+    async def test_someone_talking_over_mochi_stops_it_and_is_heard(self):
+        """It used to talk on: while Mochi speaks the microphone is not sent on, so nobody upstream
+        could notice. Now its speaker goes silent, its agent is told to stop, and the person is heard."""
+        import numpy as np
+        quiet, loud = np.full(320, 400, np.int16).tobytes(), np.full(320, 4000, np.int16).tobytes()
+        sup = self._talking_supervisor(time.monotonic())
+        for _ in range(30):                                    # Mochi alone: nothing happens, silence goes out
+            sup.agent_voice_at = sup.kws.last_voice = time.monotonic()
+            await sup.on_frame(quiet)
+        sup.backend.interrupt.assert_not_called()
+        sup.bridge.send.assert_called_with(bytes(640))
+        for _ in range(15):                                    # 300 ms of someone talking over it
+            sup.agent_voice_at = sup.kws.last_voice = time.monotonic()
+            await sup.on_frame(loud)
+        await asyncio.sleep(0)
+        sup.backend.interrupt.assert_awaited_once()            # its agent is told to stop
+        sup.backend.hush_speaker.assert_awaited_once_with(True)   # and the speaker is silent at once
+        sup.bridge.send.assert_called_with(loud)               # the person is sent on, not silence
+        sup.kws.track_voices.assert_called_with(True, hold=False)  # ...and is listened to as a person again
+        sup.face.set.assert_called_with(mode="hearing")
+        sup.agent_voice_at = time.monotonic() - 1              # Mochi's voice has run out
+        await sup.on_frame(loud)
+        await asyncio.sleep(0)
+        sup.backend.hush_speaker.assert_awaited_with(False)    # the speaker is given back
+        self.assertIsNone(sup.barged_at)
+
+    async def test_a_known_voice_over_mochi_stops_it_too_and_only_once(self):
+        sup = self._talking_supervisor(time.monotonic())
+        sup.agent_voice_at = time.monotonic()
+        sup.on_voice_event(("over", "Ana", 0.71))
+        sup.on_voice_event(("over", "Ana", 0.74))              # the tracker says it again 0.4 s later
+        await asyncio.sleep(0)
+        sup.backend.interrupt.assert_awaited_once()
+        sup.agent_voice_at = time.monotonic() - 2              # nobody is speaking: nothing to stop
+        sup.barged_at = None
+        sup.on_voice_event(("over", "Ana", 0.8))
+        await asyncio.sleep(0)
+        sup.backend.interrupt.assert_awaited_once()
+
+    async def test_talking_over_can_be_turned_off_and_a_session_never_ends_with_a_silent_speaker(self):
+        import numpy as np
+        loud = np.full(320, 4000, np.int16).tobytes()
+        sup = self._talking_supervisor(time.monotonic())
+        sup.barge_in = False
+        for _ in range(40):
+            sup.agent_voice_at = sup.kws.last_voice = time.monotonic()
+            await sup.on_frame(loud)
+        sup.backend.interrupt.assert_not_called()
+        sup.bridge.send.assert_called_with(bytes(640))
+        sup.barge_in, sup.barged_at = True, time.monotonic()   # stopped a moment ago, and now the session ends
+        await sup.end_session("goodbye")
+        sup.backend.hush_speaker.assert_awaited_with(False)
+
     async def test_mochis_own_voice_does_not_make_the_speaker_unknown(self):
         """While Mochi talks its voice reaches the microphone too: that is not a stranger."""
         now = time.monotonic()
@@ -1047,7 +1140,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws = MagicMock(last_voice=now, known_voices=["Ana"])
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
-        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.face = MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
@@ -1065,7 +1158,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
     async def test_a_backend_that_never_answers_cannot_keep_mochi_starting(self):
         sup = Supervisor.__new__(Supervisor)
         sup.cfg = {"audio": {"chimes": False}}
-        sup.kws, sup.face, sup.game = MagicMock(), MagicMock(), RoundScreen()
+        sup.kws, sup.face = MagicMock(), MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(start=AsyncMock(), stop=AsyncMock())
@@ -1088,7 +1181,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws = MagicMock(last_voice=now)
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
-        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.face = MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())
@@ -1127,7 +1220,7 @@ class SupervisorTest(unittest.IsolatedAsyncioTestCase):
         sup.kws = MagicMock(last_voice=now)
         sup.kws.feed.return_value = None
         sup.kws.voice_events.return_value = []
-        sup.face, sup.game = MagicMock(), RoundScreen()
+        sup.face = MagicMock()
         sup.dev, sup.alerts, sup.told, sup.owed, sup.online, sup.hot, sup.language, sup.net = "null", {"speak": False}, {}, None, True, False, "en", {}
         sup.loss_said = False
         sup.bridge = MagicMock(running=True, stop=AsyncMock())

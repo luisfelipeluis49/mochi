@@ -2,7 +2,7 @@
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import psycopg
@@ -12,9 +12,19 @@ from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.local_file import LocalFileStorage
 from mochi_backend.storage.port import NullStorage, Storage
 from mochi_backend.storage.postgres import PostgresStorage
-from mochi_backend.storage.session_record import SessionRecord
+from mochi_backend.storage.session_record import SessionRecord as WebSessionRecord
 from mochi_backend.storage.write_behind import WriteBehindStorage
-from mochi_contracts import LearningEvent, User, VoiceProfile
+from mochi_contracts import (
+    Company,
+    ConversationReport,
+    LearningEvent,
+    Member,
+    SessionRecord,
+    User,
+    Utterance,
+    VoiceProfile,
+    WordMoment,
+)
 
 PERSISTENT = "postgres"
 LOCAL = "local_file"
@@ -33,6 +43,30 @@ class Opener:
 
 
 @dataclass(frozen=True)
+class TeamStart:
+    """The company's learning history as storage held it at startup (DECISIONS D-45)."""
+
+    companies: list[Company] = field(default_factory=list)
+    members: list[Member] = field(default_factory=list)
+    records: list[SessionRecord] = field(default_factory=list)
+    moments: list[WordMoment] = field(default_factory=list)
+    utterances: list[Utterance] = field(default_factory=list)
+    reports: list[ConversationReport] = field(default_factory=list)
+
+    @classmethod
+    def read(cls, storage: Storage) -> "TeamStart":
+        """Load the company tables. Example: `TeamStart.read(fake).moments` is a list."""
+        return cls(
+            storage.load_companies(),
+            storage.load_members(),
+            storage.load_records(),
+            storage.load_moments(),
+            storage.load_utterances(),
+            storage.load_reports(),
+        )
+
+
+@dataclass(frozen=True)
 class StorageStart:
     """The storage to use, its name, and everything it held at startup (read once, here)."""
 
@@ -41,22 +75,39 @@ class StorageStart:
     users: list[User] = field(default_factory=list)
     events: list[LearningEvent] = field(default_factory=list)
     voices: list[VoiceProfile] = field(default_factory=list)
-    sessions: list[SessionRecord] = field(default_factory=list)
+    team: TeamStart = field(default_factory=TeamStart)
+    sessions: list[WebSessionRecord] = field(default_factory=list)  # the web app's (D-56)
 
     @classmethod
     def read(cls, storage: Storage, name: str) -> "StorageStart":
-        """Load users, events, voices and session records from `storage`.
+        """Load everything `storage` holds. Example: `StorageStart.read(fake, "x")`."""
+        people = (storage.load_users(), storage.load_events(), storage.load_voices())
+        return cls(storage, name, *people, TeamStart.read(storage), storage.load_sessions())
 
-        Example: `StorageStart.read(fake, "x")`.
-        """
-        users, events = storage.load_users(), storage.load_events()
-        return cls(storage, name, users, events, storage.load_voices(), storage.load_sessions())
+    def over(self, storage: Storage) -> "StorageStart":
+        """The same start, writing through `storage` from now on (the write-behind wrapper)."""
+        return replace(self, storage=storage)
+
+
+@dataclass(frozen=True)
+class Seed:
+    """What must exist after startup: the demo people and their company (added when missing)."""
+
+    users: list[User] = field(default_factory=list)
+    company: Company | None = None
+    members: list[Member] = field(default_factory=list)
+
+    def into(self, storage: Storage) -> None:
+        """Add what is missing. Example: `Seed(users).into(storage)`."""
+        storage.seed_users(self.users)
+        if self.company is not None:
+            storage.seed_company(self.company, self.members)
 
 
 def storage_for(
     database_url: str,
     logger: EventLogger,
-    users: list[User],
+    seed: "Seed | list[User]",
     local_path: str = "",
     opener: Opener = Opener(),  # noqa: B008 - frozen, shared on purpose
 ) -> StorageStart:
@@ -64,17 +115,17 @@ def storage_for(
 
     A database that is unreachable, expired (a free Render database expires after 30 days) or holds
     something unreadable must not stop Mochi from starting: it tries `opener.attempts` times, then
-    runs from memory and logs `storage_unavailable` at ERROR level. `users` are added when missing.
+    runs from memory and logs `storage_unavailable` at ERROR level. `seed` is added when missing.
     `DATABASE_URL` wins over `local_path`.
-    Example: `storage_for("", logger, []).name` is `"memory"`.
+    A plain list of users is taken as a seed of just those people.
+    Example: `storage_for("", logger, Seed()).name` is `"memory"`.
     """
+    seed = seed if isinstance(seed, Seed) else Seed(seed)
     if database_url:
-        return _first_working(
-            lambda: _postgres(database_url, logger, users, opener), logger, opener
-        )
+        return _first_working(lambda: _postgres(database_url, logger, seed, opener), logger, opener)
     if local_path:
         return _first_working(
-            lambda: _file(Path(local_path), logger, users), logger, Opener(attempts=1)
+            lambda: _file(Path(local_path), logger, seed), logger, Opener(attempts=1)
         )
     logger.log("storage_memory_only", {"reason": "DATABASE_URL is not set"})
     return StorageStart()
@@ -103,25 +154,20 @@ def _attempt(
         return None
 
 
-def _postgres(url: str, logger: EventLogger, users: list[User], opener: Opener) -> StorageStart:
+def _postgres(url: str, logger: EventLogger, seed: Seed, opener: Opener) -> StorageStart:
     postgres = opener.postgres(url, logger)
     postgres.prepare()
-    postgres.seed_users(users)
-    start = StorageStart.read(postgres, PERSISTENT)
-    logger.log("storage_ready", {"kind": PERSISTENT, "words": len(start.events)})
-    return StorageStart(WriteBehindStorage(postgres, logger), PERSISTENT, *_rest(start))
+    return _opened(postgres, PERSISTENT, logger, seed)
 
 
-def _file(path: Path, logger: EventLogger, users: list[User]) -> StorageStart:
-    local = LocalFileStorage(path, logger)
-    local.seed_users(users)
-    start = StorageStart.read(local, LOCAL)
-    logger.log("storage_ready", {"kind": LOCAL, "words": len(start.events)})
-    return StorageStart(WriteBehindStorage(local, logger), LOCAL, *_rest(start))
+def _file(path: Path, logger: EventLogger, seed: Seed) -> StorageStart:
+    return _opened(LocalFileStorage(path, logger), LOCAL, logger, seed)
 
 
-Restored = tuple[list[User], list[LearningEvent], list[VoiceProfile], list[SessionRecord]]
-
-
-def _rest(start: StorageStart) -> Restored:
-    return start.users, start.events, start.voices, start.sessions
+def _opened(storage: Storage, kind: str, logger: EventLogger, seed: Seed) -> StorageStart:
+    """Seed, read everything once, then put the write-behind queue in front of the writes."""
+    seed.into(storage)
+    start = StorageStart.read(storage, kind)
+    counts = {"words": len(start.events), "moments": len(start.team.moments)}
+    logger.log("storage_ready", {"kind": kind, **counts})
+    return start.over(WriteBehindStorage(storage, logger))

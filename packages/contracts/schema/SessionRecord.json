@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "SessionMode": {
+      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
+      "enum": [
+        "meeting",
+        "review"
+      ],
+      "title": "SessionMode",
+      "type": "string"
+    },
+    "SpeakingShare": {
+      "additionalProperties": false,
+      "description": "How much one person said in a session. `user_id` None: voices nobody had registered.",
+      "properties": {
+        "turns": {
+          "title": "Turns",
+          "type": "integer"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
+        },
+        "words": {
+          "title": "Words",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "user_id",
+        "turns",
+        "words"
+      ],
+      "title": "SpeakingShare",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One session from Start to Stop, kept for the analytics (its sentences are Utterances).\n\n`ended_at` is None while it runs. `speaking` counts finished sentences per recognised voice.",
+  "properties": {
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Ended At"
+    },
+    "mode": {
+      "$ref": "#/$defs/SessionMode"
+    },
+    "participants": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Participants",
+      "type": "array"
+    },
+    "record_id": {
+      "title": "Record Id",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "speaking": {
+      "items": {
+        "$ref": "#/$defs/SpeakingShare"
+      },
+      "title": "Speaking",
+      "type": "array"
+    },
+    "started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Started At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "record_id",
+    "company_id",
+    "session_id",
+    "mode",
+    "started_at",
+    "ended_at",
+    "participants",
+    "speaking"
+  ],
+  "title": "SessionRecord",
+  "type": "object"
+}

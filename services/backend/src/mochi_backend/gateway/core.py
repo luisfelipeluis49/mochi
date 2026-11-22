@@ -11,6 +11,7 @@ from mochi_backend.gateway.silence_policy import SilencePolicy
 from mochi_backend.platform.clock import Clock
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.json_logging import EventLogger
+from mochi_backend.team.journal import SessionJournal
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class GatewayCore:
     clock: Clock
     ids: IdGenerator
     logger: EventLogger
-    # Held while a turn, Stop, Reset or a round change publishes its results, so none of them
+    journal: SessionJournal  # what this session adds to the company's learning history
+    # Held while a turn, Stop or Reset publishes its results, so none of them
     # interleaves with another. Not re-entrant: take it only at those entry points.
     commit: asyncio.Lock

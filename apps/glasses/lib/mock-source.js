@@ -20,7 +20,7 @@ export const SCRIPT = [
     at: 0,
     type: 'session.state.changed',
     payload: {
-      status: 'active', mode: 'together', focus: 'en', capturing: true,
+      status: 'active', mode: 'meeting', focus: 'en', capturing: true,
       participants: ['ana', 'ben'],
     },
   },
@@ -78,7 +78,7 @@ export function createMockSource({ onMessage, onStatus }) {
       payload.expires_at = new Date(now + HINT_MS).toISOString();
     }
     onMessage(JSON.stringify({
-      schema_version: '0.4',
+      schema_version: '0.7',
       event_id: `evt_mock_${sequence}`,
       type: step.type,
       session_id: 'demo',

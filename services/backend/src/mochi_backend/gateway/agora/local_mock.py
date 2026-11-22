@@ -25,6 +25,10 @@ class LocalMockAgoraClient:
         """Log what the agent would say."""
         self._logger.log("mock_agora_speak", {"agent_id": agent_id, "text": text})
 
+    async def interrupt(self, agent_id: str) -> None:
+        """Log that the agent would stop talking."""
+        self._logger.log("mock_agora_interrupt", {"agent_id": agent_id})
+
 
 class LocalMockTokenIssuer:
     """Returns an obviously fake token."""

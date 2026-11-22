@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Reason": {
+      "description": "Why a hint was made (`reason` / `detection_signal`).",
+      "enum": [
+        "code_switch",
+        "says_unknown",
+        "asks_partner",
+        "asks_mochi",
+        "trails_off",
+        "talks_around",
+        "restarts",
+        "look_alike",
+        "not_understood"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One time someone needed a word: a row per hint shown or answer spoken.\n\nA LearningEvent is one card per person and word; this is every occurrence, so \"needed five\ntimes this month\" can be counted. `heard` is the person's own sentence; it goes to their own\npage only, never into the team view.",
+  "properties": {
+    "at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "At",
+      "type": "string"
+    },
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "expression": {
+      "title": "Expression",
+      "type": "string"
+    },
+    "heard": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Heard"
+    },
+    "meaning": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Meaning"
+    },
+    "moment_id": {
+      "title": "Moment Id",
+      "type": "string"
+    },
+    "reason": {
+      "$ref": "#/$defs/Reason"
+    },
+    "record_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Record Id"
+    },
+    "target_language": {
+      "$ref": "#/$defs/Language"
+    },
+    "user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "User Id"
+    }
+  },
+  "required": [
+    "moment_id",
+    "company_id",
+    "record_id",
+    "user_id",
+    "expression",
+    "meaning",
+    "target_language",
+    "reason",
+    "at"
+  ],
+  "title": "WordMoment",
+  "type": "object"
+}

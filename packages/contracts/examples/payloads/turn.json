@@ -1,5 +1,6 @@
 {
   "segment_id": "seg_009",
   "text": "I need to adiar my meeting tomorrow",
-  "received_at": "2026-11-19T16:00:04.500Z"
+  "received_at": "2026-11-19T16:00:04.500Z",
+  "speaker_user_id": "ana"
 }

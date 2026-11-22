@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { hintLifetimeMs, hintRemaining, initialLive, liveHint, liveReducer, myWords, type LiveState } from "./events.ts";
-import { isMochiEvent, type LearningEvent, type MochiEvent } from "../contracts.ts";
+import { EVENT_TYPES, isMochiEvent, type LearningEvent, type MochiEvent } from "../contracts.ts";
 
 const examplesDir = fileURLToPath(new URL("../../../../packages/contracts/examples/events/", import.meta.url));
 const examples: Record<string, MochiEvent> = {};
@@ -16,9 +16,13 @@ function ev<T extends MochiEvent>(base: T, over: Partial<MochiEvent>): T {
 }
 const run = (s: LiveState, e: MochiEvent, now = 1000) => liveReducer(s, { type: "event", event: e, now });
 
-test("every contracts example event passes the type guards", () => {
-  assert.equal(Object.keys(examples).length, 8);
-  for (const [name, e] of Object.entries(examples)) assert.ok(isMochiEvent(e), name);
+// The examples follow the backend's contracts (v0.7, docs/DECISIONS.md D-58): the game's two events are
+// gone from them, and three events this app does not show yet were added. The ones it knows must pass the
+// guards; the others must be dropped by them, as they are on the socket.
+test("every contracts example event the app knows passes the type guards, the others are dropped", () => {
+  const known = (name: string) => (EVENT_TYPES as readonly string[]).includes(name);
+  assert.equal(Object.keys(examples).filter(known).length, 6);
+  for (const [name, e] of Object.entries(examples)) assert.equal(isMochiEvent(e), known(name), name);
 });
 
 test("a duplicate sequence is ignored, a gap is fine", () => {
@@ -110,6 +114,10 @@ test("loaded words merge, keeping the copy with more history", () => {
 });
 
 test("the private prompt never lands in state", () => {
-  const s = run(initialLive("ana", "demo"), examples["activity.private_prompt"]);
+  const prompt = {
+    ...examples["hint.created"], type: "activity.private_prompt",
+    payload: { round_id: "round_1", describer_user_id: "ana", secret_word: "umbrella", source_learning_event_id: null },
+  } as unknown as MochiEvent; // the backend no longer sends one, so there is no example file to read
+  const s = run(initialLive("ana", "demo"), prompt);
   assert.equal(JSON.stringify(s).includes("umbrella"), false);
 });

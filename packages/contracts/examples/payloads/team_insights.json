@@ -1,0 +1,151 @@
+{
+  "company": {
+    "company_id": "demo",
+    "name": "Papear Demo"
+  },
+  "generated_at": "2026-11-21T12:00:00.000Z",
+  "period_days": 30,
+  "totals": {
+    "members": 4,
+    "active_members": 3,
+    "meetings": 6,
+    "reviews": 2,
+    "meeting_minutes": 185,
+    "moments": 21,
+    "words": 12
+  },
+  "funnel": {
+    "discovered": 12,
+    "assisted": 7,
+    "reinforced": 3,
+    "used_independently": 0
+  },
+  "signals": [
+    {
+      "reason": "code_switch",
+      "times": 12,
+      "share": 0.571
+    },
+    {
+      "reason": "says_unknown",
+      "times": 5,
+      "share": 0.238
+    },
+    {
+      "reason": "look_alike",
+      "times": 4,
+      "share": 0.19
+    }
+  ],
+  "shared_gaps": [
+    {
+      "expression": "postpone",
+      "meaning": "adiar",
+      "target_language": "en",
+      "people": 3,
+      "times": 5,
+      "reasons": [
+        {
+          "reason": "code_switch",
+          "times": 4,
+          "share": 0.8
+        },
+        {
+          "reason": "says_unknown",
+          "times": 1,
+          "share": 0.2
+        }
+      ],
+      "last_at": "2026-11-19T16:00:04.700Z"
+    }
+  ],
+  "false_friends": [
+    {
+      "expression": "intend",
+      "meaning": "pretender",
+      "target_language": "en",
+      "people": 2,
+      "times": 2,
+      "reasons": [
+        {
+          "reason": "look_alike",
+          "times": 2,
+          "share": 1.0
+        }
+      ],
+      "last_at": "2026-11-18T14:10:00.000Z"
+    }
+  ],
+  "mistakes": [
+    {
+      "topic": "verb_tense",
+      "kind": "grammar",
+      "people": 2,
+      "times": 7
+    },
+    {
+      "topic": "prepositions",
+      "kind": "grammar",
+      "people": 2,
+      "times": 3
+    }
+  ],
+  "explained": [
+    {
+      "expression": "circle back",
+      "meaning": "voltar ao assunto depois",
+      "kind": "idiom",
+      "times": 3,
+      "last_at": "2026-11-19T16:12:00.000Z"
+    }
+  ],
+  "weekly": [
+    {
+      "week_start": "2026-11-09",
+      "meetings": 2,
+      "moments": 8,
+      "people": 2,
+      "new_words": 5
+    },
+    {
+      "week_start": "2026-11-16",
+      "meetings": 4,
+      "moments": 13,
+      "people": 3,
+      "new_words": 7
+    }
+  ],
+  "members": [
+    {
+      "user_id": "ana",
+      "display_name": "Ana",
+      "role": "admin",
+      "team": "Product",
+      "target_language": "en",
+      "meetings": 6,
+      "reviews": 2,
+      "speaking_turns": 80,
+      "moments": 9,
+      "words": 6,
+      "assisted": 4,
+      "reinforced": 2,
+      "last_active_at": "2026-11-19T16:30:00.000Z"
+    }
+  ],
+  "highlights": [
+    {
+      "kind": "shared_gap",
+      "expression": "postpone",
+      "people": 3,
+      "times": 5,
+      "share": null
+    },
+    {
+      "kind": "words_sticking",
+      "expression": null,
+      "people": null,
+      "times": null,
+      "share": 0.583
+    }
+  ]
+}

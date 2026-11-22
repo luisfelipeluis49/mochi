@@ -1,7 +1,7 @@
 """The live sessions, each with its own state, so a phone never disturbs the Pi (DECISIONS D-41).
 
 A session is everything one conversation needs: its store, hub view, live hint, silence policy,
-turn pipeline, game and Agora agent. The demo session (the Pi's) always exists. Any other id is
+turn pipeline, journal and Agora agent. The demo session (the Pi's) always exists. Any other id is
 opened by its first Start and forgotten at its Stop.
 """
 
@@ -9,7 +9,6 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
 from mochi_backend.gateway.errors import ConflictError, NotFoundError
@@ -29,7 +28,6 @@ class SessionRuntime:
     core: GatewayCore
     pipeline: TurnPipeline
     sessions: SessionService
-    activity: ActivityService
     demo_reset: DemoReset
 
 

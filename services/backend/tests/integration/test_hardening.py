@@ -1,4 +1,4 @@
-"""Review fixes: device key, secret word, stale commands, rounds need a session, log redaction."""
+"""Review fixes: device key, stale commands, log redaction."""
 
 import json
 
@@ -7,14 +7,12 @@ from fastapi.testclient import TestClient
 
 from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.rest_client import AgoraRestClient
-from mochi_backend.gateway.errors import ConflictError
 from mochi_backend.platform.http_client import HttpResponse
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import DEV_DEVICE_KEY, SettingsError, load_settings
-from mochi_contracts import RoundResult
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_http_client import FakeHttpClient
-from tests.harness import ANA, HOME, Harness, make_harness
+from tests.harness import make_harness
 from tests.unit.test_gateway_rules import REQUEST
 
 GUARDA_CHUVA = "I forgot my guarda-chuva at the office."
@@ -78,61 +76,6 @@ def test_the_device_key_is_required_in_real_mode() -> None:
         load_settings(real)
     assert load_settings({**real, "MOCHI_DEVICE_KEY": "f"}).mochi_device_key == "f"
     assert load_settings({"MOCHI_AGORA_MODE": "fake"}).mochi_device_key == DEV_DEVICE_KEY
-
-
-# --- item 16 ------------------------------------------------------------------------------------
-
-
-async def test_a_round_cannot_start_without_a_live_session() -> None:
-    harness = make_harness()
-    with pytest.raises(ConflictError, match="not capturing"):
-        await harness.container.activity.start()
-    assert harness.container.core.store.activity.state.value == "IDLE"
-
-
-# --- item 4: the secret word --------------------------------------------------------------------
-
-
-async def _round_on_umbrella(character: FakeCharacterModel | None) -> Harness:
-    harness = make_harness(character=character)
-    await harness.container.sessions.start()
-    await harness.say(GUARDA_CHUVA)
-    await harness.container.activity.start()
-    assert harness.container.core.store.activity.state.value == "ACTIVE_ROUND"
-    return harness
-
-
-@pytest.mark.parametrize(
-    "line", ["Yes, umbrella!", "It is an Umbrélla.", "[show umbrella] Sure!", "Sim: guarda-chuva!"]
-)
-async def test_a_spoken_reply_never_gives_the_secret_away(line: str) -> None:
-    harness = await _round_on_umbrella(FakeCharacterModel(line))
-    ana, home = await harness.connect(ANA), await harness.connect(HOME)
-    store = harness.container.core.store
-    cut = (len(ana.texts), len(home.texts), len(store.commands))
-    outcome = await harness.say("Oi Mochi, is it an umbrella?")
-    assert outcome.reply == "" and outcome.decision.decision.value == "IGNORE"
-    assert (len(ana.texts), len(home.texts), len(store.commands)) == cut
-    blocked = [f for name, f in harness.logger.lines if name == "secret_leak_blocked"]
-    assert blocked and all("channel" in f for f in blocked)
-    assert all("umbrella" not in json.dumps(f).lower() for f in blocked)
-
-
-async def test_a_hint_never_gives_the_secret_away_in_either_language() -> None:
-    harness = await _round_on_umbrella(FakeCharacterModel("Hmm."))
-    ana = await harness.connect(ANA)
-    cut = len(ana.texts)
-    outcome = await harness.say("Oi Mochi, como se diz guarda-chuva?")
-    assert outcome.reply == "" and outcome.decision.hint is None
-    assert len(ana.texts) == cut
-    assert "secret_leak_blocked" in harness.logger.names()
-
-
-async def test_after_the_round_the_word_may_be_said_again() -> None:
-    harness = await _round_on_umbrella(FakeCharacterModel("Yes, umbrella!"))
-    await harness.container.activity.finish(RoundResult.GUESSED)
-    outcome = await harness.say("Oi Mochi, is it an umbrella?")
-    assert outcome.reply == "Yes, umbrella!"
 
 
 # --- item 14: stale commands --------------------------------------------------------------------

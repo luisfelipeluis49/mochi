@@ -23,22 +23,15 @@ _DEV = {"MOCHI_ENABLE_DEV_ROUTES": "true"}
 def test_a_phone_gets_its_saved_words_when_it_connects() -> None:
     client = _restarted_client()
     with client.websocket_connect("/ws?user=ana") as ana:
-        events = [ana.receive_json() for _ in range(3)]
-    assert [e["type"] for e in events] == [
-        "session.state.changed",
-        "activity.state.changed",
-        "learning_event.created",
-    ]
-    assert events[2]["payload"]["expression"] == "postpone"
+        events = [ana.receive_json() for _ in range(2)]
+    assert [e["type"] for e in events] == ["session.state.changed", "learning_event.created"]
+    assert events[1]["payload"]["expression"] == "postpone"
 
 
 def test_another_person_gets_none_of_those_words() -> None:
     client = _restarted_client()
     with client.websocket_connect("/ws?user=ben") as ben:
-        assert [ben.receive_json()["type"] for _ in range(2)] == [
-            "session.state.changed",
-            "activity.state.changed",
-        ]
+        assert ben.receive_json()["type"] == "session.state.changed"
         client.post("/api/sessions/demo/start")
         assert ben.receive_json()["type"] == "session.state.changed"  # not a word
 
@@ -47,9 +40,6 @@ def test_the_projector_and_mochis_screen_get_no_words() -> None:
     client = _restarted_client()
     for route in ("/ws?view=audience", "/ws?device=home_pi_01"):
         with client.websocket_connect(route) as screen:
-            assert [screen.receive_json()["type"] for _ in range(2)] == [
-                "session.state.changed",
-                "activity.state.changed",
-            ]
+            assert screen.receive_json()["type"] == "session.state.changed"
             client.post("/api/sessions/demo/stop")
             assert screen.receive_json()["type"] == "session.state.changed"

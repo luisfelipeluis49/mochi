@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.7",
+  "event_id": "evt_009",
+  "type": "phrase.suggested",
+  "session_id": "demo",
+  "emitted_at": "2026-11-19T16:00:06.700Z",
+  "sequence": 9,
+  "payload": {
+    "hint_id": "hint_017",
+    "target_user_id": "ana",
+    "language": "en",
+    "text": "We need to unblock the authentication process.",
+    "expires_at": "2026-11-19T16:00:26.700Z"
+  }
+}

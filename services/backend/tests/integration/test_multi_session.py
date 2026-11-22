@@ -9,7 +9,7 @@ from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.errors import ConflictError, NotFoundError
 from mochi_backend.gateway.session_registry import SessionRegistry, SessionRuntime
 from mochi_contracts import SessionStatus
-from tests.harness import ANA, AUDIENCE, Harness, make_harness
+from tests.harness import ANA, Harness, make_harness
 
 ADIAR = "I need to adiar my meeting tomorrow."
 PHONE = "p-1"
@@ -154,18 +154,6 @@ async def test_only_the_demo_left_cannot_make_room() -> None:
     )
     with pytest.raises(ConflictError):
         await registry.open("anyone")
-
-
-async def test_reconnecting_mid_round_still_hides_the_word_from_the_projector() -> None:
-    harness = make_harness()
-    await harness.container.sessions.start()
-    activity = await harness.container.activity.start()
-    secret = harness.container.core.store.round_secrets[0]
-    audience = await harness.connect(AUDIENCE)  # connects AFTER the round began
-    assert activity.state.value == "ACTIVE_ROUND"
-    assert secret not in "".join(audience.texts)
-    home = await harness.connect(ConnectionTarget("home", device_id="home_pi_01"))
-    assert secret in "".join(home.texts)  # the private prompt still reaches Mochi's own screen
 
 
 async def test_a_failed_start_leaves_no_session_behind() -> None:

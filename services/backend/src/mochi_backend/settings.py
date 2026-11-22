@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     mochi_channel: str = "mochi-demo"
     mochi_pi_uid: int = 1001
     mochi_agent_uid: int = 1002
-    mochi_token_ttl_seconds: int = 3600
+    # Longer than the longest session (the Pi's max_session_s is one hour): a token that ran out
+    # at the hour would end a meeting a moment early.
+    mochi_token_ttl_seconds: int = 7200
     mochi_cors_origins: str = "*"
     mochi_log_level: str = "INFO"
     mochi_model_base_url: str = "https://api.openai.com/v1"
@@ -60,16 +62,40 @@ class Settings(BaseSettings):
     mochi_character_reasoning_effort: str = "none"  # empty for models without it (gpt-4.1-mini)
     mochi_character_timeout_seconds: float = 6.0
     mochi_follow_up_seconds: float = 20.0
-    # Said when the device wakes Mochi: the person then picks practise, company or play.
-    mochi_greeting_en: str = "Hi! What would you like to do today?"
-    mochi_greeting_pt: str = "Oi! O que você quer fazer hoje?"
+    # Said when the device wakes Mochi: a meeting begins, and Mochi listens without a sound.
+    mochi_greeting_en: str = "Hi! I'm listening. Call me if you need a word."
+    mochi_greeting_pt: str = "Oi! Estou ouvindo. Me chama se precisar de uma palavra."
+    # The team view leaves out an expression fewer people than this needed, so a small team's
+    # list cannot point at one person (DECISIONS D-45). 1 shows everything.
+    mochi_team_min_people: int = 1
+    # Whose sentences count in a meeting on the device. "all": everyone's (the default).
+    # "registered": only a sentence a registered voice clearly said is looked at and stored; the
+    # rest is dropped unseen. For a noisy room, where the people at the next table are heard too
+    # (D-36, D-49). It has no effect where no voices are reported (a phone's microphone).
+    mochi_meeting_voices: Literal["all", "registered"] = "all"
+    # Each finished sentence goes to the screens of its session as `transcript.line`, and to the
+    # device as a caption (DECISIONS D-51). Off: nothing of what is said is shown, as before.
+    mochi_live_transcript: bool = True
+    # An idiom or a technical term the listeners may not know is explained on screen (D-53).
+    # One more small model call for each real sentence of a meeting; needs MODEL_API_KEY.
+    mochi_explain_terms: bool = True
+    # After Stop each person gets a private report of what was wrong in what they said (D-54).
+    # One model call per person and session; needs MODEL_API_KEY.
+    mochi_speech_reports: bool = True
+    # After a hint, the whole sentence the speaker was reaching for is suggested; one touch and
+    # Mochi says it aloud (D-59). One small model call per hint; needs MODEL_API_KEY.
+    mochi_suggest_phrases: bool = True
+    mochi_suggestion_ttl_seconds: float = 20.0  # how long the touch works after the suggestion
+    mochi_report_model_name: str = ""  # empty: MOCHI_MODEL_NAME
+    mochi_report_reasoning_effort: str = ""  # empty: "low" where the hint judge has a setting
+    mochi_report_timeout_seconds: float = 60.0
     # Ears (DECISIONS D-25). "openai" needs MODEL_API_KEY; without one, or when Agora refuses the
     # request, ARES with keywords is used instead.
     mochi_asr_vendor: str = "openai"
     mochi_asr_language: str = "en-US"  # the main language, for every vendor but ARES
     mochi_asr_openai_model: str = "gpt-4o-transcribe"
     mochi_asr_prompt: str = (
-        "Two people are practising languages. They speak English and Brazilian Portuguese and "
+        "People in a work meeting. They speak English and Brazilian Portuguese and "
         "often mix both in one sentence. Write every word in the language it was spoken in; "
         "never translate."
     )
@@ -103,7 +129,7 @@ class Settings(BaseSettings):
     # 0 is off. Raises the model bill: every call slower than this is paid twice.
     mochi_character_hedge_seconds: float = 0.0
     # Stream Mochi's free-chat line to Agora while the model writes it (only with the
-    # empty_reply silence strategy, and never during a round).
+    # empty_reply silence strategy).
     mochi_stream_reply: bool = False
     port: int = 8000
 

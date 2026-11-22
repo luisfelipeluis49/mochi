@@ -1,6 +1,6 @@
 {
   "session_id": "demo",
-  "mode": "together",
+  "mode": "meeting",
   "focus": "en",
   "participants": [
     {
@@ -20,7 +20,6 @@
   ],
   "recent_turns": [],
   "recent_hints": [],
-  "activity": null,
   "learning_events": {
     "ana": [],
     "ben": []

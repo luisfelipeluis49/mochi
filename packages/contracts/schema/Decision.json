@@ -272,8 +272,7 @@
     "SpeakReason": {
       "description": "Why Mochi speaks aloud.",
       "enum": [
-        "asks_mochi",
-        "activity_host"
+        "asks_mochi"
       ],
       "title": "SpeakReason",
       "type": "string"

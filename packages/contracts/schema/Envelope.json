@@ -1,15 +1,43 @@
 {
   "$defs": {
-    "Activity": {
+    "ConversationReport": {
       "additionalProperties": false,
-      "description": "Payload of `activity.state.changed`. Never carries the secret word while active.\n\nPROPOSAL: the round fields are nullable so an IDLE state can be published\n(AGENTS 6.2 only shows an active example). See docs/DECISIONS.md D-03.",
+      "description": "Payload of `conversation.report.created`: what Mochi noticed in ONE person's speech in\nONE session, written after it stopped. PROPOSAL (DECISIONS D-54).\n\nIt is that person's alone: their phone gets the event, and only they may read\n`GET /api/users/{id}/reports`. `my_sentences` holds what their registered voice said, never\nwhat others said. Nothing of it is shown during the meeting. `strengths` and `focus_next`\nare short lines in the language the person is at home in.",
       "properties": {
-        "activity_id": {
-          "const": "describe_and_guess",
-          "title": "Activity Id",
+        "company_id": {
+          "title": "Company Id",
           "type": "string"
         },
-        "describer_user_id": {
+        "ended_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Ended At",
+          "type": "string"
+        },
+        "focus_next": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Focus Next",
+          "type": "array"
+        },
+        "mistakes": {
+          "items": {
+            "$ref": "#/$defs/Mistake"
+          },
+          "title": "Mistakes",
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/SessionMode"
+        },
+        "my_sentences": {
+          "items": {
+            "$ref": "#/$defs/SpokenSentence"
+          },
+          "title": "My Sentences",
+          "type": "array"
+        },
+        "record_id": {
           "anyOf": [
             {
               "type": "string"
@@ -18,88 +46,60 @@
               "type": "null"
             }
           ],
-          "title": "Describer User Id"
+          "title": "Record Id"
         },
-        "guesser_user_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Guesser User Id"
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
         },
-        "public_instruction": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Public Instruction"
+        "speaking_minutes": {
+          "title": "Speaking Minutes",
+          "type": "number"
         },
-        "result": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RoundResult"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "started_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Started At",
+          "type": "string"
         },
-        "revealed_word": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Revealed Word"
+        "strengths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Strengths",
+          "type": "array"
         },
-        "round_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Round Id"
+        "target_language": {
+          "$ref": "#/$defs/Language"
         },
-        "state": {
-          "$ref": "#/$defs/GameState"
+        "unknown_words": {
+          "items": {
+            "$ref": "#/$defs/NeededWord"
+          },
+          "title": "Unknown Words",
+          "type": "array"
         },
-        "word_source": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/WordSource"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "user_id": {
+          "title": "User Id",
+          "type": "string"
         }
       },
       "required": [
-        "activity_id",
-        "round_id",
-        "state",
-        "describer_user_id",
-        "guesser_user_id",
-        "public_instruction",
-        "result",
-        "revealed_word",
-        "word_source"
+        "report_id",
+        "company_id",
+        "record_id",
+        "user_id",
+        "target_language",
+        "mode",
+        "started_at",
+        "ended_at",
+        "speaking_minutes",
+        "my_sentences",
+        "mistakes",
+        "unknown_words",
+        "strengths",
+        "focus_next"
       ],
-      "title": "Activity",
+      "title": "ConversationReport",
       "type": "object"
     },
     "EventType": {
@@ -108,23 +108,14 @@
         "session.state.changed",
         "hint.created",
         "hint.cleared",
-        "activity.state.changed",
-        "activity.private_prompt",
         "learning_event.created",
         "learning_event.updated",
-        "agent.speak.requested"
+        "agent.speak.requested",
+        "transcript.line",
+        "conversation.report.created",
+        "phrase.suggested"
       ],
       "title": "EventType",
-      "type": "string"
-    },
-    "GameState": {
-      "description": "Describe & Guess states.",
-      "enum": [
-        "IDLE",
-        "ACTIVE_ROUND",
-        "ROUND_RESULT"
-      ],
-      "title": "GameState",
       "type": "string"
     },
     "Hint": {
@@ -362,23 +353,29 @@
       "title": "LearningState",
       "type": "string"
     },
-    "PrivatePrompt": {
+    "MarkKind": {
+      "description": "What Mochi noticed in a sentence of the live transcript (PROPOSAL, D-51 to D-53).\n\n`code_switch`: a word of the other language (the speaker also gets a hint for it).\n`idiom` and `technical_term`: something the people listening may not understand.",
+      "enum": [
+        "code_switch",
+        "idiom",
+        "technical_term"
+      ],
+      "title": "MarkKind",
+      "type": "string"
+    },
+    "Mistake": {
       "additionalProperties": false,
-      "description": "Payload of `activity.private_prompt`. Delivered to the Home view only.",
+      "description": "A mistake a person made in a session: one real example, and how often its kind came up.\n\n`explanation` is one short sentence in the language the person is at home in.",
       "properties": {
-        "describer_user_id": {
-          "title": "Describer User Id",
+        "better": {
+          "title": "Better",
           "type": "string"
         },
-        "round_id": {
-          "title": "Round Id",
-          "type": "string"
+        "count": {
+          "title": "Count",
+          "type": "integer"
         },
-        "secret_word": {
-          "title": "Secret Word",
-          "type": "string"
-        },
-        "source_learning_event_id": {
+        "explanation": {
           "anyOf": [
             {
               "type": "string"
@@ -387,16 +384,100 @@
               "type": "null"
             }
           ],
-          "title": "Source Learning Event Id"
+          "title": "Explanation"
+        },
+        "kind": {
+          "$ref": "#/$defs/MistakeKind"
+        },
+        "said": {
+          "title": "Said",
+          "type": "string"
+        },
+        "topic": {
+          "$ref": "#/$defs/MistakeTopic"
         }
       },
       "required": [
-        "round_id",
-        "describer_user_id",
-        "secret_word",
-        "source_learning_event_id"
+        "kind",
+        "topic",
+        "said",
+        "better",
+        "explanation",
+        "count"
       ],
-      "title": "PrivatePrompt",
+      "title": "Mistake",
+      "type": "object"
+    },
+    "MistakeKind": {
+      "description": "What kind of mistake a sentence had (PROPOSAL, DECISIONS D-54).",
+      "enum": [
+        "grammar",
+        "word_choice",
+        "false_friend"
+      ],
+      "title": "MistakeKind",
+      "type": "string"
+    },
+    "MistakeTopic": {
+      "description": "The group a mistake belongs to, so the same mistake can be counted across sentences and\npeople. A fixed list: the screen writes the label in the reader's language.",
+      "enum": [
+        "verb_tense",
+        "verb_form",
+        "agreement",
+        "articles",
+        "prepositions",
+        "pronouns",
+        "plurals",
+        "word_order",
+        "word_choice",
+        "false_friend",
+        "other"
+      ],
+      "title": "MistakeTopic",
+      "type": "string"
+    },
+    "NeededWord": {
+      "additionalProperties": false,
+      "description": "A word the person needed in the session (from its word moments), and what they said.",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "said_instead": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Said Instead"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expression",
+        "meaning",
+        "said_instead",
+        "times"
+      ],
+      "title": "NeededWord",
       "type": "object"
     },
     "Reason": {
@@ -415,20 +496,11 @@
       "title": "Reason",
       "type": "string"
     },
-    "RoundResult": {
-      "description": "How a round ended.",
-      "enum": [
-        "guessed",
-        "skipped"
-      ],
-      "title": "RoundResult",
-      "type": "string"
-    },
     "SessionMode": {
-      "description": "Whether people talk freely or play a game.",
+      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
       "enum": [
-        "together",
-        "activity"
+        "meeting",
+        "review"
       ],
       "title": "SessionMode",
       "type": "string"
@@ -505,11 +577,59 @@
     "SpeakReason": {
       "description": "Why Mochi speaks aloud.",
       "enum": [
-        "asks_mochi",
-        "activity_host"
+        "asks_mochi"
       ],
       "title": "SpeakReason",
       "type": "string"
+    },
+    "SpokenSentence": {
+      "additionalProperties": false,
+      "description": "One sentence a person said, in a report of their own. `better`: the sentence put right,\nNone when nothing was wrong with it; `topic`: the group its mistake belongs to.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "better": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Better"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MistakeTopic"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "utterance_id": {
+          "title": "Utterance Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "utterance_id",
+        "at",
+        "text"
+      ],
+      "title": "SpokenSentence",
+      "type": "object"
     },
     "StateChange": {
       "additionalProperties": false,
@@ -531,14 +651,136 @@
       "title": "StateChange",
       "type": "object"
     },
-    "WordSource": {
-      "description": "Where a round's secret word came from.",
-      "enum": [
-        "learning_event",
-        "stock"
+    "SuggestedPhrase": {
+      "additionalProperties": false,
+      "description": "Payload of `phrase.suggested`: the whole sentence a stuck speaker was trying to say, a\nmoment after their hint. PROPOSAL (DECISIONS D-59, \"one-touch assistance\").\n\nIt goes where the hint went. Until `expires_at`, one touch (on Mochi's screen, or\n`POST /api/sessions/{id}/hints/{hint_id}/say`) makes Mochi say `text` aloud, once.",
+      "properties": {
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "hint_id": {
+          "title": "Hint Id",
+          "type": "string"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "target_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target User Id"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hint_id",
+        "target_user_id",
+        "language",
+        "text",
+        "expires_at"
       ],
-      "title": "WordSource",
-      "type": "string"
+      "title": "SuggestedPhrase",
+      "type": "object"
+    },
+    "TranscriptLine": {
+      "additionalProperties": false,
+      "description": "Payload of `transcript.line`: one finished sentence, sent as it is said (D-51).\n\nSent to the people in that session, who all heard it; it is not what is stored (that is the\n`Utterance`, which only its speaker may read). The same `utterance_id` is sent again when\nsomething was noticed in the sentence (`marks`): a screen replaces the line it has.\n`user_id` is the person whose registered voice said it, None when no known voice did.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "marks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/TranscriptMark"
+          },
+          "title": "Marks",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
+        },
+        "utterance_id": {
+          "title": "Utterance Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "utterance_id",
+        "user_id",
+        "text",
+        "at"
+      ],
+      "title": "TranscriptLine",
+      "type": "object"
+    },
+    "TranscriptMark": {
+      "additionalProperties": false,
+      "description": "Something Mochi noticed in a sentence, shown with it in the live transcript.\n\n`text` is the part of the sentence it is about. `gloss` is what to read next to it: for a\ncode switch the word in the language being spoken (\"adiar\" -> \"postpone\"), for an idiom or a\ntechnical term what it means in the other language (\"circle back\" -> \"voltar ao assunto\").\n`plain`, for an idiom or a term, says the same in everyday words of the language spoken.",
+      "properties": {
+        "gloss": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gloss"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkKind"
+        },
+        "plain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plain"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "gloss"
+      ],
+      "title": "TranscriptMark",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -565,16 +807,19 @@
           "$ref": "#/$defs/HintCleared"
         },
         {
-          "$ref": "#/$defs/Activity"
-        },
-        {
-          "$ref": "#/$defs/PrivatePrompt"
-        },
-        {
           "$ref": "#/$defs/LearningEvent"
         },
         {
           "$ref": "#/$defs/Speak"
+        },
+        {
+          "$ref": "#/$defs/TranscriptLine"
+        },
+        {
+          "$ref": "#/$defs/ConversationReport"
+        },
+        {
+          "$ref": "#/$defs/SuggestedPhrase"
         }
       ],
       "title": "Payload"

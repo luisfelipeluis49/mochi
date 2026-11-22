@@ -5,7 +5,7 @@ For every case 1-9: at least three sentences that should produce a hint and thre
 that should not (`IGNORE`), including both demo sentences.
 
 Fields: `text`; optional `history` (earlier turns, 1 s apart), `hint_turns_ago` (a hint was shown
-for the turn that many turns ago), `round_active`, `participants` ("both_learning_en" makes whose-word
+for the turn that many turns ago), `participants` ("both_learning_en" makes whose-word
 unknown), `model` (what the scripted fake model answers). `expect` holds `decision`, `expression`,
 `reason`, `target_user_id` and, for SPEAK, `speak_text`.
 

@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "MemberRole": {
+      "description": "What a person may see of their company: `admin` also sees the team view.",
+      "enum": [
+        "admin",
+        "member"
+      ],
+      "title": "MemberRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One person's place in a company. `admin` may open the team view; `team` is free text.",
+  "properties": {
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/MemberRole"
+    },
+    "team": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Team"
+    },
+    "user_id": {
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "company_id",
+    "user_id",
+    "role"
+  ],
+  "title": "Member",
+  "type": "object"
+}

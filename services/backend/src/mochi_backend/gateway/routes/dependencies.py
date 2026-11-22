@@ -12,5 +12,5 @@ ContainerDep = Annotated[AppContainer, Depends(get_container)]
 # The session in the path: `demo` is the Pi's; any other id is a session a client opened.
 SessionIdPath = Annotated[str, Path(pattern=SESSION_ID_PATTERN)]
 
-# A user in the path (D-42): the same shape as a session id; a bad one is a 422.
+# A user in the path (D-56): the same shape as a session id; a bad one is a 422.
 UserIdPath = Annotated[str, Path(pattern=SESSION_ID_PATTERN)]

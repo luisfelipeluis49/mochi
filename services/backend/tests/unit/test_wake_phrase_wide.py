@@ -1,4 +1,4 @@
-"""The widened wake phrase: greetings, loose names, thanks outside a round, never "mocha"."""
+"""The widened wake phrase: greetings, loose names, thanks, never "mocha"."""
 
 import pytest
 
@@ -23,7 +23,6 @@ NAMES = [
 @pytest.mark.parametrize("sep", [" ", ", ", "-"])
 def test_every_greeting_wakes_with_each_separator(greeting: str, sep: str) -> None:
     assert has_wake_phrase(f"{greeting}{sep}Mochi, hello")
-    assert has_wake_phrase(f"{greeting}{sep}Mochi, hello", round_active=True)
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -32,9 +31,8 @@ def test_every_loose_name_wakes_after_a_greeting(name: str) -> None:
 
 
 @pytest.mark.parametrize("thanks", THANKS)
-def test_thanks_wakes_only_outside_a_round(thanks: str) -> None:
+def test_thanks_wakes_too(thanks: str) -> None:
     assert has_wake_phrase(f"{thanks}, Mochi")
-    assert not has_wake_phrase(f"{thanks}, Mochi", round_active=True)
 
 
 @pytest.mark.parametrize(

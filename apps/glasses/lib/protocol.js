@@ -180,7 +180,7 @@ export function reduce(state, event, nowMs) {
       return next;
 
     default:
-      // Game, learning and speak events are for other surfaces.
+      // Learning and speak events are for other surfaces.
       return next;
   }
 }

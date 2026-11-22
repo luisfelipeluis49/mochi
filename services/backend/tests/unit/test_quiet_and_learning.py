@@ -12,7 +12,6 @@ from mochi_backend.intelligence.quiet_rules import (
     is_just_thinking,
     is_serious,
     quiet_reason,
-    round_is_active,
 )
 from mochi_backend.platform.clock import iso_z
 from mochi_contracts import (
@@ -23,7 +22,7 @@ from mochi_contracts import (
     SessionMode,
     StateChange,
 )
-from tests.factories import active_round, make_context, make_hint, make_turn
+from tests.factories import make_context, make_hint, make_turn
 from tests.fakes.fake_clock import START, FakeClock
 
 LEXICON = Lexicon.load()
@@ -45,11 +44,6 @@ def _event(
         learning_state=LearningState.DISCOVERED,
         state_history=[StateChange(learning_state=LearningState.DISCOVERED, at=stamp)],
     )
-
-
-def test_round_is_active_only_during_active_round() -> None:
-    assert round_is_active(make_context(activity=active_round()))
-    assert not round_is_active(make_context())
 
 
 def test_cooldown_covers_the_two_turns_after_a_hint() -> None:
@@ -76,8 +70,9 @@ def test_thinking_and_self_correction_are_quiet(said: str) -> None:
 
 
 def test_quiet_reason_names_the_first_rule() -> None:
-    context = make_context(activity=active_round())
-    assert quiet_reason("I need to adiar it", context, LEXICON, 8.0) == "round_active"
+    assert quiet_reason("My father died, I need to adiar it", make_context(), LEXICON, 8.0) == (
+        "serious_conversation"
+    )
     assert quiet_reason("I need to adiar it", make_context(), LEXICON, 8.0) is None
     assert quiet_reason("We had feijoada.", make_context(), LEXICON, 8.0) == "deliberate_switch"
 
@@ -92,7 +87,7 @@ def test_with_state_appends_history() -> None:
 
 
 def _assist(
-    text: str, turns_after: int, mode: SessionMode = SessionMode.TOGETHER
+    text: str, turns_after: int, mode: SessionMode = SessionMode.MEETING
 ) -> list[LearningEvent]:
     turns = [make_turn(f"t{i}", float(i + 1)) for i in range(turns_after)]
     context = make_context(turns=turns, mode=mode)
@@ -126,9 +121,9 @@ def test_showing_the_same_hint_again_reopens_the_three_turn_window() -> None:
     )
 
 
-def test_other_words_and_activity_mode_do_not_assist() -> None:
+def test_other_words_and_a_review_do_not_assist() -> None:
     assert _assist("Nice weather.", turns_after=1) == []
-    assert _assist("I will postpone it.", turns_after=1, mode=SessionMode.ACTIVITY) == []
+    assert _assist("I will postpone it.", turns_after=1, mode=SessionMode.REVIEW) == []
 
 
 def test_memory_store_creates_updates_and_lists_newest_first() -> None:

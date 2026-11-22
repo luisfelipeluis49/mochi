@@ -1,8 +1,9 @@
 """Mochi's side of the conversation: what was said to it lately, and whether it is still in it.
 
-Mochi is quiet by default (AGENTS 1). It answers when someone says its name, and for a short while
-after it spoke it also hears the next sentence, so a person can answer its question without saying
-"Mochi" again. The model may still decide that sentence was not for it (`[quiet]`).
+Mochi is quiet by default (AGENTS 1). In a meeting it answers when someone says its name, and for
+a short while after it spoke it also hears the next sentence, so a person can answer its question
+without saying "Mochi" again. The model may still decide that sentence was not for it (`[quiet]`).
+In a review it is the person's conversation partner from the first sentence on.
 """
 
 import asyncio
@@ -15,25 +16,25 @@ from mochi_backend.intelligence.character_port import (
     CharacterRequest,
     DeviceStatus,
     Exchange,
+    ReviewWord,
     StreamingCharacterModel,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
-from mochi_backend.intelligence.streamed_line import PLAY, QUIET, streamed_line
+from mochi_backend.intelligence.streamed_line import QUIET, streamed_line
 from mochi_backend.platform.clock import Clock
 from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import Language
 
 LISTEN = "[listen]"  # Mochi was asked to only watch: from now on it helps silently
 CHAT = "[chat]"  # Mochi was asked back into the talk
-# PLAY ("[play]"): Mochi was asked to host Describe & Guess; the two people talk to each other.
-# QUIET ("[quiet]"): the sentence was not for Mochi. Both live in streamed_line, which needs them.
+# QUIET ("[quiet]"): the sentence was not for Mochi. It lives in streamed_line, which needs it.
 HISTORY_LIMIT = 8  # lines kept: four things said to Mochi and its four answers
 SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
 # A word Mochi put on its screen.
 SHOWN = re.compile(r"\[\s*show\b\s*:?\s*([^\]]+?)\s*\]", re.IGNORECASE)
-GIVEN_LIMIT = 3  # words remembered for the goodbye: the newest ones
 MIN_WORDS_TO_EXPLAIN = 4  # an idiom needs a few words around it
+GIVEN_LIMIT = 3  # words remembered for the goodbye: the newest ones
 
 
 def spoken_line(answer: str | None) -> str | None:
@@ -58,7 +59,8 @@ class MochiTalk:
         self._until: datetime | None = None
         self._attentive = False  # someone is talking WITH Mochi, not next to it
         self.explains = False  # a quiet listener may explain an expression unasked (web sessions)
-        self.playing = False  # a round is on: Mochi is told no word it gave (it may be the secret)
+        self.reviewing = False  # this session is a review (told to Mochi with every sentence)
+        self.review: list[ReviewWord] = []  # in a review: the words to bring back
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
@@ -71,18 +73,20 @@ class MochiTalk:
         """Swap the model that writes the lines."""
         self._model = model
 
-    def begin(self, woken: bool, language: Language | None = None, explains: bool = False) -> None:
-        """A session starts. `woken`: someone called Mochi on the device to talk to it, so the
-        next sentence is for it; otherwise two people talk and Mochi waits for its name.
+    def begin(
+        self, conversing: bool, language: Language | None = None, explains: bool = False
+    ) -> None:
+        """A session starts. `conversing`: one person talks WITH Mochi (a review), so every
+        sentence is for it; otherwise people talk to each other and Mochi waits for its name.
 
         `language`: the one it was greeted in. Until Mochi has answered something, that is the
         tie-breaker for a sentence that could be either language, not the last session's.
         """
-        self._history, self._until, self._attentive = [], None, woken
-        self._given = []
-        self.explains = explains
+        self._history, self._until, self._attentive = [], None, conversing
+        self._given, self.review = [], []
+        self.explains = explains  # a web session's quiet listener may explain unasked (D-62)
         self.language = language or self.language
-        if woken:
+        if conversing:
             self.called()
 
     def called(self) -> None:
@@ -98,24 +102,34 @@ class MochiTalk:
 
     @property
     def attentive(self) -> bool:
-        """True while Mochi is part of the talk (woken to chat); False while it only watches."""
+        """True while Mochi is part of the talk (a review, or asked in); False while it watches."""
         return self._attentive
 
     def listening(self) -> bool:
         """True while a sentence that does not say "Mochi" may still be meant for it.
 
-        Someone who woke Mochi to talk to it has its attention (seen live: a minute after its
-        last answer, "Are you still there?" got silence), until they tell it to just listen.
-        Between two people talking, only for a short while after Mochi spoke.
+        Someone who talks WITH Mochi has its attention (seen live: a minute after its last
+        answer, "Are you still there?" got silence), until they tell it to just listen.
+        Between people talking to each other, only for a short while after Mochi spoke.
         """
         if self._attentive:
             return True
         return self._until is not None and self._clock.now() < self._until
 
+    def hush(self) -> None:
+        """Someone talked over Mochi: it stops, and what they say next is theirs, not an answer
+        to it. Between people talking to each other it waits for its name again; someone who is
+        talking WITH it (a review) keeps its attention.
+
+        Example: after `hush()` in a meeting, `listening()` is False.
+        """
+        if not self._attentive:
+            self._until = None
+
     def reset(self) -> None:
         """Forget the conversation (demo reset)."""
         self._history, self._until, self._attentive = [], None, False
-        self._given = []
+        self._given, self.review = [], []
 
     async def reply(
         self,
@@ -154,9 +168,11 @@ class MochiTalk:
             meaning=meaning,
             named=named,
             language=language,
-            woken=self._attentive,
+            conversing=self._attentive,
             explains=self.explains and not self._attentive,
-            given=[] if self.playing else list(self._given),
+            given=list(self._given),
+            reviewing=self.reviewing,
+            review=list(self.review),
         )
 
     async def _answered(self, request: CharacterRequest, sink: TextSink | None) -> str | None:
@@ -194,11 +210,10 @@ class MochiTalk:
         """What Mochi wrote can change how it listens from now on.
 
         `[listen]`: it only watches; it shows hints and speaks when someone says its name.
-        `[play]`: it hosts a round, and the same holds: the describing is not said to Mochi.
         `[chat]`: it is part of the talk again.
         """
         written = line.lower()
-        if LISTEN in written or PLAY in written:
+        if LISTEN in written:
             self._attentive, self._until = False, None  # no "the next sentence is for me" either
         elif CHAT in written:
             self._attentive = True

@@ -1,20 +1,18 @@
-"""Hub behaviour found in review: whole-word secret guard, ordered delivery, stalled clients."""
+"""Hub behaviour found in review: ordered delivery, stalled clients, snapshots."""
 
 import asyncio
 
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.event_hub import EventHub
-from mochi_backend.gateway.session_store import idle_activity
+from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_contracts import EventPayload, EventType, Language, Speak, SpeakReason
-from tests.factories import active_round
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_sender import FakeEventLogger, FakeSender
 from tests.fakes.held_sender import HeldSender
 
 ANA = ConnectionTarget("mobile", user_id="ana")
 BEN = ConnectionTarget("mobile", user_id="ben")
-AUDIENCE = ConnectionTarget("audience")
 SPEAK = Speak(text="hi", language=Language.EN, reason=SpeakReason.ASKS_MOCHI)
 
 
@@ -28,29 +26,6 @@ class _NeverSender:
 
     async def send_text(self, text: str) -> None:
         await asyncio.Event().wait()
-
-
-async def test_a_secret_that_is_also_a_json_key_does_not_block_the_audience() -> None:
-    hub, logger = _hub()
-    audience = FakeSender()
-    hub.register(AUDIENCE, audience)
-    for word in ("state", "round", "activity", "hint", "part"):
-        hub.protect_secret(word)
-    await hub.publish(EventType.ACTIVITY_STATE_CHANGED, active_round())
-    assert audience.types() == ["activity.state.changed"]
-    assert "Ben describes. Ana guesses!" in audience.texts[0]
-    assert "secret_leak_blocked" not in logger.names()
-
-
-async def test_a_secret_inside_public_text_is_still_blocked_as_a_whole_word() -> None:
-    hub, logger = _hub()
-    audience = FakeSender()
-    hub.register(AUDIENCE, audience)
-    hub.protect_secret("umbrella")
-    leaky = active_round().model_copy(update={"public_instruction": "Ben describes an Umbrella!"})
-    await hub.publish(EventType.ACTIVITY_STATE_CHANGED, leaky)
-    assert "umbrella" not in audience.texts[0].lower()
-    assert "secret_leak_blocked" in logger.names()
 
 
 async def test_concurrent_publishes_reach_every_client_in_sequence_order() -> None:
@@ -79,7 +54,7 @@ async def test_a_stalled_client_is_dropped_and_does_not_block_the_others() -> No
 
 
 def _idle_snapshot() -> list[tuple[EventType, EventPayload]]:
-    return [(EventType.ACTIVITY_STATE_CHANGED, idle_activity())]
+    return [(EventType.SESSION_STATE_CHANGED, SessionStore().session_state())]
 
 
 class _DeadSender:
@@ -101,17 +76,6 @@ async def test_connecting_with_a_dead_client_stops_at_the_first_failed_snapshot_
     assert dead.attempts == 1  # no second and third send into a dead socket under the lock
 
 
-async def test_a_snapshot_of_an_idle_game_does_not_end_the_protection_of_a_new_secret() -> None:
-    hub, logger = _hub()
-    audience = FakeSender()
-    hub.protect_secret("umbrella")  # a round just started and its secret is protected
-    await hub.connect(AUDIENCE, audience, _idle_snapshot)  # a late, stale IDLE snapshot
-    leaky = active_round().model_copy(update={"public_instruction": "It is an umbrella"})
-    await hub.publish(EventType.ACTIVITY_STATE_CHANGED, leaky)
-    assert all("umbrella" not in text.lower() for text in audience.texts)
-    assert "secret_leak_blocked" in logger.names()
-
-
 async def test_a_client_that_connects_during_a_publish_sees_each_event_once_and_in_order() -> None:
     hub, _ = _hub()
     held, newcomer = HeldSender(), FakeSender()
@@ -122,5 +86,5 @@ async def test_a_client_that_connects_during_a_publish_sees_each_event_once_and_
     held.release.set()
     await asyncio.wait_for(asyncio.gather(publishing, connecting), 1)
     await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
-    assert newcomer.types() == ["activity.state.changed", "agent.speak.requested"]
+    assert newcomer.types() == ["session.state.changed", "agent.speak.requested"]
     assert [e.sequence for e in newcomer.events] == sorted(e.sequence for e in newcomer.events)

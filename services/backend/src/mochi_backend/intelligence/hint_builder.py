@@ -55,12 +55,14 @@ class HintFactory:
         self._ids = ids
         self._ttl = ttl_seconds
 
-    def hint_for(self, match: CaseMatch, context: SessionContext) -> Hint:
-        """Build the Hint; it expires `ttl_seconds` after now."""
+    def hint_for(
+        self, match: CaseMatch, context: SessionContext, speaker: str | None = None
+    ) -> Hint:
+        """Build the Hint; it expires `ttl_seconds` after now. `speaker`: who said the sentence."""
         expires = self._clock.now() + timedelta(seconds=self._ttl)
         return Hint(
             hint_id=self._ids.new("hint"),
-            target_user_id=owner_for(context),
+            target_user_id=owner_for(context, speaker),
             target_language=context.focus,
             expression=match.expression,
             meaning=match.meaning,

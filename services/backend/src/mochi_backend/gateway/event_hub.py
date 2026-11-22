@@ -5,21 +5,22 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from mochi_backend.gateway.delivery_rules import ConnectionTarget, hint_user_of, is_recipient
+from mochi_backend.gateway.delivery_rules import (
+    PERSONAL_EVENTS,
+    ConnectionTarget,
+    hint_user_of,
+    is_recipient,
+)
 from mochi_backend.gateway.roster import SESSION_ID
-from mochi_backend.gateway.secret_guard import SecretGuard
 from mochi_backend.platform.clock import Clock, iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_contracts import (
     SCHEMA_VERSION,
-    Activity,
     Envelope,
     EventPayload,
     EventType,
-    GameState,
     HintCleared,
-    PrivatePrompt,
 )
 
 # A phone that stops reading must not hold up the others or the reply to Agora.
@@ -62,11 +63,10 @@ class Connection:
 
 @dataclass(frozen=True)
 class _Outbound:
-    """One envelope, serialized once, with whether a protected secret appears in its text."""
+    """One envelope, serialized once for every client."""
 
     envelope: Envelope
     text: str
-    leaks: bool
 
 
 SnapshotSource = Callable[[], list[tuple[EventType, EventPayload]]]
@@ -76,8 +76,8 @@ class EventHub:
     """The publisher for one session; views for other sessions share its clients and counter.
 
     `hub.for_session("p-1")` is another publisher over the same clients: an event goes only to the
-    clients that joined that session, so two sessions never see each other's hints, rounds or
-    secrets. A learning event is the exception: it belongs to a person, so it reaches that
+    clients that joined that session, so two sessions never see each other's hints. A learning
+    event is the exception: it belongs to a person, so it reaches that
     person's phone in every session (saved words are the one thing the sessions share).
     """
 
@@ -95,7 +95,6 @@ class EventHub:
         scope = scope or _Scope(SESSION_ID, _Shared())
         self._session_id = scope.session_id
         self._shared = scope.shared
-        self._secrets = SecretGuard()
         self._send_timeout = send_timeout_seconds
 
     def for_session(self, session_id: str) -> "EventHub":
@@ -123,23 +122,13 @@ class EventHub:
         """Remove a client (idempotent)."""
         self._shared.connections[:] = [c for c in self._shared.connections if c is not connection]
 
-    def protect_secret(self, word: str) -> None:
-        """Treat `word` as a secret until the round result is published."""
-        self._secrets.protect(word)
-
-    def forget_secrets(self) -> None:
-        """Stop protecting round secrets (the round ended without a result, e.g. on Stop)."""
-        self._secrets.clear()
-
     def reset(self) -> None:
-        """Forget hint routing and secrets (demo reset). Sequence keeps counting up."""
+        """Forget hint routing (demo reset). Sequence keeps counting up."""
         self._shared.hint_users.clear()
-        self._secrets.clear()
 
     async def publish(self, event_type: EventType, payload: EventPayload) -> Envelope:
         """Wrap `payload` in an envelope and send it to every connection entitled to it."""
         async with self._shared.lock:
-            self._note_secrets(event_type, payload)
             outbound = self._outbound(event_type, payload)
             await asyncio.gather(
                 *(self._deliver(c, outbound) for c in list(self._shared.connections))
@@ -171,33 +160,9 @@ class EventHub:
                 return False
         return True
 
-    def _note_secrets(self, event_type: EventType, payload: EventPayload) -> None:
-        """Only publishing changes what is protected; a snapshot never does."""
-        if isinstance(payload, PrivatePrompt):
-            self.protect_secret(payload.secret_word)
-        if (
-            isinstance(payload, Activity)
-            and event_type is EventType.ACTIVITY_STATE_CHANGED
-            and payload.state is not GameState.ACTIVE_ROUND
-        ):
-            self._secrets.clear()  # the round is over: the word may be shown
-
     def _outbound(self, event_type: EventType, payload: EventPayload) -> _Outbound:
-        if isinstance(payload, Activity) and event_type is EventType.ACTIVITY_STATE_CHANGED:
-            payload = self._public_activity(payload)
         envelope = self._envelope(event_type, payload)
-        leaks = self._secrets.leaks(envelope.payload)  # once per event, not once per client
-        return _Outbound(envelope, envelope.model_dump_json(), leaks)
-
-    def _public_activity(self, activity: Activity) -> Activity:
-        if activity.state is not GameState.ACTIVE_ROUND:
-            return activity
-        if activity.revealed_word is None and not self._secrets.leaks(activity):
-            return activity
-        self._logger.log("secret_leak_blocked", {"round_id": activity.round_id, "error": "leak"})
-        return activity.model_copy(
-            update={"revealed_word": None, "public_instruction": "A round is in progress."}
-        )
+        return _Outbound(envelope, envelope.model_dump_json())  # once per event, not per client
 
     def _envelope(self, event_type: EventType, payload: EventPayload) -> Envelope:
         self._shared.sequence += 1
@@ -226,9 +191,6 @@ class EventHub:
             return True
         if not is_recipient(envelope.type, envelope.payload, connection.target, hint_user):
             return True
-        if connection.target.kind == "audience" and outbound.leaks:
-            self._logger.log("secret_leak_blocked", {"type": envelope.type.value, "error": "leak"})
-            return True
         try:
             await asyncio.wait_for(connection.sender.send_text(outbound.text), self._send_timeout)
         except (ConnectionError, RuntimeError, OSError, TimeoutError) as error:
@@ -238,8 +200,9 @@ class EventHub:
         return True
 
     def _in_scope(self, envelope: Envelope, connection: Connection) -> bool:
-        """This client is in the session the event is for; a person's words reach them anywhere."""
-        if envelope.type in (EventType.LEARNING_EVENT_CREATED, EventType.LEARNING_EVENT_UPDATED):
+        """This client is in the session the event is for; a person's words and reports reach
+        them anywhere."""
+        if envelope.type in PERSONAL_EVENTS:
             return True
         return connection.target.session_id == self._session_id
 

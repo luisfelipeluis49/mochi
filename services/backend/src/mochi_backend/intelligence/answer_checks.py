@@ -32,6 +32,18 @@ def same_words(one: str, other: str) -> bool:
     return normalized(one) == normalized(other)
 
 
+def same_family(one: str, other: str) -> bool:
+    """The same word in another form: "watched" for "watch", "animada" for "animado".
+
+    Example: `same_family("Watched", "watch")` -> True; `same_family("plan", "intend")` -> False.
+    """
+    first, second = normalized(one), normalized(other)
+    if not first or not second:
+        return False
+    stem = min(len(first), len(second)) - 1  # the last letter may be an ending
+    return stem >= _STEM_LETTERS and first[:stem] == second[:stem]
+
+
 def language_named(label: str | None) -> Language | None:
     """The language a model's label means. Example: "en-US", "English", "EN" -> English."""
     low = (label or "").strip().lower()
@@ -84,6 +96,16 @@ def made_up(text: str, answer: ModelSuggestion) -> bool:
     if answer.reason is not Reason.CODE_SWITCH or not answer.meaning:
         return False
     return not (_stems(answer.meaning) & _stems(text))
+
+
+def translates_the_question(answer: ModelSuggestion) -> bool:
+    """The "word" is the asking itself: a question that named nothing got translated.
+
+    Seen with a real model: "Futs Como se fala Como se fala..." got the hint "How do you say",
+    and "where is the, qual é a palavra" got "word".
+    """
+    said = answer.meaning or ""
+    return asks_for_word(said) or asks_for_word(answer.expression or "")
 
 
 def only_the_word(text: str, answer: ModelSuggestion, context: SessionContext) -> bool:

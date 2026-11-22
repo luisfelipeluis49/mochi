@@ -17,6 +17,7 @@ Re-check before the demo; update this file when anything changes.
 | Agent id | field `agent_id` in the join reply | join page |
 | Agent / device uids | `properties.agent_rtc_uid` (string), `properties.remote_rtc_uids` (array of strings, one) | join page |
 | Speak without a turn | `POST .../agents/{agentId}/speak` `{text (max 512 bytes), priority INTERRUPT|APPEND|IGNORE, interruptable}` | https://docs.agora.io/en/api-reference/api-ref/conversational-ai/speak |
+| Stop the agent talking | `POST .../agents/{agentId}/interrupt` (no body): "the agent stops talking and thinking immediately" | https://docs.agora.io/en/api-reference/api-ref/conversational-ai/interrupt (read 2026-11-22; **not yet called against real Agora**) |
 | Silence off | `parameters.silence_config.timeout_ms` default 0; greeting/failure message omitted | join page |
 | Turn detection | `turn_detection.config.end_of_speech.mode = vad`, `vad_config.silence_duration_ms` | join page |
 

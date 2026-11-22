@@ -21,9 +21,13 @@ check "hint 1: postpone" "$(turn 'I need to adiar my meeting tomorrow.' | jq -r 
 turn 'That sounds stressful.' >/dev/null
 check "turn right after a hint stays quiet" "$(turn 'Yes, I will postpone it until Thursday.' | jq -r .decision.decision)" "IGNORE"
 check "hint 2: umbrella" "$(turn 'I forgot my guarda-chuva at the office.' | jq -r .decision.hint.expression)" "umbrella"
-check "round starts" "$(post /api/sessions/demo/activity/start | jq -r .state)" "ACTIVE_ROUND"
-check "round result" "$(post /api/sessions/demo/activity/result '{"result":"guessed"}' | jq -r .revealed_word)" "umbrella"
 check "stop" "$(post /api/sessions/demo/stop | jq -r .capturing)" "false"
+# A review is one person's own session (a phone's), so it runs under its own id.
+check "review starts for Ana" "$(post /api/sessions/smoke-review/start '{"mode":"review","user_id":"ana"}' | jq -c '[.mode,.participants]')" '["review",["ana"]]'
+post /dev/sessions/smoke-review/turn '{"text":"I left my umbrella at the office."}' >/dev/null
+check "review stops" "$(post /api/sessions/smoke-review/stop | jq -r .capturing)" "false"
+check "team view: a meeting, a review, a recalled word" "$(curl -sf "$BASE_URL/api/companies/demo/insights?viewer=ana" | jq -c '[.totals.meetings,.totals.reviews,.funnel.reinforced]')" "[1,1,1]"
+check "team view is for administrators" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/companies/demo/insights?viewer=ben")" "403"
 check "device idle after stop" "$(curl -sf "$BASE_URL/api/devices/home_pi_01/state" | jq -c '[.capturing,.agora]')" "[false,null]"
 post /api/demo/reset >/dev/null
 check "reset" "$(curl -sf "$BASE_URL/readyz" | jq -r .ready)" "true"
