@@ -36,7 +36,6 @@ join with the microphone. When a step after the start fails, the app sends `POST
 | `mic.ts` | `runMicGate(env)` (secure context, `mediaDevices`, permissions query, `getUserMedia`, the 8 s "slow" prompt) and `micProblemOf(error)` (DOM names and Agora codes; the Agora codes are unverified). |
 | `agora.ts` | Loads the SDK from the CDN (pinned 4.24.8) and wraps join, publish (AEC/ANS/AGC), play, volume, levels and leave behind `VoiceLink`. It reports failures as `VoiceError`: `agora_sdk`, `agora_join` or a mic problem. |
 | `face.ts` | `faceOf(input, now)`: Mochi's mode, mood, word, note, who, badge and pop, as in the section 3.3 table. Also `speakingUntil`. |
-| `training.ts` | `checkAnswer` (normalising, articles, accents, Levenshtein), the Leitner `schedule`, `dueCards`, `nextDue`, `ProgressStore` (`mochi.training.v1.<user>`), accuracy. |
 | `digest.ts` | `buildDigest`: the wrap-up of one calendar week (Monday to Sunday, `weekKeys`) across all sessions: totals, the week before, minutes per day, words grouped by what happened that week, and what to practise next. |
 | `analytics.ts` | `buildAnalytics`: tiles, the day streak, the bars for the last 10 records, the state counts, and `statePath`. |
 | `i18n.ts` | All copy in `en` and `pt-BR` with the same keys (enforced by the types), `t`, `plural`, `languageName`, UI-language detection and storage, `wokenBy`. |

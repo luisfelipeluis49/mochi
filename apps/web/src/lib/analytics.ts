@@ -1,9 +1,7 @@
-// Analytics: numbers and progress from the saved words, the session records and this device's
-// training progress (section 3.6). Pure.
+// Analytics: numbers and progress from the saved words, the session records (section 3.6). Pure.
 
 import { LEARNING_STATES, type LearningEvent, type LearningState, type SessionRecord } from "../contracts.ts";
 import { type Fmt, dayKey, previousDay, shortDay } from "./format.ts";
-import { type Progress, accuracy } from "./training.ts";
 
 export const BAR_COUNT = 10;
 
@@ -16,7 +14,6 @@ export interface Tiles {
   minutes: number;
   streak: number;
   /** correct / (correct + wrong) on this device, or null */
-  accuracy: number | null;
 }
 
 export interface Bar {
@@ -70,7 +67,7 @@ export function dayStreak(records: SessionRecord[], nowMs: number, timeZone?: st
 
 const firstAt = (w: LearningEvent) => Date.parse(w.state_history[0]?.at ?? "") || 0;
 
-export function buildAnalytics(words: LearningEvent[], records: SessionRecord[], progress: Progress, nowMs: number, f: Fmt): AnalyticsView {
+export function buildAnalytics(words: LearningEvent[], records: SessionRecord[], nowMs: number, f: Fmt): AnalyticsView {
   const newestFirst = [...words].sort((a, b) => firstAt(b) - firstAt(a));
   const byEnd = [...records].sort((a, b) => Date.parse(a.ended_at) - Date.parse(b.ended_at));
   const last = byEnd.slice(-BAR_COUNT);
@@ -84,7 +81,6 @@ export function buildAnalytics(words: LearningEvent[], records: SessionRecord[],
       sessions: records.length,
       minutes: Math.round(records.reduce((s, r) => s + r.minutes, 0) * 10) / 10,
       streak: dayStreak(records, nowMs, f.timeZone),
-      accuracy: accuracy(progress),
     },
     bars: last.map((r, i) => ({ record_id: r.record_id, minutes: r.minutes, label: shortDay(Date.parse(r.started_at), f), newest: i === last.length - 1 })),
     states: LEARNING_STATES.map((state) => ({ state, count: words.filter((w) => w.learning_state === state).length })),

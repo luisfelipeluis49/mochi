@@ -23,8 +23,8 @@ test("App renders every screen", () => {
     assert.match(html, /<main /, screen);
   }
   assert.ok(renderToString(<App model={mockModel({ screen: "analytics", capturing: false })} actions={noopActions} />).includes("Words saved"));
-  assert.ok(renderToString(<App model={mockModel({ screen: "digest", capturing: false })} actions={noopActions} />).includes("Practise next"));
-  assert.ok(renderToString(<App model={mockModel({ screen: "training", capturing: false })} actions={noopActions} />).includes("1 / "));
+  assert.ok(renderToString(<App model={mockModel({ screen: "digest", capturing: false })} actions={noopActions} />).includes("Digest"));
+  assert.ok(renderToString(<App model={mockModel({ screen: "training", capturing: false })} actions={noopActions} />).includes("Start training"));
 });
 
 test("App flow: gate, probe, onboarding, identity", () => {

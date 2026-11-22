@@ -8,7 +8,7 @@ import {
 } from "../contracts.ts";
 import { type Failure, type Op, type ProblemKind, problemOfHttp } from "./httpProblem.ts";
 import { type UiLang, wokenBy } from "./i18n.ts";
-import type { SessionMode } from "./mode.ts";
+import type { StartKind } from "./mode.ts";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -48,12 +48,17 @@ export interface Api {
   getUser(userId: string): Promise<User>;
   words(userId: string): Promise<LearningEvent[]>;
   sessions(userId: string): Promise<SessionRecord[]>;
-  start(sessionId: string, userId: string, lang: UiLang, mode: SessionMode): Promise<SessionState>;
+  start(sessionId: string, userId: string, lang: UiLang, mode: StartKind): Promise<SessionState>;
   stop(sessionId: string): Promise<SessionState | null>;
   agora(sessionId: string): Promise<AgoraJoin>;
 }
 
 const enc = encodeURIComponent;
+
+function startBody(mode: StartKind, userId: string, lang: UiLang): Record<string, string> {
+  if (mode === "train") return { user_id: userId, mode: "review" };
+  return mode === "talk" ? { user_id: userId, woken_by: wokenBy(lang) } : { user_id: userId };
+}
 
 export function createApi(opts: ApiOptions = {}): Api {
   const doFetch: FetchLike = opts.fetch ?? ((i, init) => globalThis.fetch(i, init));
@@ -108,11 +113,9 @@ export function createApi(opts: ApiOptions = {}): Api {
     words: (id) => call("user", "GET", `/api/users/${enc(id)}/words`, undefined, arrayOf(isLearningEvent)),
     sessions: (id) => call("user", "GET", `/api/users/${enc(id)}/sessions`, undefined, arrayOf(isSessionRecord)),
     // Only a conversation sends the wake phrase: without it the session is a quiet listener (D-46).
+    // A training is a review on the backend: Mochi plays a scene, with no hints and no wake phrase (D-68).
     start: (sid, userId, lang, mode) =>
-      call(
-        "start", "POST", `/api/sessions/${enc(sid)}/start`,
-        mode === "talk" ? { user_id: userId, woken_by: wokenBy(lang) } : { user_id: userId }, isSessionState,
-      ),
+      call("start", "POST", `/api/sessions/${enc(sid)}/start`, startBody(mode, userId, lang), isSessionState),
     stop: async (sid) => {
       const v = await call("other", "POST", `/api/sessions/${enc(sid)}/stop`, undefined, (x: unknown): x is unknown => true);
       return isSessionState(v) ? v : null;

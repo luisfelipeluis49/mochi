@@ -5,7 +5,7 @@
 // (3) POST start {user_id, woken_by}, (4) GET agora, (5) join with the microphone; (6) any failure
 // after (3) sends POST stop.
 
-import { type SessionMode, readMode, writeMode } from "../lib/mode.ts";
+import { type SessionMode, type StartKind, readMode, writeMode } from "../lib/mode.ts";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Language } from "../contracts.ts";
 import { type Api, ApiError, realTimers } from "../lib/api.ts";
@@ -19,7 +19,6 @@ import { startProbe, type Probe } from "../lib/probe.ts";
 import { type Screen, pathOf, routeOf } from "../lib/routes.ts";
 import { forgetSession, newSessionId, rememberSession, rememberedSession } from "../lib/sessionId.ts";
 import { type SocketCtor, connectSocket, socketUrl } from "../lib/socket.ts";
-import { type Outcome, ProgressStore, schedule } from "../lib/training.ts";
 import { useAgoraMic, type JoinVoice } from "./useAgoraMic.ts";
 import { useNow } from "./useNow.ts";
 
@@ -47,12 +46,15 @@ export interface AppModel {
   onboarding: OnboardingState;
   digestWeek: number;
   mode: SessionMode;
+  /** the session that is running (or starting) is a training */
+  training: boolean;
   timeZone?: string;
 }
 
 export interface AppActions {
   navigate(s: Screen): void;
-  start(): void;
+  /** Start a session; `kind` "train" begins a training instead of the chosen way of listening. */
+  start(kind?: StartKind): void;
   stop(): void;
   rejoin(): void;
   retryGate(): void;
@@ -64,7 +66,6 @@ export interface AppActions {
   submitName(v: { display_name: string; comfortable_language: Language; target_language: Language }): void;
   setLang(l: UiLang): void;
   forget(): void;
-  trainingResult(wordId: string, outcome: Outcome): void;
   selectWeek(offset: number): void;
   setMode(m: SessionMode): void;
 }
@@ -81,7 +82,6 @@ const OPEN_WAIT_MS = 4000;
 
 export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } {
   const { api } = deps;
-  const progressStore = useMemo(() => new ProgressStore(), []);
   const [state, rawDispatch] = useReducer(appReducer, undefined, () => {
     const user = readUser();
     return initialApp({
@@ -89,7 +89,6 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
       user,
       sessionId: rememberedSession() ?? newSessionId(),
       online: navigator.onLine !== false,
-      progress: user ? progressStore.read(user.user_id) : {},
     });
   });
   const stateRef = useRef(state);
@@ -216,7 +215,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   const refresh = useCallback(async () => {
     const u = stateRef.current.user;
     if (!u) return;
-    // Independent calls: a failing sessions list must not hide the words (Training needs them).
+    // Independent calls: a failing sessions list must not hide the words.
     const [words, records] = await Promise.allSettled([api.words(u.user_id), api.sessions(u.user_id)]);
     if (words.status === "fulfilled") dispatch({ type: "words", words: words.value });
     if (records.status === "fulfilled") dispatch({ type: "records", records: records.value });
@@ -225,9 +224,8 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   }, [api, lostUser]);
   useEffect(() => {
     if (state.identity !== "ok" || !userId) return;
-    dispatch({ type: "progress", progress: progressStore.read(userId) });
     void refresh();
-  }, [state.identity, userId, refresh, progressStore]);
+  }, [state.identity, userId, refresh]);
   useEffect(() => {
     if ((screen === "digest" || screen === "analytics" || screen === "training") && state.identity === "ok") void refresh();
   }, [screen, state.identity, refresh]);
@@ -236,6 +234,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   const openWaiters = useRef<(() => void)[]>([]);
   /** POST start succeeded for the session being started (the server is capturing before the mic joins) */
   const startPosted = useRef(false);
+  const trainingRef = useRef(false);
   useEffect(() => {
     if (state.identity !== "ok" || !userId) return;
     const c = connectSocket(socketUrl(location, userId, state.sessionId), {
@@ -279,17 +278,18 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   }, [deps]);
 
   // ---- actions ----
-  const start = useCallback(async () => {
+  const start = useCallback(async (kind?: StartKind) => {
     const s = stateRef.current;
     if (!canStart(s) || !s.user) return;
     const id = newSessionId();
+    trainingRef.current = kind === "train";
     rememberSession(id);
     const opened = waitOpen();
     dispatch({ type: "start_begin", sessionId: id });
     await opened;
     let started = false;
     try {
-      await api.start(id, s.user.user_id, s.lang, modeRef.current);
+      await api.start(id, s.user.user_id, s.lang, kind ?? modeRef.current);
       started = true;
       startPosted.current = true;
       const join = await api.agora(id);
@@ -361,7 +361,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
 
   const actions: AppActions = {
     navigate,
-    start: () => void start(),
+    start: (kind) => void start(kind),
     stop: () => void stop(),
     rejoin: () => void rejoin(),
     retryGate: () => void runGate(true),
@@ -388,13 +388,6 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
       dispatch({ type: "forget_user" });
       navigate("welcome");
     })(),
-    trainingResult: (id, outcome) => {
-      const s = stateRef.current;
-      if (!s.user) return;
-      const progress = { ...s.progress, [id]: schedule(s.progress[id], outcome, Date.now()) };
-      progressStore.write(s.user.user_id, progress);
-      dispatch({ type: "progress", progress });
-    },
     selectWeek: setDigestWeek,
     setMode: (m) => {
       writeMode(m);
@@ -404,7 +397,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
 
   return {
     model: {
-      state, screen, now, hasSpeech, onboarding, digestWeek, mode,
+      state, screen, now, hasSpeech, onboarding, digestWeek, mode, training: trainingRef.current && state.phase !== "idle",
       voice: { lastHearingAt: mic.lastHearingAt, lastLoudAt: mic.lastLoudAt, level: mic.level },
     },
     actions,

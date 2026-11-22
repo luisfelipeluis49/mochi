@@ -206,12 +206,11 @@ select { min-height: 44px; padding: var(--space-1) var(--space-3); border-radius
 @keyframes meter-pulse { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.6); } }
 
 /* ---------- training ---------- */
-.training-card { text-align: center; }
-.training-progress { color: var(--color-text-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
-.training-question { color: var(--color-text-muted); }
-.training-meaning { font-size: var(--text-xl); font-weight: 800; }
-.training-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
-.training-feedback { min-height: 2.5em; margin-top: var(--space-3); }
+.training-rules { margin: var(--space-2) 0 0; padding-left: 1.2em; }
+.training-live { display: grid; gap: var(--space-3); }
+.training-clock { text-align: center; }
+.training-time { font-size: var(--text-xl); font-weight: 800; font-variant-numeric: tabular-nums; }
+.training-clock progress { width: 100%; }
 .fb { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 700; margin: 0; }
 .fb-right { color: var(--color-primary); }
 .fb-almost { color: var(--color-accent-text); }

@@ -7,6 +7,8 @@
 import { type KV, localStore, safeGet, safeSet } from "./storage.ts";
 
 export type SessionMode = "listen" | "talk";
+/** What Start can begin: a listen or talk session, or a training (a role-play from your meetings, D-68). */
+export type StartKind = SessionMode | "train";
 export const SESSION_MODES: readonly SessionMode[] = ["listen", "talk"];
 export const MODE_KEY = "mochi.mode.v1";
 export const DEFAULT_MODE: SessionMode = "listen";

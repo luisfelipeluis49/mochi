@@ -9,11 +9,10 @@ export interface DigestScreenProps {
   lang: UiLang;
   view: WeekView;
   onSelect: (offset: number) => void;
-  onGoTraining: () => void;
   onGoSession: () => void;
 }
 
-export function DigestScreen({ lang, view, onSelect, onGoTraining, onGoSession }: DigestScreenProps) {
+export function DigestScreen({ lang, view, onSelect, onGoSession }: DigestScreenProps) {
   const f = { lang };
   const max = Math.max(1, ...view.days.map((d) => d.minutes));
   const delta = view.deltaMinutes;
@@ -70,15 +69,6 @@ export function DigestScreen({ lang, view, onSelect, onGoTraining, onGoSession }
             ))}
           </div>
         </>
-      )}
-      {view.practiseNext.length > 0 && (
-        <section className="card practise-next">
-          <h3>{t(lang, "digest_practise_next")}</h3>
-          <ul className="word-chips">
-            {view.practiseNext.map((w) => <li key={w.id} className="word-chip">{w.expression}</li>)}
-          </ul>
-          <a href="/training" className="btn btn-primary" onClick={(e) => { e.preventDefault(); onGoTraining(); }}>{t(lang, "digest_practise_now")} <Icon name="arrow" size={18} /></a>
-        </section>
       )}
     </div>
   );

@@ -1858,3 +1858,46 @@ settings together). `make verify`: 1799 passed, 7 skipped.
   none), so `render.yaml` reaching `main` changes nothing there: `MOCHI_INTERRUPTION` on Render stays
   `append` until someone changes that variable by hand and redeploys.
 - Gateway and deploy files are Luís's; needs his yes.
+
+## D-68: training is a role-play from the person's own history (2026-11-22)
+
+**What.** The word-by-word review and the web's flashcards are replaced by one **training**: about five
+minutes in which Mochi plays a colleague in a short work scene and the person answers aloud. It is the
+backend's `review` session mode (no new mode, no contract change); only what Mochi does in it changed.
+
+**Rules.**
+- *Built from history.* At Start the gateway reads that person's newest word moments (with the sentence they
+  said), conversation reports (mistakes, `focus_next`) from the database (`gateway/practice_brief.py`) and
+  hands them to Mochi as `practice` lines through the port's `session_started(..., practice=)`. Mochi is told
+  to invent a **new** situation that makes the same words and mistakes come up: never the same people, topic
+  or sentences.
+- *Target words* are the person's saved words not yet recalled, at most four, **fixed when the training
+  begins** (they used to be recomputed every sentence, so a word said dropped out of what Mochi knew). Each
+  carries `used`, set by the backend when the person says it. Saying one still moves the card to
+  `REINFORCED` (7.4).
+- *No hints, no second tries.* In a training the hint rules are not run at all (`DecisionFlow._training_turn`):
+  nothing goes to a screen, no learning event is created by a stuck word, a missed word is never asked for
+  again, and Mochi gives no clue, translation or correction while the scene runs.
+- *About five minutes.* The note tells Mochi the minutes passed; from minute four it ends the scene and
+  gives feedback, then says goodbye. A backstop in the gateway (`TRAINING_HARD_STOP_SECONDS`, 7 min, through
+  the injected `Scheduler`) stops the session if it ran on; Stop cancels it.
+- *Feedback* is spoken, in the language of the scene in simple words: positive first, what is improving
+  (compared with the history), each unused target word as its own short example sentence "to try next time",
+  at most one thing to improve.
+
+**Web.** `/training` is now this: Start (`start("train")` sends `{mode: "review", user_id}`), a clock to
+5:00, Finish, and a done card. The old card screen, answer checking and `trainingResult` are gone from the
+screen and the app; `lib/training.ts`, the browser's spaced-repetition progress, the digest's "practise next" and the analytics' training-accuracy tile are removed: the digest is a weekly digest of the person's conversations, not a to-do list.
+
+**Tests.** `tests/unit/test_training.py` (no hint for a code switch, fixed targets and `used`, the clock and
+the wrap-up note, the brief, the time limit), `TrainingScreen.test.tsx`; `make verify` 1824 passed, web 199.
+
+**Settled with Luís after the first version.**
+- "No time to retry" means no waiting: another training can start at once. There is no schedule.
+- Nothing is written in a training: the feedback is spoken only. No feedback card, no new event.
+- The product is B2B for now: no users outside a company deal, so a web user outside a company is not a case.
+- `intelligence/` and `apps/web` are Luís's now (AGENTS.md, section 5).
+
+**Open.**
+- **Not tried with a real model or voice.** Whether the model really invents a different scene, never gives
+  the word away and keeps to the five minutes is the prompt's job; only a scripted model was run.

@@ -21,6 +21,7 @@ from mochi_backend.intelligence.character_port import (
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.streamed_line import QUIET, streamed_line
+from mochi_backend.intelligence.tokens import has_phrase, normalized
 from mochi_backend.platform.clock import Clock
 from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import Language
@@ -60,7 +61,9 @@ class MochiTalk:
         self._attentive = False  # someone is talking WITH Mochi, not next to it
         self.explains = False  # a quiet listener may explain an expression unasked (web sessions)
         self.reviewing = False  # this session is a review (told to Mochi with every sentence)
-        self.review: list[ReviewWord] = []  # in a review: the words to bring back
+        self.review: list[ReviewWord] = []  # in a training: the target words, fixed at its start
+        self.practice: list[str] = []  # in a training: moments of the person's earlier talks
+        self._began = clock.now()  # when this session began, for the training's clock
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
         self.status = DeviceStatus()
 
@@ -74,20 +77,38 @@ class MochiTalk:
         self._model = model
 
     def begin(
-        self, conversing: bool, language: Language | None = None, explains: bool = False
+        self,
+        conversing: bool,
+        language: Language | None = None,
+        explains: bool = False,
+        practice: list[str] | None = None,
     ) -> None:
         """A session starts. `conversing`: one person talks WITH Mochi (a review), so every
         sentence is for it; otherwise people talk to each other and Mochi waits for its name.
 
         `language`: the one it was greeted in. Until Mochi has answered something, that is the
         tie-breaker for a sentence that could be either language, not the last session's.
+        `practice`: in a training, what the person's earlier conversations hold (D-68).
         """
         self._history, self._until, self._attentive = [], None, conversing
         self._given, self.review = [], []
+        self.practice, self._began = list(practice or []), self._clock.now()
         self.explains = explains  # a web session's quiet listener may explain unasked (D-62)
         self.language = language or self.language
         if conversing:
             self.called()
+
+    def train_on(self, words: list[ReviewWord], said: str) -> None:
+        """A training turn: the target words are fixed by the first one; `said` marks the ones
+        the person has used. Example: `train_on([ReviewWord(expression="postpone")], "postpone it")`
+        leaves `review[0].used` True."""
+        if not self.review:
+            self.review = words
+        spoken = normalized(said)
+        self.review = [
+            w.model_copy(update={"used": w.used or has_phrase(spoken, w.expression)})
+            for w in self.review
+        ]
 
     def called(self) -> None:
         """Someone called Mochi without asking anything yet: the next sentence is for it."""
@@ -129,7 +150,7 @@ class MochiTalk:
     def reset(self) -> None:
         """Forget the conversation (demo reset)."""
         self._history, self._until, self._attentive = [], None, False
-        self._given, self.review = [], []
+        self._given, self.review, self.practice = [], [], []
 
     async def reply(
         self,
@@ -173,6 +194,8 @@ class MochiTalk:
             given=list(self._given),
             reviewing=self.reviewing,
             review=list(self.review),
+            practice=list(self.practice),
+            minute=(self._clock.now() - self._began).total_seconds() / 60,
         )
 
     async def _answered(self, request: CharacterRequest, sink: TextSink | None) -> str | None:
