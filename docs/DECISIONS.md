@@ -799,3 +799,59 @@ out of scope unless a human asks; Luís asked ("multiple connections that do not
 - **Owners:** gateway (Luís). `Intelligence.another_conversation` and `MochiTalk.character` are in
   Kauê's directory (a copy of one object, no behaviour change). The web change is Tasnim's and is
   kept in its own commit.
+
+## D-42: the web app has its own users and sessions; session records (2026-11-21)
+
+**Why.** Luís asked for `apps/web` to be rebuilt as one app that does in a browser what Mochi Home does on the
+Pi, for any person and not only `ana` and `ben`. That needs people the backend can create, a session that
+belongs to one person, and a record of each session that survives a restart (Render's free plan spins the
+backend down when idle). He also asked for the edits in `storage/` and in Tasnim's `apps/web`; the web side is
+made by a second builder, in its own commits, against the same written contract.
+- **New endpoints.** `POST /api/users` (`{display_name, comfortable_language = "pt-BR", target_language =
+  "en"}` -> 201 `User`; 422 for an empty, over-40-character or control-character name, an unknown language, or
+  two equal languages), `GET /api/users/{id}`, `GET /api/users/{id}/words` (newest first, the
+  `learning_event.created` payloads) and `GET /api/users/{id}/sessions` (newest first by `ended_at`, at most 50).
+  The id is `slug + "-" + 6 random hex` (NFKD to ASCII, lowercase, runs of anything else as one `-`, 20
+  characters at most, `user` when empty), so it always matches `^[a-z0-9-]{3,27}$` and is never `ana`, `ben` or
+  `guest`; a taken id is drawn again. `ana` and `ben` work on every endpoint; `guest` is 404 everywhere.
+- **Changed.** `POST /api/sessions/{id}/start` takes an optional `user_id`: 409 on `demo` (the Pi's), 404 for an
+  unknown or reserved user (checked **before** the session is opened, because opening can evict another
+  session), 409 for another user than the one a running session is for, 200 and the current state for the same
+  user or none. `/ws?user=` accepts any registered user (unknown users and `guest` still close 4400), and its
+  snapshot now sends only that user's saved words; the order is unchanged (session, activity, live hint,
+  words oldest first). Everything else in D-41 is unchanged; without a `user_id`, a Start is exactly as before.
+- **The guest and the focus (AGENTS 7.3).** A web session's participants are the user and `guest`, with the
+  user's languages the other way round, and `focus` is the user's target language. So exactly one participant
+  learns the spoken language, and a word from the user's own language is the user's. The participants, focus
+  and user live in the session's `SessionStore` (set when the Start succeeds, so a failed Start leaves nothing);
+  `build_context` and the round's secret check loop over them instead of `USER_IDS`. `guest` is seeded with
+  the demo users, so its learning events satisfy the foreign key; they are stored and shown to nobody.
+- **Voices stay with the Pi's people.** `VoiceDirectory` is given `ana` and `ben` first and never `guest` or a
+  web user, so a web user called "Ana" cannot take Ana's voice.
+- **Storage.** The port gains `save_user`, `load_sessions` and `save_session`, in all four storages and the
+  fake. `save_user` runs on the write-behind worker like every other write, so a user row is always written
+  before that user's first learning event (`learning_events.user_id` references `users`); a failed user write
+  holds the event behind it. Postgres has a new `session_records` table (`body` is the whole record as `jsonb`,
+  `ON DELETE CASCADE` with its user), the local file a `"sessions"` list. A demo reset deletes neither users
+  nor records.
+- **Session records.** `{record_id, session_id, user_id, started_at, ended_at, minutes, hint_count,
+  learning_event_ids}`: `minutes` rounded to one decimal, `hint_count` every `hint.created` the session
+  published, `learning_event_ids` the user's words created or updated in it (first order, once each; an id
+  may point at a word a later reset deleted). Written once, by `SessionService.stop()`, so a Stop, an eviction
+  and a `sendBeacon` stop all leave one; a session started without a user (`demo`, an old phone) leaves none.
+  `SessionRecord` is a gateway/storage model in `storage/session_record.py`, **proposed** to move to
+  `packages/contracts` (Matheus) in v0.5.
+- **Tests.** The existing tests pass unchanged, except `test_postgres_storage.py`'s fixture, which now also drops
+  `session_records` (the new table references `users`, so `DROP TABLE users` alone would fail). The 4400 close
+  reason still contains `user=ana|ben` (it now reads `user=ana|ben|<user_id>`). `FakeStorage` can fail one call
+  and check the foreign key. New: `tests/unit/test_web_users.py`, `tests/unit/test_session_storage.py`,
+  `tests/integration/test_web_users.py`, and a Postgres round trip (run against a throwaway `postgres:17`).
+- **Not built, for the team:**
+  - Training results stay in the browser, so nothing produces `USED_INDEPENDENTLY` yet.
+  - No game in a web session: the secret word goes to the Home view only.
+  - No sign-in. Anyone who knows a user id can read that user's words and sessions. Acceptable for the
+    hackathon; listed as a risk.
+  - Eviction can end another person's web session (8 live at most, D-41).
+  - The intelligence was not checked with a pt-BR focus (Kauê).
+  - `asks_partner` matches names only for `ana` and `ben`.
+- **Owners:** gateway and storage (Luís); web (Tasnim's directory, rebuilt at Luís's request).
