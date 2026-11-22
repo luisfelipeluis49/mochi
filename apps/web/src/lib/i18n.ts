@@ -190,6 +190,8 @@ const en = {
   profile_speaks: "Speaks",
   profile_learns: "Learning",
   profile_ui_language: "Interface language",
+  switch_en: "English",
+  switch_pt: "Português",
   profile_forget: "Forget me on this device",
   profile_forget_note: "This only clears this device. Nothing is deleted on Mochi's server, and your words stay there.",
 };
@@ -371,6 +373,8 @@ const ptBR: Copy = {
   profile_speaks: "Fala",
   profile_learns: "Aprendendo",
   profile_ui_language: "Idioma da interface",
+  switch_en: "English",
+  switch_pt: "Português",
   profile_forget: "Esquecer-me neste aparelho",
   profile_forget_note: "Isso só limpa este aparelho. Nada é apagado no servidor do Mochi, e suas palavras continuam lá.",
 };
