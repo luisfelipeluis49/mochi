@@ -74,6 +74,7 @@ from mochi_contracts import (
 
 _SAME_THOUGHT = timedelta(seconds=20)  # a question and its second half are no further apart
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
+TRAINING_WORDS = 4  # target words of one five-minute training (D-68)
 
 
 def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
@@ -161,16 +162,26 @@ class DecisionFlow:
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
         context = session_context.model_copy(update={"focus": spoken})
         self._speaker = heard.speaker_user_id
-        # A review: Mochi is told which of this person's words to bring back (AGENTS 7.4).
         self._talk.reviewing = session_context.mode is SessionMode.REVIEW
-        self._talk.review = [
-            ReviewWord(expression=e.expression, meaning=e.meaning)
-            for e in words_to_review(session_context)
-        ]
+        if self._talk.reviewing:
+            return await self._training_turn(turn, context, session_context, sink)
         # The wake phrase beats every quiet rule (AGENTS 7.2).
         if has_wake_phrase(turn.text):
             return await self._answer_mochi(turn, context, sink)
         return self._said_aloud(turn, context) or await self._watching(turn, context)
+
+    async def _training_turn(
+        self, turn: Turn, context: SessionContext, whole: SessionContext, sink: TextSink | None
+    ) -> Decision:
+        """A training: every sentence is for Mochi, which plays the scene and never shows or
+        gives a hint (D-68). The words come from the saved ones not yet recalled (AGENTS 7.4)."""
+        words = [
+            ReviewWord(expression=e.expression, meaning=e.meaning)
+            for e in words_to_review(whole)[:TRAINING_WORDS]
+        ]
+        self._talk.train_on(words, turn.text)
+        line = await self._line(turn, None, named=True, sink=sink)
+        return self._saying(ignore(), line, turn) if line else ignore()
 
     async def _watching(self, turn: Turn, context: SessionContext) -> Decision:
         """People talk and nobody called Mochi: a hint when one is needed, else nothing."""

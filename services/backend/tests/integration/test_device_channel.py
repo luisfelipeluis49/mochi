@@ -227,11 +227,14 @@ def test_in_a_review_mochi_greets_its_person_and_every_sentence_is_for_it() -> N
     client.post("/api/sessions/demo/stop")
     review = {"mode": "review", "user_id": "ana"}
     assert client.post("/api/sessions/p-ana/start", json=review).status_code == 200
-    assert harness.agora.started[-1].greeting == "Oi! Vamos rever as suas palavras?"
+    assert (
+        harness.agora.started[-1].greeting
+        == "Oi! Vamos fazer um treino rápido? Eu começo uma cena, é só responder."
+    )
     reply = client.post("/dev/sessions/p-ana/turn", json={"text": "Tudo bem, vamos lá."}).json()
     assert reply["reply"] == "Qual foi a palavra para adiar?"
     request = mochi.requests[-1]
-    assert request.conversing and request.reviewing and request.named is False
+    assert request.conversing and request.reviewing and request.named is True
     assert [(w.expression, w.meaning) for w in request.review] == [("postpone", "adiar")]
 
 

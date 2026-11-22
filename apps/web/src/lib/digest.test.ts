@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildDigest, nextDay, weekKeys } from "./digest.ts";
 import type { LearningEvent, SessionRecord } from "../contracts.ts";
-import type { Progress } from "./training.ts";
 
 const TZ = "America/Sao_Paulo"; // UTC-3, no daylight saving in 2026
 const en = { lang: "en" as const, timeZone: TZ };
@@ -40,7 +39,7 @@ test("a week runs Monday to Sunday and weeks go back", () => {
 });
 
 test("totals add up every session of the week, not one", () => {
-  const d = buildDigest(all, words, {}, NOW, en);
+  const d = buildDigest(all, words, NOW, en);
   assert.deepEqual(d.totals, { sessions: 3, minutes: 27.5, hints: 5, activeDays: 2 });
   assert.equal(d.empty, false);
   assert.deepEqual(d.days.map((x) => x.minutes), [10, 0, 0, 0, 0, 17.5, 0]);
@@ -48,37 +47,30 @@ test("totals add up every session of the week, not one", () => {
 });
 
 test("the week before gives the comparison, and offset 1 is that week", () => {
-  const d = buildDigest(all, words, {}, NOW, en);
+  const d = buildDigest(all, words, NOW, en);
   assert.equal(d.previous.minutes, 20);
   assert.equal(d.deltaMinutes, 7.5);
-  const prev = buildDigest(all, words, {}, NOW, en, 1);
+  const prev = buildDigest(all, words, NOW, en, 1);
   assert.equal(prev.totals.sessions, 1);
   assert.equal(prev.offset, 1);
 });
 
 test("words are grouped by what happened during the week", () => {
-  const d = buildDigest(all, words, {}, NOW, en);
+  const d = buildDigest(all, words, NOW, en);
   const g = Object.fromEntries(d.groups.map((x) => [x.state, x.words.map((w) => w.expression)]));
   assert.deepEqual(g, { DISCOVERED: ["postpone", "umbrella", "receipt"], ASSISTED: ["postpone"], REINFORCED: ["queue"] });
   assert.equal(d.newWords, 3);
 });
 
 test("a week with no session is empty but still has seven days", () => {
-  const d = buildDigest(all, words, {}, NOW, en, 3);
+  const d = buildDigest(all, words, NOW, en, 3);
   assert.equal(d.empty, true);
   assert.equal(d.days.length, 7);
   assert.equal(d.options.length, 8);
   assert.equal(d.options[0].label, "This week");
 });
 
-test("practise next: training-due first, then the oldest DISCOVERED, only words with a meaning, at most 3", () => {
-  const progress: Progress = { queue: { box: 2, due_at: NOW - 1000, correct: 1, wrong: 0, last_at: 0 } };
-  const d = buildDigest(all, words, progress, NOW, en);
-  assert.deepEqual(d.practiseNext.map((w) => w.expression), ["queue", "umbrella"]);
-  assert.ok(!d.practiseNext.some((w) => w.expression === "receipt")); // no meaning: Training cannot use it
-});
-
 test("the range reads in the language", () => {
-  assert.equal(buildDigest(all, words, {}, NOW, en).range, "16 Nov – 22 Nov");
-  assert.match(buildDigest(all, words, {}, NOW, { lang: "pt-BR", timeZone: TZ }).range, /^16 de nov\.? – 22 de nov\.?$/);
+  assert.equal(buildDigest(all, words, NOW, en).range, "16 Nov – 22 Nov");
+  assert.match(buildDigest(all, words, NOW, { lang: "pt-BR", timeZone: TZ }).range, /^16 de nov\.? – 22 de nov\.?$/);
 });
