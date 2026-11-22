@@ -40,6 +40,9 @@ def test_one_turn_logs_all_three_stamps_that_correlate() -> None:
     assert isinstance(decided["arrived_to_decided_ms"], float)
     assert decided["segment_id"] == first["segment_id"] is not None
     assert isinstance(first["arrived_to_first_byte_ms"], float)
+    (committed,) = _lines(harness.logger, "turn_committed")
+    assert committed["segment_id"] == decided["segment_id"]
+    assert isinstance(committed["commit_ms"], float) and "adiar" not in json.dumps(committed)
 
 
 def test_silent_reply_still_logs_first_byte() -> None:

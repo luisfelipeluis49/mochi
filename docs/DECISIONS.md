@@ -1661,3 +1661,26 @@ and the product needs both on the web.
 - **Unverified.** Whether the live model stays quiet most of the time and explains only real idioms. The note was
   tested with a scripted character, never the real model; too chatty is the likely failure, and the note is the first
   thing to tighten. Nobody has tried it with two people in a room either.
+
+## D-63: the hub sends through one writer per client; `turn_committed` times the commit (2026-11-22)
+
+**Why.** `EventHub.publish` held one lock shared by every session while it awaited every client's send
+(1 s timeout each), and `_commit_turn` awaited three publishes (hint and words, `agent.speak.requested`,
+the transcript line) before the reply went back to Agora. One phone that stopped reading could add up to
+about 1 s per publish to a reply and stall the other sessions' publishes. Found by reading the code;
+the size of the effect is **not measured yet**.
+
+**What.** Sequence number, entitlement (`_in_scope`, `is_recipient`, the hint's owner) and enqueueing are
+settled under the lock; each client has its own FIFO and a writer task that runs only while events wait.
+`publish` then waits at most `DEFAULT_DELIVERY_WAIT_SECONDS` (50 ms) for the clients that were idle, never
+for one still busy with older events, so a healthy client still has the event when `publish` returns. A
+client that fails to send, in any way, or has more than `BACKLOG_LIMIT` (200) events waiting is dropped
+and logged (`connection_dropped`). The snapshot a new client gets is still sent directly under the lock:
+a slow phone *connecting* can still hold up publishes for up to its send timeout per event.
+
+**Rule bent.** The writer catches `Exception` (`noqa: BLE001`): whatever a socket raises, the client is
+gone and must not leave a dead writer behind (same reason as `write_behind.py`).
+
+**Log.** `turn_committed {segment_id, commit_ms}`: time from the decision to the end of the commit
+(publishes, notes, transcript line). No text. Compare it with `arrived_to_decided_ms` and
+`reply_first_byte` to see what this process spends after `decide()`.

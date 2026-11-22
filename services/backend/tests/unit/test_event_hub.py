@@ -3,7 +3,7 @@
 import asyncio
 
 from mochi_backend.gateway.delivery_rules import ConnectionTarget
-from mochi_backend.gateway.event_hub import EventHub
+from mochi_backend.gateway.event_hub import BACKLOG_LIMIT, EventHub
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_contracts import EventPayload, EventType, Language, Speak, SpeakReason
@@ -88,3 +88,53 @@ async def test_a_client_that_connects_during_a_publish_sees_each_event_once_and_
     await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
     assert newcomer.types() == ["session.state.changed", "agent.speak.requested"]
     assert [e.sequence for e in newcomer.events] == sorted(e.sequence for e in newcomer.events)
+
+
+class _BadSender:
+    """A client whose send fails in a way nobody listed."""
+
+    async def send_text(self, text: str) -> None:
+        raise ValueError("odd failure")
+
+
+async def test_publish_returns_before_a_stalled_clients_send_timeout() -> None:
+    logger = FakeEventLogger()
+    hub = EventHub(FakeClock(), SequentialIdGenerator(), logger, 5.0).waiting_for_clients(0.01)
+    healthy = FakeSender()
+    hub.register(ANA, _NeverSender())
+    hub.register(BEN, healthy)
+    started = asyncio.get_running_loop().time()
+    await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
+    await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
+    assert asyncio.get_running_loop().time() - started < 1.0  # the send timeout is 5 s
+    assert healthy.types() == ["agent.speak.requested"] * 2
+
+
+async def test_a_stalled_client_in_one_session_does_not_delay_another_session() -> None:
+    hub, _ = _hub()
+    hub = hub.waiting_for_clients(0.01)
+    other = hub.for_session("p-1")
+    hub.register(ConnectionTarget("mobile", user_id="ana"), _NeverSender())
+    healthy = FakeSender()
+    other.register(ConnectionTarget("mobile", user_id="ben", session_id="p-1"), healthy)
+    await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
+    await asyncio.wait_for(other.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK), 0.5)
+    assert healthy.types() == ["agent.speak.requested"]
+
+
+async def test_a_client_that_falls_too_far_behind_is_dropped() -> None:
+    hub, logger = _hub()
+    hub = hub.waiting_for_clients(0.0)
+    hub.register(ANA, _NeverSender())
+    for _ in range(BACKLOG_LIMIT + 2):
+        await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
+    assert hub.connection_count == 0
+    assert any(f.get("reason") == "backlog" for n, f in logger.lines if n == "connection_dropped")
+
+
+async def test_a_sender_failing_in_an_unexpected_way_is_dropped_not_stuck() -> None:
+    hub, logger = _hub()
+    hub.register(ANA, _BadSender())
+    await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
+    assert hub.connection_count == 0
+    assert "connection_dropped" in logger.names()

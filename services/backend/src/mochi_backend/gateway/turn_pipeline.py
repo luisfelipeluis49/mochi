@@ -327,13 +327,25 @@ class TurnPipeline:
         if self._superseded(generation):
             self._logger.log("turn_dropped_session_changed", {"segment_id": turn.segment_id})
             return TurnOutcome("", silent_decision())
+        committing = time.monotonic()
+        reply = await self._publish_and_note(turn, decision)
+        self._log_commit(turn, committing)
+        return TurnOutcome(reply, decision, turn.segment_id)
+
+    async def _publish_and_note(self, turn: Turn, decision: Decision) -> str:
         await self._publish_results(decision)
         reply = await self._reply(decision)
         self._store.remember(turn, decision.hint)
         marks = self._note(turn, decision)
         if self._transcript is not None:
             await self._transcript.show(turn, marks)
-        return TurnOutcome(reply, decision, turn.segment_id)
+        return reply
+
+    def _log_commit(self, turn: Turn, started: float) -> None:
+        """How long publishing and noting a decided turn took: the part between `decide()` and
+        the reply that this process spends (metadata only; DECISIONS D-63)."""
+        millis = round((time.monotonic() - started) * 1000, 1)
+        self._logger.log("turn_committed", {"segment_id": turn.segment_id, "commit_ms": millis})
 
     def _note(self, turn: Turn, decision: Decision) -> list[TranscriptMark]:
         """Keep what was said and by whom, and the moment when a word was needed (D-45, D-46).
