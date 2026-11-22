@@ -11,6 +11,7 @@ from mochi_backend.intelligence.character_port import CharacterModel
 from mochi_backend.intelligence.coach_port import CoachModel
 from mochi_backend.intelligence.explain_port import ExplainModel
 from mochi_backend.intelligence.memory_store import MemoryStore
+from mochi_backend.intelligence.phrase_port import PhraseModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.platform.ids import SequentialIdGenerator
@@ -89,11 +90,13 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     storage: Storage | None = None,
     explains: ExplainModel | None = None,
     coach: CoachModel | None = None,
+    phrases: PhraseModel | None = None,
 ) -> Harness:
     """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY).
 
     `character`: Mochi's scripted own lines (without one it keeps its fixed lines).
-    `explains` and `coach`: the scripted models that explain an idiom and write a report.
+    `explains`, `coach` and `phrases`: the scripted models that explain an idiom, write a
+    report and suggest the sentence someone was reaching for.
     """
     # The live transcript is off here unless a test asks for it: with it every sentence adds an
     # event and a device caption, and most tests count exactly what one feature publishes.
@@ -108,6 +111,7 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
         brain.keep_words_in(MemoryStore(start.events, StorageEventSink(kept)))
         _ = explains and brain.explain_with(explains)  # type: ignore[func-returns-value]
         _ = coach and brain.coach_with(coach)  # type: ignore[func-returns-value]
+        _ = phrases and brain.phrase_with(phrases)  # type: ignore[func-returns-value]
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()

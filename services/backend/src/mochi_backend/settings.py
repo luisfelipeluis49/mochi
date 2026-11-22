@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # After Stop each person gets a private report of what was wrong in what they said (D-54).
     # One model call per person and session; needs MODEL_API_KEY.
     mochi_speech_reports: bool = True
+    # After a hint, the whole sentence the speaker was reaching for is suggested; one touch and
+    # Mochi says it aloud (D-59). One small model call per hint; needs MODEL_API_KEY.
+    mochi_suggest_phrases: bool = True
+    mochi_suggestion_ttl_seconds: float = 20.0  # how long the touch works after the suggestion
     mochi_report_model_name: str = ""  # empty: MOCHI_MODEL_NAME
     mochi_report_reasoning_effort: str = ""  # empty: "low" where the hint judge has a setting
     mochi_report_timeout_seconds: float = 60.0

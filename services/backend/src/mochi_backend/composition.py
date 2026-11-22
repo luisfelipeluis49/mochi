@@ -20,6 +20,7 @@ from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.live_transcript import LiveTranscript
+from mochi_backend.gateway.one_touch import OneTouch
 from mochi_backend.gateway.roster import (
     DEMO_COMPANY,
     DEMO_MEMBERS,
@@ -150,6 +151,7 @@ def _brain_for(
         follow_up_seconds=settings.mochi_follow_up_seconds,
         hint_cooldown=settings.mochi_hint_cooldown,
         explain_terms=settings.mochi_explain_terms,
+        suggest_phrases=settings.mochi_suggest_phrases,
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
     brain.keep_words_in(MemoryStore(start.events, StorageEventSink(start.storage)))
@@ -315,7 +317,19 @@ def _core(
     )
 
 
-def _pipeline(settings: Settings, core: GatewayCore, voices: VoiceDirectory) -> TurnPipeline:
+def _one_touch(settings: Settings, core: GatewayCore, agora: AgoraAgentClient) -> OneTouch:
+    """The sentence someone was reaching for, and the touch that has Mochi say it (D-59)."""
+    return OneTouch(
+        core,
+        agora,
+        enabled=settings.mochi_suggest_phrases,
+        ttl_seconds=settings.mochi_suggestion_ttl_seconds,
+    )
+
+
+def _pipeline(
+    settings: Settings, core: GatewayCore, voices: VoiceDirectory, touch: OneTouch | None = None
+) -> TurnPipeline:
     deps = PipelineDeps(
         store=core.store,
         hub=core.hub,
@@ -333,7 +347,7 @@ def _pipeline(settings: Settings, core: GatewayCore, voices: VoiceDirectory) -> 
         cancel_stale_turns=settings.mochi_cancel_stale_turns,
         streamer=_streamer(settings, core.intelligence),
     )
-    return TurnPipeline(_with_what_is_kept(deps, settings, core))
+    return TurnPipeline(replace(_with_what_is_kept(deps, settings, core), one_touch=touch))
 
 
 def _with_what_is_kept(deps: PipelineDeps, settings: Settings, core: GatewayCore) -> PipelineDeps:
@@ -374,7 +388,8 @@ def _runtime(
     """One session's parts. The demo session uses the main brain; another gets its own."""
     config = _session_config(settings).for_session(session_id)
     core = _core(settings, adapters, hub, _brain_of(session_id, adapters), people)
-    pipeline = _pipeline(settings, core, people.voices)
+    touch = _one_touch(settings, core, adapters.agora)
+    pipeline = _pipeline(settings, core, people.voices, touch)
     after = _after_session(settings, adapters, core, people)
     after.saving_with(pipeline.save_learning_events)
     return SessionRuntime(

@@ -98,6 +98,7 @@ class EventType(StrEnum):
     AGENT_SPEAK_REQUESTED = "agent.speak.requested"
     TRANSCRIPT_LINE = "transcript.line"  # PROPOSAL (D-51): one finished sentence, as it is said
     CONVERSATION_REPORT_CREATED = "conversation.report.created"  # PROPOSAL (D-54)
+    PHRASE_SUGGESTED = "phrase.suggested"  # PROPOSAL (D-59): the sentence someone was reaching for
 
 
 class MistakeKind(StrEnum):

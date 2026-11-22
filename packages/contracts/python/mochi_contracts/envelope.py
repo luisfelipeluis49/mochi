@@ -14,13 +14,21 @@ from mochi_contracts.models import (
     LearningEvent,
     SessionState,
     Speak,
+    SuggestedPhrase,
     TranscriptLine,
 )
 
 SCHEMA_VERSION = "0.7"
 
 EventPayload = (
-    SessionState | Hint | HintCleared | LearningEvent | Speak | TranscriptLine | ConversationReport
+    SessionState
+    | Hint
+    | HintCleared
+    | LearningEvent
+    | Speak
+    | TranscriptLine
+    | ConversationReport
+    | SuggestedPhrase
 )
 
 PAYLOAD_TYPE_FOR_EVENT: dict[EventType, type[ContractModel]] = {
@@ -32,6 +40,7 @@ PAYLOAD_TYPE_FOR_EVENT: dict[EventType, type[ContractModel]] = {
     EventType.AGENT_SPEAK_REQUESTED: Speak,
     EventType.TRANSCRIPT_LINE: TranscriptLine,
     EventType.CONVERSATION_REPORT_CREATED: ConversationReport,
+    EventType.PHRASE_SUGGESTED: SuggestedPhrase,
 }
 
 

@@ -89,6 +89,8 @@ when run from source.
 | `MOCHI_TEAM_MIN_PEOPLE` | 1 | the team view leaves out an expression fewer people than this needed (D-45); use 2 or 3 for a real company |
 | `MOCHI_LIVE_TRANSCRIPT` | true | every finished sentence goes to the screens of its session (`transcript.line`) and to the device as a caption (D-51). There is no sign-in: set false where the meeting must not be readable by anyone who opens the page |
 | `MOCHI_EXPLAIN_TERMS` | true | idioms and technical terms are explained to the people listening (D-53); one more small model call per sentence; needs `MODEL_API_KEY` |
+| `MOCHI_SUGGEST_PHRASES` | true | after a hint, the whole sentence the speaker was reaching for is suggested, and one touch has Mochi say it (D-59); one small model call per hint; needs `MODEL_API_KEY` |
+| `MOCHI_SUGGESTION_TTL_SECONDS` | 20 | how long the touch works after a suggestion |
 | `MOCHI_SPEECH_REPORTS` | true | after Stop each person gets a private report of what was wrong in what they said (D-54); one model call per person and session; needs `MODEL_API_KEY` |
 | `MOCHI_REPORT_MODEL_NAME` | (empty) | the model that writes the reports; empty: `MOCHI_MODEL_NAME` |
 | `MOCHI_REPORT_REASONING_EFFORT` | (empty) | empty: `low` where `MOCHI_MODEL_REASONING_EFFORT` is set, else none |

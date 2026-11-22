@@ -36,6 +36,7 @@ EXPORTED: list[type[BaseModel]] = [
     models.TeamInsights,
     models.TranscriptLine,
     models.ConversationReport,
+    models.SuggestedPhrase,
 ]
 
 

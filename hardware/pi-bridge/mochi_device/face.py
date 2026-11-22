@@ -12,13 +12,15 @@ reconnects by itself, and with no page open this costs nothing.
     flag   how the word is drawn: "" | "switch" (a code switch: it should catch the eye) |
            "explain" (an idiom or a technical term that was just said, with what it means)
     caption  the sentence that was just said (the live transcript), small at the bottom; "" = none
+    say    a sentence Mochi can say for someone, shown with a "touch" sign ("" = none)
     pop    {"what": "volume" | "temp", "value": n, "n": counter}: a badge shown for a few seconds
     who    the name of the person Mochi recognises talking ("" = nobody)
     temp   Mochi's own temperature in whole degrees Celsius (None = not known): always shown while it sleeps
     hot    True while that is too warm ([alerts].hot_at): the temperature is then shown whatever Mochi does
     online False while Mochi has no connection to the internet: the face says so
 
-The page takes no input: a touch only makes the face react, on the page itself.
+The other way, the page reports a touch: GET /tap, passed to on_tap. It means something only while
+`say` is showing (a touch then has Mochi say that sentence); otherwise the face just reacts.
 """
 from __future__ import annotations
 
@@ -34,13 +36,14 @@ class Face:
         self.enabled = cfg.get("enabled", True)
         self.host, self.port = cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8765))
         self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "more": "", "pop": None,
-                            "flag": "", "caption": "",
+                            "flag": "", "caption": "", "say": "",
                             "who": "", "temp": None, "hot": False,
                             "online": True}
         self._changed: set[asyncio.Event] = set()  # one per connected page
         self._server: asyncio.AbstractServer | None = None
         self._timers: dict[str, asyncio.TimerHandle] = {}
         self._pops = 0
+        self.on_tap = None  # on_tap(): the screen was touched
 
     async def start(self) -> None:
         if not self.enabled:
@@ -65,7 +68,7 @@ class Face:
     def show_for(self, seconds: float, **changes) -> None:
         """Like set(), and puts each key back to its resting value after a while."""
         rest = {"mood": "neutral", "word": "", "note": "", "more": "", "pop": None, "who": "", "flag": "",
-                "caption": ""}
+                "caption": "", "say": ""}
         self.set(**changes)
         for key in changes:
             if key in self._timers:
@@ -82,6 +85,12 @@ class Face:
             request = await asyncio.wait_for(reader.readline(), timeout=5)
             while (await asyncio.wait_for(reader.readline(), timeout=5)).strip():
                 pass  # headers
+            if request.startswith(b"GET /tap"):  # the page is a local file, so any origin may call (reachable locally only)
+                if self.on_tap:
+                    self.on_tap()
+                writer.write(b"HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n")
+                await writer.drain()
+                return
             if b" /events" not in request:
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 await writer.drain()

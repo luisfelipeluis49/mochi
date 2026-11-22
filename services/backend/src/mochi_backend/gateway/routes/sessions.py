@@ -102,6 +102,28 @@ async def interrupt_session(session_id: SessionIdPath, container: ContainerDep) 
     return Interrupted(interrupted=await runtime.sessions.interrupt())
 
 
+class Said(BaseModel):
+    """`{"said": true}` when Mochi is now saying the suggested sentence."""
+
+    said: bool
+
+
+@router.post("/api/sessions/{session_id}/hints/{hint_id}/say")
+async def say_suggestion(
+    session_id: SessionIdPath, hint_id: SessionIdPath, container: ContainerDep
+) -> Said:
+    """One touch (D-59): Mochi says aloud the sentence it suggested after this hint, so the
+    person does not have to. Once per suggestion, and only while it is fresh.
+
+    Sent by the device when its screen is touched, or by a phone's "say it" button.
+    `{"said": false}`: no such suggestion (any more), or no session running.
+    """
+    runtime = container.registry.peek(session_id)
+    if runtime is None:
+        return Said(said=False)
+    return Said(said=await runtime.pipeline.say_suggestion(hint_id))
+
+
 @router.get("/api/sessions/{session_id}/agora")
 async def session_agora(session_id: SessionIdPath, container: ContainerDep) -> AgoraJoin:
     """Where a phone joins this session's channel to be its microphone (after Start)."""

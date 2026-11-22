@@ -1523,3 +1523,49 @@ two to be reconciled now; these are the choices, each one open to the owners' ve
 **Checked:** the merged backend passes both sides' tests (1701) with lint, strict types and the schema
 check. **Not checked here:** the web app's own tests (no Node on the Pi; CI runs them), and every company
 table's SQL against a real Postgres (AGENTS 12.7), which now includes the renamed one.
+
+## D-59: one-touch assistance: the sentence someone was reaching for, and Mochi saying it (2026-11-22)
+
+**Asked** (Suhuai, from the team's product notes): when someone has trouble expressing themselves, suggest
+a natural sentence from the context, and let one touch have Mochi say it aloud so that everyone understands
+and the talk goes on. The example: "Why is the integration delayed?" / "Because we need to… como é que
+fala… destravar a autenticação." → "We need to unblock the authentication process."
+
+**Proposed, built** (AGENTS 7.8):
+
+- **The sentence.** After a turn that got a silent hint, a model call writes the whole sentence the speaker
+  meant, from their sentence, the sentences before it and the hint's word (`intelligence/phrasing.py`,
+  `openai_phrase_model.py`; port method `suggest`). Like an explanation (D-53) it is asked after the turn is
+  committed, in a task of its own, so the hint is never later for it.
+- **Where it goes.** A new event `phrase.suggested` (`SuggestedPhrase`: `hint_id`, `target_user_id`,
+  `language`, `text`, `expires_at`), routed exactly like the hint it follows, and a device command `suggest`.
+  Mochi's screen shows the sentence in a bar with a speaker sign.
+- **The touch.** `POST /api/sessions/{id}/hints/{hint_id}/say` has Agora's agent say the sentence (the same
+  `speak` call that announces a learned voice), publishes `agent.speak.requested` and answers
+  `{"said": true}`. Once per suggestion, for 20 seconds, only in a running session. The Pi's face page
+  reports a touch to the supervisor again (`GET /tap` on the face server, as the game did), and the
+  supervisor calls the route when a suggestion is showing.
+- **Quiet by default is kept:** Mochi says nothing unless someone touches. The Speak `reason` is `asks_mochi`
+  (someone asked, with a finger); no new enum value, so a client that checks the reason still accepts it.
+
+**Why not put the sentence into the hint.** `Hint.example` is nearly this for a hint the judge made, but a
+lexicon hint (the instant ones) carries a stock example, not the speaker's sentence; and the hint is
+published before a sentence exists. A second event keeps the hint's timing and shape as they are.
+
+**Tried** (2026-11-22, `gpt-5.4-mini`, no thinking, ten written cases in English and Portuguese: code
+switches with and without "how do you say", a sentence that trails off, a false friend, restarts, and a
+plain question about a word): nine sentences a colleague would say ("Because we need to unblock the
+authentication.", "Not yet, I need to finish the spreadsheet first.", "Vamos marcar a reunião para
+sexta-feira de manhã."), and IGNORE for the question; 0.7 s on average. One of the nine dropped a detail
+("the client asked for" became "they want"). One run, written sentences.
+
+**Open:**
+- **Mochi speaks into the meeting.** Its sentence goes through the same speaker as its other speech, so
+  everything known about Mochi hearing itself (D-35, AGENTS 12.3) applies; the Pi sends silence while it
+  speaks, but a phone's microphone in the room may not.
+- The touch is anyone's: whoever is nearest the device decides that Mochi speaks for the stuck person.
+- A suggestion can put words in someone's mouth. It is shown first, and said only on a touch, for that
+  reason; whether it should also be shown on the shared screen or only on the person's own phone is a
+  product choice (today: wherever the hint goes).
+- Nothing is kept: neither the suggestion nor that it was said is in the person's history or the team view.
+- `apps/web` does not show it yet (AGENTS 9.4).

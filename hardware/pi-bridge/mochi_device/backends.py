@@ -150,7 +150,9 @@ class Body:
         "used" (value: {"word", "language"}: someone went on to say a word they were given) |
         "caption" (value: {"who", "text"}: a sentence that was just said, for the live transcript) |
         "explain" (value: {"word", "meaning", "plain", "kind"}: an idiom or a technical term that
-        was just said, and what it means)."""
+        was just said, and what it means) |
+        "suggest" (value: {"hint_id", "text", "language"}: the whole sentence someone was reaching
+        for; a touch on the screen has Mochi say it)."""
         self.device = device
         self.on_event = on_event or (lambda kind, value: None)
 
@@ -172,12 +174,12 @@ class Body:
                 return
             if isinstance(card, dict) and card.get("word"):
                 self.on_event(kind, card)
-        elif kind in ("caption", "explain"):  # what was just said, and what an idiom in it means
-            try:
+        elif kind in ("caption", "explain", "suggest"):  # what was just said, what an idiom in it
+            try:                                         # means, the sentence someone reached for
                 card = json.loads(value)
             except ValueError:
                 return
-            if isinstance(card, dict) and card.get("text" if kind == "caption" else "word"):
+            if isinstance(card, dict) and card.get("word" if kind == "explain" else "text"):
                 self.on_event(kind, card)
         elif kind == "enroll":
             words = value.split()
@@ -535,6 +537,17 @@ class MochiBackend:
             await asyncio.to_thread(self._req, "POST", f"/api/sessions/{self.session_id}/interrupt", 5, {})
         except Exception as e:  # the speaker is silent already; Mochi's sentence then simply runs out
             print(f"[mochi] backend interrupt: {e!r}"[:300], flush=True)
+
+    async def say_suggestion(self, hint_id: str) -> bool:
+        """The screen was touched while a suggested sentence was showing: the backend has Mochi say
+        it aloud. True when it is being said."""
+        try:
+            path = f"/api/sessions/{self.session_id}/hints/{hint_id}/say"
+            answer = await asyncio.to_thread(self._req, "POST", path, 5, {})
+            return bool(answer and answer.get("said"))
+        except Exception as e:  # nothing is said; the sentence is still on the screen to read
+            print(f"[mochi] backend say: {e!r}"[:300], flush=True)
+            return False
 
     async def hush_speaker(self, quiet: bool) -> None:
         """Silence the speaker at once (someone talks over Mochi), or give it back. The backend's own

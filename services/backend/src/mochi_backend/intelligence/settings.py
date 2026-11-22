@@ -27,3 +27,5 @@ class IntelligenceSettings:
     explain_min_words: int = 5  # a shorter sentence rarely holds an idiom worth a model call
     explain_min_confidence: float = 0.75  # an explanation the model doubts is not shown
     explain_gap_seconds: float = 20.0  # at least this long between two explanations
+    # The whole sentence a stuck speaker was reaching for is suggested after their hint (D-59).
+    suggest_phrases: bool = True

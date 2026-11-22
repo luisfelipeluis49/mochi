@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Payload of `phrase.suggested`: the whole sentence a stuck speaker was trying to say, a\nmoment after their hint. PROPOSAL (DECISIONS D-59, \"one-touch assistance\").\n\nIt goes where the hint went. Until `expires_at`, one touch (on Mochi's screen, or\n`POST /api/sessions/{id}/hints/{hint_id}/say`) makes Mochi say `text` aloud, once.",
+  "properties": {
+    "expires_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "hint_id": {
+      "title": "Hint Id",
+      "type": "string"
+    },
+    "language": {
+      "$ref": "#/$defs/Language"
+    },
+    "target_user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Target User Id"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "hint_id",
+    "target_user_id",
+    "language",
+    "text",
+    "expires_at"
+  ],
+  "title": "SuggestedPhrase",
+  "type": "object"
+}

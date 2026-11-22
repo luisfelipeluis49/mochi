@@ -21,6 +21,7 @@ from mochi_contracts import (
     SessionRecord,
     SessionState,
     Speak,
+    SuggestedPhrase,
     TeamInsights,
     TeamMember,
     TranscriptLine,
@@ -55,6 +56,7 @@ PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "team_insights": TeamInsights,
     "transcript_line": TranscriptLine,
     "conversation_report": ConversationReport,
+    "suggested_phrase": SuggestedPhrase,
 }
 
 

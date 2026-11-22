@@ -6,6 +6,7 @@ from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     ConversationReport,
     Decision,
+    Hint,
     Language,
     LearningEvent,
     Participant,
@@ -18,8 +19,8 @@ from mochi_contracts import (
 
 class IntelligencePort(Protocol):
     """decide / apply / words_for, plus reset, session_started, interrupted and device_status,
-    and three that look at what was said beyond the stuck word: explain, coach and used_alone
-    (PROPOSAL, DECISIONS D-53 to D-55)."""
+    and four that look at what was said beyond the stuck word: explain, suggest, coach and
+    used_alone (PROPOSAL, DECISIONS D-53 to D-55 and D-59)."""
 
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
         """Decide what Mochi does with one turn."""
@@ -58,6 +59,11 @@ class IntelligencePort(Protocol):
     async def explain(self, turn: Turn, context: SessionContext) -> TranscriptMark | None:
         """An idiom or a technical term in the sentence that the people listening may not know,
         with what it means; None for nearly every sentence. Asked after the turn was handled."""
+        ...
+
+    async def suggest(self, turn: Turn, context: SessionContext, hint: Hint) -> str | None:
+        """The whole sentence the speaker was trying to say, after `hint` gave them the word
+        (one-touch assistance, D-59); None when there is nothing to say for them."""
         ...
 
     async def coach(

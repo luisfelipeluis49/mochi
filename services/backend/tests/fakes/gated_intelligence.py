@@ -6,6 +6,7 @@ from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_contracts import (
     ConversationReport,
     Decision,
+    Hint,
     Language,
     LearningEvent,
     Participant,
@@ -71,3 +72,7 @@ class GatedIntelligence:
     ) -> list[LearningEvent]:
         """Delegate."""
         return self._inner.used_alone(said, shown, began)
+
+    async def suggest(self, turn: Turn, context: SessionContext, hint: Hint) -> str | None:
+        """Delegate."""
+        return await self._inner.suggest(turn, context, hint)

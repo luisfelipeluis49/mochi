@@ -15,6 +15,7 @@ from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.live_transcript import LiveTranscript, switch_marks
+from mochi_backend.gateway.one_touch import OneTouch
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -109,6 +110,7 @@ class PipelineDeps:
     journal: SessionJournal | None = None  # the company's learning history (D-45)
     registered_voices_only: bool = False  # MOCHI_MEETING_VOICES=registered (D-49)
     transcript: LiveTranscript | None = None  # the live transcript and what is explained (D-51)
+    one_touch: OneTouch | None = None  # the sentence someone was reaching for (D-59)
 
 
 class TurnPipeline:
@@ -131,6 +133,7 @@ class TurnPipeline:
         self._journal = deps.journal
         self._registered_only = deps.registered_voices_only
         self._transcript = deps.transcript
+        self._one_touch = deps.one_touch
         self._stale = StaleTurns(deps.cancel_stale_turns)
         self._streamer = deps.streamer
         self._speaking: set[asyncio.Task[None]] = set()  # streamed turns still running
@@ -140,6 +143,13 @@ class TurnPipeline:
         or a term (tests, and a clean shutdown). Example: `await pipeline.settle()`."""
         if self._transcript is not None:
             await self._transcript.settle()
+        if self._one_touch is not None:
+            await self._one_touch.settle()
+
+    async def say_suggestion(self, hint_id: str) -> bool:
+        """One touch: Mochi says aloud the sentence suggested after this hint (D-59). False when
+        there is none to say. Example: `await pipeline.say_suggestion("hint_017")`."""
+        return self._one_touch is not None and await self._one_touch.say(hint_id)
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -254,10 +264,19 @@ class TurnPipeline:
             return TurnOutcome("", silent_decision(), turn.segment_id, stale=True)
         async with self._commit:  # Stop and Reset wait until this turn is done
             outcome = await self._commit_turn(turn, decision, generation, arrived)
-        if self._transcript is not None and outcome.segment_id is not None:
-            # Off the turn's path: an idiom is explained a moment later, nothing waits (D-53).
-            self._transcript.explain_later(turn, context, outcome.decision, generation)
+        if outcome.segment_id is not None:
+            self._afterwards(turn, context, outcome.decision, generation)
         return outcome
+
+    def _afterwards(
+        self, turn: Turn, context: SessionContext, decision: Decision, generation: int
+    ) -> None:
+        """Off the turn's path, so nothing waits: an idiom is explained a moment later (D-53),
+        and a stuck speaker is offered the whole sentence (D-59)."""
+        if self._transcript is not None:
+            self._transcript.explain_later(turn, context, decision, generation)
+        if self._one_touch is not None:
+            self._one_touch.suggest_later(turn, context, decision, generation)
 
     def _new_turn(self, text: str, arrived: float | None) -> Turn:
         """The turn, stamped with when it reached us and whose voice the device heard say it."""

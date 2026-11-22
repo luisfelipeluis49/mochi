@@ -10,11 +10,15 @@ from mochi_contracts import (
     EventType,
     Hint,
     LearningEvent,
+    SuggestedPhrase,
 )
 
 TargetKind = Literal["mobile", "home", "audience", "glasses"]
 # Events that belong to one person: their phone gets them, in whichever session it follows.
 # (`transcript.line` is the opposite: everyone in that session, see `is_recipient`.)
+# A hint and what follows from it go to the same screens: Home, Audience, and the phone (and
+# glasses) of the person it is for. The suggested sentence is one of them (D-59).
+HINT_EVENTS = (EventType.HINT_CREATED, EventType.HINT_CLEARED, EventType.PHRASE_SUGGESTED)
 PERSONAL_EVENTS = (
     EventType.LEARNING_EVENT_CREATED,
     EventType.LEARNING_EVENT_UPDATED,
@@ -46,7 +50,7 @@ def is_recipient(
         return _glasses_recipient(event_type, target, hint_user)
     if event_type in PERSONAL_EVENTS:
         return _owner_only(payload, target)
-    if event_type in (EventType.HINT_CREATED, EventType.HINT_CLEARED):
+    if event_type in HINT_EVENTS:
         return _hint_audience(hint_user, target)
     return True
 
@@ -57,7 +61,7 @@ def _glasses_recipient(
     """AR glasses (AGENTS 6.6, proposed): session state and the wearer's hints, nothing else."""
     if event_type is EventType.SESSION_STATE_CHANGED:
         return True
-    if event_type in (EventType.HINT_CREATED, EventType.HINT_CLEARED):
+    if event_type in HINT_EVENTS:
         return hint_user is None or hint_user == target.user_id
     return False
 
@@ -75,5 +79,5 @@ def _hint_audience(hint_user: str | None, target: ConnectionTarget) -> bool:
 
 
 def hint_user_of(payload: EventPayload) -> str | None:
-    """The target user of a Hint payload, else None."""
-    return payload.target_user_id if isinstance(payload, Hint) else None
+    """The target user of a Hint (or of the sentence suggested after it), else None."""
+    return payload.target_user_id if isinstance(payload, Hint | SuggestedPhrase) else None

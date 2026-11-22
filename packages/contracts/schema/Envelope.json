@@ -112,7 +112,8 @@
         "learning_event.updated",
         "agent.speak.requested",
         "transcript.line",
-        "conversation.report.created"
+        "conversation.report.created",
+        "phrase.suggested"
       ],
       "title": "EventType",
       "type": "string"
@@ -650,6 +651,48 @@
       "title": "StateChange",
       "type": "object"
     },
+    "SuggestedPhrase": {
+      "additionalProperties": false,
+      "description": "Payload of `phrase.suggested`: the whole sentence a stuck speaker was trying to say, a\nmoment after their hint. PROPOSAL (DECISIONS D-59, \"one-touch assistance\").\n\nIt goes where the hint went. Until `expires_at`, one touch (on Mochi's screen, or\n`POST /api/sessions/{id}/hints/{hint_id}/say`) makes Mochi say `text` aloud, once.",
+      "properties": {
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "hint_id": {
+          "title": "Hint Id",
+          "type": "string"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        },
+        "target_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target User Id"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hint_id",
+        "target_user_id",
+        "language",
+        "text",
+        "expires_at"
+      ],
+      "title": "SuggestedPhrase",
+      "type": "object"
+    },
     "TranscriptLine": {
       "additionalProperties": false,
       "description": "Payload of `transcript.line`: one finished sentence, sent as it is said (D-51).\n\nSent to the people in that session, who all heard it; it is not what is stored (that is the\n`Utterance`, which only its speaker may read). The same `utterance_id` is sent again when\nsomething was noticed in the sentence (`marks`): a screen replaces the line it has.\n`user_id` is the person whose registered voice said it, None when no known voice did.",
@@ -774,6 +817,9 @@
         },
         {
           "$ref": "#/$defs/ConversationReport"
+        },
+        {
+          "$ref": "#/$defs/SuggestedPhrase"
         }
       ],
       "title": "Payload"

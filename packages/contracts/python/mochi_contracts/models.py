@@ -67,6 +67,21 @@ class Hint(ContractModel):
     context: str | None = None
 
 
+class SuggestedPhrase(ContractModel):
+    """Payload of `phrase.suggested`: the whole sentence a stuck speaker was trying to say, a
+    moment after their hint. PROPOSAL (DECISIONS D-59, "one-touch assistance").
+
+    It goes where the hint went. Until `expires_at`, one touch (on Mochi's screen, or
+    `POST /api/sessions/{id}/hints/{hint_id}/say`) makes Mochi say `text` aloud, once.
+    """
+
+    hint_id: str
+    target_user_id: str | None
+    language: Language
+    text: str
+    expires_at: IsoTimestamp
+
+
 class HintCleared(ContractModel):
     """Payload of `hint.cleared`."""
 

@@ -92,7 +92,7 @@ for one device without touching the shared file, put only the keys that differ i
   - `speaker_muted` true: the speaker is silent.
   - `commands`: what Mochi wants its body to do, each once: `mood` and `show` go to the face,
     `volume` to the speaker, `temp` shows the temperature, `enroll` / `forget` learn and forget a
-    voice, `hint` / `used` show a word someone needed and cheer when they then say it, `caption` shows the sentence just said (the live transcript; `[face] captions`), `explain` shows what an idiom or a technical term means, `bye` ends
+    voice, `hint` / `used` show a word someone needed and cheer when they then say it, `caption` shows the sentence just said (the live transcript; `[face] captions`), `explain` shows what an idiom or a technical term means, `suggest` shows the whole sentence someone was reaching for (a touch on the screen then has Mochi say it), `bye` ends
     the session after Mochi's goodbye.
   The Pi reports its volume, temperature, the voices it knows and who is talking
   (`POST .../status`) whenever one changes, and how learning a voice ended (`POST .../voices`).

@@ -165,6 +165,7 @@ Every WebSocket message is one event. Only the gateway publishes; it sets every 
 | `agent.speak.requested` | Speak | every connection (so the Home view can show "speaking") |
 | `transcript.line` *(proposed, D-51)* | TranscriptLine | every connection of that session except AR glasses; meetings only, never a review |
 | `conversation.report.created` *(proposed, D-54)* | ConversationReport | that user's Mobile view only, whichever session it follows |
+| `phrase.suggested` *(proposed, D-59)* | SuggestedPhrase | same as the hint it follows |
 
 `activity.state.changed` and `activity.private_prompt` no longer exist (v0.7).
 
@@ -193,6 +194,10 @@ Every WebSocket message is one event. Only the gateway publishes; it sets every 
 { "utterance_id": "seg_009", "user_id": "ana", "text": "I need to adiar my meeting tomorrow",
   "at": "2026-11-19T16:00:04.500Z",
   "marks": [ { "kind": "code_switch", "text": "adiar", "gloss": "postpone", "plain": null } ] }
+
+// SuggestedPhrase (proposed, D-59): the whole sentence a stuck speaker was reaching for; see 7.8
+{ "hint_id": "hint_017", "target_user_id": "ana", "language": "en",
+  "text": "We need to unblock the authentication process.", "expires_at": "2026-11-19T16:00:26.700Z" }
 
 // ConversationReport (proposed, D-54): one person, one session; see 7.7
 { "report_id": "rep_001", "company_id": "demo", "record_id": "rec_001", "user_id": "ana",
@@ -256,6 +261,8 @@ POST /api/sessions/{id}/start        start the Agora agent; capturing = true. Bo
 POST /api/sessions/{id}/stop         stop the Agora agent; capturing = false
 POST /api/sessions/{id}/interrupt    someone is talking over Mochi: its voice stops at once and it just listens (D-50)
                                      -> { "interrupted": true | false }
+POST /api/sessions/{id}/hints/{hint_id}/say    one touch: Mochi says aloud the sentence suggested after that hint (D-59)
+                                     -> { "said": true | false }   once per suggestion, while it is fresh (20 s)
 GET  /api/sessions/{id}/agora        where a phone joins that session's channel as its microphone
 
 Device
@@ -295,10 +302,11 @@ def words_for(user_id: str) -> list[LearningEvent]: ...                 # newest
 
 `handle()` (the game) is gone.
 
-Three more, proposed with D-53 to D-55 (the port has ten methods now):
+Four more, proposed with D-53 to D-55 and D-59 (the port has eleven methods now):
 
 ```python
 async def explain(turn: Turn, context: SessionContext) -> TranscriptMark | None: ...   # an idiom or term in the sentence; asked AFTER the turn was handled
+async def suggest(turn: Turn, context: SessionContext, hint: Hint) -> str | None: ...   # the whole sentence the speaker was reaching for; asked AFTER the turn was handled
 async def coach(draft: ConversationReport, person: Participant) -> ConversationReport | None: ...   # after Stop; None: no report
 def used_alone(said: list[Utterance], shown: list[str], began: str) -> list[LearningEvent]: ...   # after a meeting; `shown`: every word a screen showed in it; proposals for apply()
 ```
@@ -338,14 +346,14 @@ DELETE /api/devices/home_pi_01/voices/{name}
 GET  /api/devices/home_pi_01/state   carries "commands": [ { "command_id", "kind", "value" } ]
 ```
 
-- Command kinds: `mood`, `show`, `volume`, `temp`, `enroll`, `forget`, `bye`, `hint` (value is a JSON card: `word`, `language`, `meaning`, `example`, `why` (the hint's `reason`; a `code_switch` is drawn so that it catches the eye, D-52), and `candidates` when `Hint.candidates` has more than the one word, D-42), `used` (value `{ "word", "language" }`: someone said a word they were given), and, proposed with D-51 and D-53, `caption` (value `{ "who", "text" }`: a sentence of the live transcript, `who` the speaker's name or null) and `explain` (value `{ "word", "meaning", "plain", "kind" }`: an idiom or a technical term that was just said; not queued while a hint is on screen). A device does each `command_id` once. The gateway drops a command after 30 seconds. **The `round` kind is gone**, and `GET /state` no longer does anything with the device key.
+- Command kinds: `mood`, `show`, `volume`, `temp`, `enroll`, `forget`, `bye`, `hint` (value is a JSON card: `word`, `language`, `meaning`, `example`, `why` (the hint's `reason`; a `code_switch` is drawn so that it catches the eye, D-52), and `candidates` when `Hint.candidates` has more than the one word, D-42), `used` (value `{ "word", "language" }`: someone said a word they were given), and, proposed with D-51 and D-53, `suggest` (value `{ "hint_id", "text", "language" }`: the sentence suggested after a hint; the device shows it, and a touch on its screen calls `.../hints/{hint_id}/say`, D-59), `caption` (value `{ "who", "text" }`: a sentence of the live transcript, `who` the speaker's name or null) and `explain` (value `{ "word", "meaning", "plain", "kind" }`: an idiom or a technical term that was just said; not queued while a hint is on screen). A device does each `command_id` once. The gateway drops a command after 30 seconds. **The `round` kind is gone**, and `GET /state` no longer does anything with the device key.
 - **Registering a voice.** A person says "Mochi, learn my voice, I'm Ana"; Mochi writes `[enroll Ana pt]`, the Pi learns the voice and reports it (`/voices`), and from then on names it in `/status` as `speaker` whenever it hears it. A voice name is tied to the person whose `display_name` it equals (any case).
 - `session_started(conversing, language)`: the intelligence port's method. `conversing` is true for a review (one person talks with Mochi) and false for a meeting; `language` is the one Mochi greeted in.
 - Mochi's silent commands `[listen]` and `[chat]` (never sent to the device) still switch it between watching and taking part. `[play]` is gone.
 - **Many sessions at once (D-41).** `demo` stays the Pi's session. Any other id is a session a client opens (a phone's), with its own channel, agent and hints; nothing is shared between sessions except what is stored (saved words, the company's history). `&session=<id>` on `/ws?user=`, `?user=&surface=ar` and `?view=audience` follows that session (default `demo`). At most 8 live; a full house stops the oldest phone session. Unknown session: 404.
 - **Web app users and sessions (D-56).** `POST /api/users` `{ "display_name", "comfortable_language"?, "target_language"? }` → 201 `User` (id = slug-xxxxxx); `GET /api/users/{user_id}` (`guest` is reserved: 404); `GET /api/users/{user_id}/words` (newest first); `GET /api/users/{user_id}/sessions` → the web's own session records, newest first (`record_id`, `session_id`, `user_id`, `started_at`, `ended_at`, `minutes`, `hint_count`, `learning_event_ids`: a different shape from the company's `SessionRecord` of 6.7, see D-58). `POST /api/sessions/{id}/start` with a `user_id` and no `mode`: the session is that person's; its participants are the user and `guest` (the user's languages the other way round, so the whose-word rule still finds one learner) and `focus` is the user's target language; 409 on `demo`, 404 for an unknown user. It leaves a web session record when it ends. Such a session uses Agora's default interruption: speaking over Mochi cuts it off (D-57).
 - **Who is who (D-58).** The *roster* is the company's members: they are the participants of the device's meetings and the owners of its voices. The *user directory* also knows the people the web app made. `/ws?user=`, `GET /api/users/{id}` and a review accept a person from either; `guest` never.
-- The intelligence port has ten methods: the three in 6.5 plus `reset`, `session_started`, `interrupted` and `device_status`, and `explain`, `coach` and `used_alone` (6.5; `gateway/intelligence_port.py` is the source).
+- The intelligence port has eleven methods: the three in 6.5 plus `reset`, `session_started`, `interrupted` and `device_status`, and `explain`, `suggest`, `coach` and `used_alone` (6.5; `gateway/intelligence_port.py` is the source).
 - The Pi starts a session itself when it hears the wake phrase; Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
 - `GET /ws?user=ana&surface=ar` (owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody; an unknown `surface` closes 4400.
@@ -448,7 +456,7 @@ A review is a session of its own on a person's phone (`POST /api/sessions/{id}/s
 - Saying the word moves its card to `REINFORCED` (7.4). The phone gets `learning_event.updated` as in a meeting.
 - A person who is stuck in a review gets hints the same way as in a meeting.
 - With no words to review, Mochi says so and chats about the person's work day instead.
-- Mochi's screen is not involved: a touch on it does nothing now (the game was its only use).
+- Mochi's screen is not involved in a review. (In a meeting a touch on it has one use: saying a suggested sentence, 7.8.)
 
 ### 7.6 The live transcript, code switches and explanations (proposed, D-51 to D-53)
 
@@ -463,6 +471,19 @@ A review is a session of its own on a person's phone (`POST /api/sessions/{id}/s
 - One model call per person and session. A mistake is what a teacher would correct in speech: grammar, a wrong word, a false friend. Not fillers, half sentences, informal speech, punctuation, or a sentence said in the person's own language. A correction that changes nothing, or of a sentence that does not exist, is dropped.
 - It is stored (`conversation_reports`), sent to that person's phone (`conversation.report.created`), and read at `GET /api/users/{id}/reports?viewer={id}`. No one else can read it. The team view counts kinds of mistake that **at least three people** made, never fewer, whatever `MOCHI_TEAM_MIN_PEOPLE` says: with two, whichever of them is looking learns the other's. (So the two-person demo company shows none.)
 - No report when the model did not answer ("nothing was wrong" is never said for "nobody looked"), for a session on a microphone that recognises no voice, or with `MOCHI_SPEECH_REPORTS=false`.
+
+### 7.8 One-touch assistance: the sentence, and Mochi saying it (proposed, D-59)
+
+A hint gives a stuck speaker the word. Sometimes the word is not enough:
+
+> Ben: `Why is the integration delayed?`
+> Ana: `Because we need to… como é que fala… destravar a autenticação.`
+
+- Mochi's screen shows **unblock** as before. A moment later it also shows the whole sentence she was reaching for, **"Because we need to unblock the authentication process."**, and her phone gets it as `phrase.suggested`. It goes exactly where her hint went.
+- **One touch** on Mochi's screen (or a "say it" button on her phone: `POST /api/sessions/{id}/hints/{hint_id}/say`) and Mochi says that sentence aloud, once, so everyone understands and the meeting goes on. Without a touch nothing is said: quiet by default holds. The touch works for 20 seconds (`MOCHI_SUGGESTION_TTL_SECONDS`).
+- The sentence is written by one more model call, made **after** the turn was handled (so the hint is never later for it), from her sentence, the sentences just before it (the question she is answering) and the word of her hint. It says what she meant and nothing she did not say, without the asides in which she looked for the word, in at most about sixteen words.
+- Only in a meeting, only after a silent hint (someone who asked Mochi by name is answered aloud already), only for a sentence of four words or more. A suggestion is dropped when it is what she said already, is not in the language she was speaking, or is too long. `MOCHI_SUGGEST_PHRASES=false` switches it off; without a model key there is none.
+- Mochi saying the sentence does not move her card: it was Mochi who said the word, not she.
 
 ## 8. Milestones: what to build, in order
 
@@ -560,8 +581,11 @@ Do not write code that assumes these work. If your task depends on one, say so i
 8. **The hint judge in a work meeting.** Its instructions now describe a meeting of several people (D-47) and score the same on the hint yardstick as before, but the yardstick's sentences are everyday talk between two learners. It has not been measured on what people say in work meetings.
 9. **The live transcript, the explainer and the reports with real voices.** Built and tested with typed sentences and scripted models (D-51 to D-55). On 2026-11-22 the explainer's instructions were tried on 24 written sentences with the real model (12 with an idiom or term, 12 ordinary): all 24 right, 0.7 s each; the coach's on 12 sentences: six real mistakes found, none invented. That is a look, not a measurement: nobody has seen a caption, a marked code switch or an explanation on Mochi's screen in a real meeting, and no report has been written from a machine transcript of real speech, where a misheard word can look like a mistake.
 10. **Who reads the live transcript.** There is no sign-in, so anyone who opens `/ws?user=<a known id>` or `?view=audience` on a running session gets its lines, as they already got its hints. The transcript says much more than a hint does. `MOCHI_LIVE_TRANSCRIPT=false` is the switch until sign-in exists.
+11. **One-touch assistance with a finger and a voice.** Built and tested with typed sentences and scripted models (D-59); see D-59 for what was tried with the real model and a real session. Nobody has touched Mochi's real screen in a real meeting yet, and whether Mochi's own sentence comes back as a turn through a real room's microphone is item 3 above.
 
 ## 13. Changelog
+
+- **v0.7, one-touch assistance (proposed, 2026-11-22, D-59).** After a silent hint the whole sentence the speaker was reaching for is suggested (`phrase.suggested`, device command `suggest`); one touch on Mochi's screen, or `POST /api/sessions/{id}/hints/{hint_id}/say`, and Mochi says it aloud. Port method `suggest` (eleven now). `MOCHI_SUGGEST_PHRASES`, `MOCHI_SUGGESTION_TTL_SECONDS`.
 
 - **v0.7, merged with `main` (2026-11-22, D-58).** `main`'s web users, per-user sessions and web session records (D-56, D-57; they were D-42 and D-43 there) and this file's D-43 to D-55 are one tree. The company's table is `company_sessions` (the web's keeps `session_records`); a meeting's participants are the company's members, no longer everyone known; `apps/web` accepts the modes `meeting` and `review`.
 

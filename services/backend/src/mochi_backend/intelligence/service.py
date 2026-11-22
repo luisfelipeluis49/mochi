@@ -18,6 +18,8 @@ from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel
+from mochi_backend.intelligence.phrase_port import NullPhraseModel, PhraseModel
+from mochi_backend.intelligence.phrasing import Phraser
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.warm_start import WarmsUp
 from mochi_backend.platform.clock import Clock, iso_z, parse_iso_z
@@ -26,6 +28,7 @@ from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     ConversationReport,
     Decision,
+    Hint,
     Language,
     LearningEvent,
     Participant,
@@ -56,6 +59,8 @@ class Intelligence:
         self._thinkers: list[HintModel | CharacterModel | ExplainModel] = [model]
         self._explains: ExplainModel = NullExplainModel()
         self._explainer = Explainer(self._explains, book, clock, tuning)
+        self._phrases: PhraseModel = NullPhraseModel()
+        self._phraser = Phraser(self._phrases, book, tuning)
         self._coach: CoachModel = NullCoachModel()
         self._warming: set[asyncio.Task[None]] = set()  # kept, or a running task may be collected
         self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
@@ -80,6 +85,7 @@ class Intelligence:
         other._talk.use(self._talk.character)  # noqa: SLF001
         other.explain_with(self._explains)
         other.coach_with(self._coach)
+        other.phrase_with(self._phrases)
         return other
 
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
@@ -126,6 +132,23 @@ class Intelligence:
         self._explains = model
         self._explainer.use(model)
         self._thinkers = [*self._thinkers[:2], model]
+
+    def phrase_with(self, model: PhraseModel) -> None:
+        """Give Mochi the model that writes the sentence a stuck speaker was reaching for (D-59).
+
+        Example: `brain.phrase_with(OpenAiPhraseModel(JsonChat(http, config, "phrase")))`.
+        """
+        self._phrases = model
+        self._phraser.use(model)
+
+    async def suggest(self, turn: Turn, context: SessionContext, hint: Hint) -> str | None:
+        """The whole sentence the speaker of `turn` was trying to say, after `hint` gave them the
+        word (one-touch assistance, D-59); None when there is nothing to say for them.
+
+        Example: "Because we need to, como é que fala, destravar a autenticação." ->
+        "Because we need to unblock the authentication process."
+        """
+        return await self._phraser.suggest(turn, context, hint)
 
     def coach_with(self, model: CoachModel) -> None:
         """Give Mochi the model that looks over a person's sentences after a session.
