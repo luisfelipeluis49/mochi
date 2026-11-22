@@ -101,7 +101,27 @@ def _named_after_ask(low: str) -> str:
     term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
     term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
     term = _CUT_OFF.sub("", term)  # "how do you say feijoada in" / "... In English"
-    return "" if term in _POINTING else term
+    if term not in _POINTING:
+        return term
+    named = rest is not None and _NAMED_LANGUAGE.search(rest.group(0)) is not None
+    return _said_next(low[rest.end() :]) if rest is not None and named else ""
+
+
+_NEXT_LEAD_IN = re.compile(
+    r"^(?:[\s,:;.?!…\"'“”‘’-]|\b(?:ah+|uh+|um+|hum+|er+|eh+|é|like|tipo|well|so)\b)+"
+)
+_MIN_NEXT_WORDS = 2
+
+
+def _said_next(after: str) -> str:
+    """What "it" points at when the question names a language and the sentence follows it.
+
+    Seen live (D-70): "How do I say it in Portuguese? Ah, I'm going to be late for work today."
+    got nothing: "it" names no word. The sentence after the question is what is asked about.
+    """
+    found = _TO_SENTENCE_END.match(_NEXT_LEAD_IN.sub("", after))
+    said = found.group(0).strip(" \"'“”‘’,:;-") if found else ""
+    return said if len(said.split()) >= _MIN_NEXT_WORDS else ""
 
 
 def asked_term(text: str) -> str | None:
@@ -125,9 +145,20 @@ def question_itself(text: str) -> str:
     Seen with a real model: given `...adiar our meeting. How do I say "garfo" in English?` it
     answered for "adiar". What is not sent cannot distract.
     """
-    sentences = [s.strip() for s in _SENTENCE.findall(text.replace("...", "…"))]
+    sentences: list[str] = [s.strip() for s in _SENTENCE.findall(text.replace("...", "…"))]
     asking = [s for s in sentences if asked_term(s)]
-    return asking[-1] if asking else text
+    if asking:
+        return asking[-1]
+    # "How do I say it in Portuguese? I'm going to be late.": the question points at the sentence
+    # after it. The model answered that form one time in two (D-70); said in one piece, always.
+    term, questions = asked_term(text), [s for s in sentences if asks_for_word(s)]
+    if (
+        not term
+        or not questions
+        or not _POINTING & set(_flat(questions[-1]).rstrip("?.! ").split())
+    ):
+        return text  # "Como se fala... Carteira em inglês." stays as it was said
+    return f'{questions[-1].rstrip(" ?.!")}: "{term}"?'
 
 
 def unfinished_question(text: str) -> bool:

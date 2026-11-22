@@ -6,16 +6,20 @@ once Mochi's goodbye has been heard. The device reads them from its state (`comm
 one once. A hint adds a command of its own that Mochi does not write: `hint`, whose value is a JSON
 card (`word`, `language`, `meaning`, `example`, `why`). So do the live transcript (`caption`:
 `who`, `text`) and an explained idiom or term (`explain`: `word`, `meaning`, `plain`, `kind`), D-51
-to D-53.
+to D-53. `[translation en]` in front of a sentence Mochi says for someone (speak for me, D-70)
+becomes a `translation` card with that sentence (`text`, `language`), so the screen shows what
+Mochi is saying.
 """
 
+import json
 import re
 from datetime import datetime, timedelta
 
 from pydantic import BaseModel, Field
 
 _COMMAND = re.compile(
-    r"\[\s*(volume|mood|show|temp|enroll|forget|bye)\b\s*:?\s*([^\]]*?)\s*\]", re.IGNORECASE
+    r"\[\s*(volume|mood|show|temp|enroll|forget|bye|translation)\b\s*:?\s*([^\]]*?)\s*\]",
+    re.IGNORECASE,
 )
 _BRACKETS = re.compile(r"\[[^\]]*\]")
 QUEUE_LIMIT = 20
@@ -41,3 +45,18 @@ def split_commands(text: str) -> tuple[str, list[Written]]:
     """
     written = [(m.group(1).lower(), m.group(2)) for m in _COMMAND.finditer(text)]
     return " ".join(_BRACKETS.sub(" ", text).split()), written
+
+
+def with_translation(text: str, written: list[Written]) -> list[Written]:
+    """`written` with a `[translation en]` turned into the card the device shows: the words
+    being said, and their language.
+
+    Example: `with_translation("We need to postpone it.", [("translation", "en")])` ->
+    `[("translation", '{"text": "We need to postpone it.", "language": "en"}')]`.
+    """
+    card = {
+        kind: json.dumps({"text": text, "language": value}, ensure_ascii=False)
+        for kind, value in written
+        if kind == "translation"
+    }
+    return [(kind, card.get(kind, value)) for kind, value in written]

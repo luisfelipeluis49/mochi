@@ -50,7 +50,13 @@ def hint_flag(card: dict) -> str:
     return "switch" if card.get("why") == "code_switch" and card.get("meaning") else ""
 
 
-SUGGESTION_S = 20  # how long a suggested sentence waits for a touch (the backend's MOCHI_SUGGESTION_TTL_SECONDS)
+SENTENCE_S = 12  # how long a suggested sentence stays on the screen
+
+
+def translation_seconds(text: str) -> float:
+    """How long a sentence Mochi says for someone stays on the screen: about as long as it takes
+    to say and to read. Example: eight words -> 6.1 s; a short one -> 6 s at least."""
+    return max(6.0, 2.5 + 0.45 * len(text.split()))
 CAPTION_CHARS = 84  # what fits in two small lines on the 3.5-inch screen
 
 
@@ -100,8 +106,6 @@ class Supervisor:
         self.kws = KeywordSpotter(cfg)
         self.face = Face(cfg.get("face"))
         self.captions = bool((cfg.get("face") or {}).get("captions", True))  # the live transcript
-        self.suggestion: tuple[str, float] | None = None  # (hint id, shown at): the sentence a touch says
-        self.face.on_tap = self.on_tap
         self.net = cfg.get("network", {})  # how the connection is watched (see _look_after_itself)
         self.online = True
         # what Mochi says by itself, from recordings (no connection needed): see _tell
@@ -152,19 +156,6 @@ class Supervisor:
         if self.state == "ACTIVE":
             self.backend_end = "Mochi's agent left the call"
 
-    def on_tap(self) -> None:
-        """The screen was touched. While a suggested sentence is showing, Mochi says it (once);
-        at any other time a touch means nothing (the face reacts by itself)."""
-        waiting, self.suggestion = getattr(self, "suggestion", None), None
-        if waiting is None or time.monotonic() - waiting[1] > SUGGESTION_S or self.state != "ACTIVE":
-            return
-        self.face.set(say="")
-        say = getattr(self.backend, "say_suggestion", None)  # only the team's backend can
-        if say is not None:
-            task = asyncio.ensure_future(say(waiting[0]))
-            self._touches = getattr(self, "_touches", set()) | {task}
-            task.add_done_callback(lambda t: self._touches.discard(t))
-
     def on_agent_event(self, kind: str, value) -> None:
         """Things the agent did or asked for (see backends.py): shown on the face."""
         if kind == "mood" and value in MOODS:
@@ -180,9 +171,11 @@ class Supervisor:
         elif kind == "explain":  # an idiom or a term that was just said: what it means, for those listening
             self.face.show_for(10, word=str(value.get("word", ""))[:28], note=str(value.get("meaning") or "")[:40],
                                more=str(value.get("plain") or "")[:40], flag="explain")
-        elif kind == "suggest":  # the whole sentence someone was reaching for: a touch and Mochi says it
-            self.suggestion = (str(value.get("hint_id", "")), time.monotonic())
-            self.face.show_for(SUGGESTION_S, say=str(value.get("text", ""))[:120])
+        elif kind == "suggest":  # the whole sentence someone was reaching for: shown, to read (no touch, D-70)
+            self.face.show_for(SENTENCE_S, say=str(value.get("text", ""))[:120], aloud=False)
+        elif kind == "translation":  # what Mochi is saying in the other language (speak for me, D-70)
+            text = str(value.get("text", ""))
+            self.face.show_for(translation_seconds(text), say=text[:140], aloud=True)
         elif kind == "caption":  # the live transcript: the sentence that was just said
             if getattr(self, "captions", True):
                 self.face.show_for(8, caption=caption_line(value))
@@ -500,7 +493,7 @@ class Supervisor:
         self.kws.track_voices(False)
         self.kws.voice_events()  # whoever spoke last in this session is not the next one's caller
         self.bye_until = time.monotonic() + 3
-        self.face.set(level=0, word="", note="", more="", flag="", caption="", say="", mood="neutral", who="")
+        self.face.set(level=0, word="", note="", more="", flag="", caption="", say="", aloud=False, mood="neutral", who="")
         self._chime(rising=False)
         self._tell_what_is_owed()
         log("back to offline listening (no audio leaves the Pi)")

@@ -102,7 +102,14 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     """
     # The live transcript is off here unless a test asks for it: with it every sentence adds an
     # event and a device caption, and most tests count exactly what one feature publishes.
-    quiet = {"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", "MOCHI_LIVE_TRANSCRIPT": "false"}
+    # Likewise an asked word is not said aloud here unless a test asks (D-70): the older tests
+    # were written when "como se diz X?" between two people got a silent hint.
+    quiet = {
+        "MOCHI_AGORA_MODE": "fake",
+        "MOCHI_TURN_KEY": "k",
+        "MOCHI_LIVE_TRANSCRIPT": "false",
+        "MOCHI_SAY_ASKED_WORDS": "false",
+    }
     settings = load_settings({**quiet, **(env or {})})
     clock, ids, logger = FakeClock(), SequentialIdGenerator(), FakeEventLogger()
     kept = storage or NullStorage()
@@ -114,6 +121,7 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
         explain_terms=settings.mochi_explain_terms,
         suggest_phrases=settings.mochi_suggest_phrases,
         speak_for_me=settings.mochi_speak_for_me,
+        say_asked_words=settings.mochi_say_asked_words,
     )
     brain = intelligence or _brain(clock, ids, model, character, tuning)
     if isinstance(brain, Intelligence):

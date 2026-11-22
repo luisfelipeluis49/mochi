@@ -1,6 +1,8 @@
 """Speak for me (DECISIONS D-64, D-69): someone asks Mochi to speak for them, and from then on it
 says every sentence of the meeting in the other language, whoever said it, until told to stop."""
 
+import json
+
 import pytest
 
 from mochi_backend.intelligence.interpret_port import (
@@ -91,6 +93,9 @@ def _by(text: str, who: str | None = None, seconds: float = 0.0) -> Turn:
         "Mochi, pode falar por mim?",
         "Moshi, fale por mim",
         "Mochi, traduz pra gente.",
+        "Mochi, actually, você pode traduzir?",  # seen live (D-70): how it was really asked
+        "Mochi, can you translate?",
+        "Mochi, traduz, por favor.",
     ],
 )
 async def test_the_ways_of_asking(command: str) -> None:
@@ -187,6 +192,34 @@ async def test_saying_no_with_the_words_that_ask_does_not_turn_it_on(said: str) 
     assert not mode.on
 
 
+async def test_asking_mochi_to_translate_one_word_is_not_asking_for_the_mode() -> None:
+    mode = _mode()
+    for said in ("Mochi, can you translate fila?", "Mochi, como se traduz prazo?"):
+        assert await mode.take(_by(said), make_context()) is None
+    assert not mode.on
+
+
+async def test_the_request_may_come_in_the_sentence_after_mochis_name() -> None:
+    # seen live: "Mochi, você pode traduzir?" ... "Traduzir para a gente?"
+    mode = _mode()
+    after_its_name = make_context().model_copy(
+        update={"recent_turns": [make_turn("Mochi, me ajuda aqui?", 1)]}
+    )
+    assert await mode.take(_by("Traduzir para a gente?", None, 4), make_context()) is None
+    answer = await mode.take(_by("Traduzir para a gente?", None, 4), after_its_name)
+    assert answer is not None and answer.decision is DecisionKind.SPEAK and mode.on
+    again = await mode.take(_by("Traduzir para a gente?", None, 8), after_its_name)
+    assert again is not None and again.decision is DecisionKind.IGNORE  # asked and answered
+
+
+async def test_the_translation_is_put_on_mochis_screen_while_it_is_said() -> None:
+    harness, _ = await _meeting()
+    await _says(harness, "Hey Mochi, speak for me.")
+    assert await _says(harness, ADIAR_PT) == ADIAR_EN  # the tag is never spoken
+    cards = [c for c in harness.container.core.store.commands if c.kind == "translation"]
+    assert [json.loads(c.value) for c in cards] == [{"text": ADIAR_EN, "language": "en"}]
+
+
 async def test_the_model_decides_which_way_a_short_sentence_goes() -> None:
     # after an English sentence "Quanto custa?" is guessed English; the model knows better
     model = FakeInterpretModel({"quanto custa": "How much does it cost?"}, answers_in="en")
@@ -194,7 +227,8 @@ async def test_the_model_decides_which_way_a_short_sentence_goes() -> None:
     await mode.take(_by("Mochi, speak for me."), make_context())
     said = await mode.take(_by("Quanto custa?", None, 4), make_context())
     assert said is not None and said.speak is not None
-    assert (said.speak.text, said.speak.language) == ("How much does it cost?", Language.EN)
+    assert said.speak.text == "[translation en] How much does it cost?"  # the tag: on the screen
+    assert said.speak.language is Language.EN
 
 
 async def test_its_welcome_coming_back_neither_stops_it_nor_is_translated() -> None:
@@ -216,7 +250,7 @@ async def test_its_own_sentence_coming_back_is_not_translated_again() -> None:
     mode = _mode(model)
     await mode.take(_by("Mochi, speak for me."), make_context())
     said = await mode.take(_by(ADIAR_PT, None, 3), make_context())
-    assert said is not None and said.speak is not None and said.speak.text == ADIAR_EN
+    assert said is not None and said.speak is not None and said.speak.text.endswith(ADIAR_EN)
     echo = await mode.take(_by(ADIAR_EN, None, 9), make_context())  # the microphone heard Mochi
     assert echo is not None and echo.decision is DecisionKind.IGNORE
     assert len(model.requests) == 1

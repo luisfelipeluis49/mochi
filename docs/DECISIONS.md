@@ -2007,3 +2007,67 @@ with `main`'s D-68 merged in.
 - **The hint yardstick was not run again** after the change to the sentence's language; the decision
   fixtures pass.
 - `intelligence/` is Luís's since D-68; needs his yes.
+
+## D-70: an asked word is said as it is shown; the touch is gone; speak for me is asked for as people ask, and shown (2026-11-22)
+
+**Asked** (Suhuai, after a second real test at the device, 10:17 to 10:23): the code switches and idioms
+suggested after D-69 worked. Two changes: "when I ask how to pronounce, or como se diz a word, in English
+or Portuguese, at the same time it is showing the translation on the screen it should also just pronounce
+it for me. The logic of touching the screen and pronounce should be deleted." And speak for me "did not
+work: it only showed my transcription, but it is expected to show the translation and also speak it."
+
+**What the log said** (72 sentences):
+- Speak for me was never on. It was asked for as "Mochi, actually, você pode traduzir?" and then "Traduzir
+  para a gente?". The first has the name and no "for us"; the second has "for us" and no name; the mode
+  wanted both in one sentence. Mochi's own character answered "Posso sim… me manda a frase e eu traduzo",
+  and then nothing was translated.
+- `Hum, how do I say in Portuguese, uh, "I will finish my work tomorrow"?` got its hint, silently; "Can you
+  pronounce it for me?" was needed to hear it, and it was said twice over.
+- "How do I say it in Portuguese? Ah, I'm going to be late for work today." got nothing: "it" names no word.
+- "Actually, I'm not even going to ask you to pronounce it for me…" was taken as a request to pronounce.
+
+**Changed.**
+- **An asked word is said at once** (`decision_flow._asked_outright`, `MOCHI_SAY_ASKED_WORDS`, on by
+  default): a hint for a turn that asks for a word outright is also spoken, a word twice, an expression of
+  more than three words once. Not when a colleague was asked by name, not while Mochi is in the
+  conversation (it answers in its own words then), and not for a word nobody asked for. This bends "quiet
+  by default" on purpose: the person asked, aloud, how to say it.
+- **The touch is removed**: `POST /api/sessions/{id}/hints/{hint_id}/say`, `OneTouch.say`, the pipeline's
+  `say_suggestion`; on the device `on_tap`, the face server's `/tap`, the page's call to it and
+  `MochiBackend.say_suggestion`. The sentence after a silent hint (`phrase.suggested`, device command
+  `suggest`) is still worked out and shown, for 12 s on the device, without the speaker sign.
+- **Speak for me**: it also turns on with the verb alone and Mochi's name ("você pode traduzir?", "can you
+  translate?", "traduz, por favor"; not "can you translate fila?"), and with a "for us" request in the
+  sentence after one that had its name. A repeat of the request while it is on is ignored. Each translation
+  carries a silent `[translation en]` tag; the gateway turns it into a device command `translation`
+  (`{text, language}`) and the device shows the sentence in the bar at the top, with a speaker sign, for as
+  long as it takes to say.
+- **"How do I say it in Portuguese? <sentence>"** asks about the sentence that follows (only when the
+  question names a language), and the model is shown it in one piece: asked as it was said it answered one
+  time in two, in one piece three in three.
+- Saying one will not ask ("I'm not going to ask you to pronounce it", "you don't need to…") is not asking.
+
+**With the real model**, typed as the recogniser wrote them: the "I will finish my work tomorrow" question
+→ "Eu vou terminar meu trabalho amanhã." shown and said once; "Como é que fala guarda-chuva?" → "umbrella.
+umbrella."; "We need to— Como é que fala "destravar a autenticação"?" → "unlock authentication. unlock
+authentication."; "I forgot my guarda-chuva at the office." → silent hint and the sentence, as before.
+"Mochi, actually, você pode traduzir?" → on; "Okay, um, hi guys, it's really nice to meet you guys here."
+→ "Ok, oi pessoal, é muito bom conhecer vocês aqui."; "O prazer é meu. Vamos começar pela proposta?" →
+"The pleasure is mine. Shall we start with the proposal?"; "Mochi, pode parar." → off.
+
+**Tests:** `test_one_touch.py` (the route is 404; an asked word is said, a code switch and a question to a
+named colleague are not, a sentence once), `test_speak_for_me.py` (the new ways of asking, the card),
+`test_live_findings.py`, the device's `SentenceBarTest`. `make verify`: 1887 passed; pi-bridge: 146.
+
+**Open:**
+- **The device has to be restarted** to show a translation and to stop reacting to a touch: the service
+  and the page on its screen run the code they were started with.
+- **An asked word between two people is now answered by Mochi's voice**, where AGENTS 7.1 case 2 had a
+  silent hint. Whether that is welcome when the question was for a colleague who was not named has not
+  been seen. The decision fixtures keep the silent form (the switch is off in the test harness).
+- **The asked word's `Speak.language`** follows the sentence, not the word: "Como se diz "vou terminar meu
+  trabalho amanhã"?" is spoken as "I will finish my work tomorrow." with `language: pt-BR`. One voice says
+  both languages, so it is heard right; a screen that picks a voice by that field would not.
+- **A sentence is suggested less often**: an asked word is spoken, and a spoken turn gets no sentence.
+- `intelligence/`, `gateway/` and `apps/web`'s notes are Luís's; `hardware/` and the device-command list
+  Matheus's. Needs their yes.

@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 from mochi_device.backends import TAG, Body, JoinInfo, MochiBackend, TestAgentBackend, WithFallback
 from mochi_device.bargein import LevelWatch
 from mochi_device.face import Face
-from mochi_device.main import Supervisor, caption_line, hint_flag, hint_more, hint_note
+from mochi_device.main import Supervisor, caption_line, hint_flag, hint_more, hint_note, translation_seconds
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
 
@@ -667,54 +667,45 @@ class MeetingHelpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sup.face.show_for.call_count, calls)
 
 
-class OneTouchTest(unittest.IsolatedAsyncioTestCase):
-    """A suggested sentence shows on the screen; one touch and Mochi says it (D-59)."""
+class SentenceBarTest(unittest.IsolatedAsyncioTestCase):
+    """The bar at the top of the face: a suggested sentence to read (D-59), or the sentence Mochi is
+    saying in the other language (speak for me, D-70). No touch any more."""
 
-    async def test_the_sentence_reaches_the_supervisor_and_a_touch_has_the_backend_say_it(self):
+    async def test_a_suggested_sentence_is_shown_to_read(self):
         events = []
         body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
         await body.act("suggest", '{"hint_id": "hint_7", "text": "We need to unblock it.", "language": "en"}')
-        await body.act("suggest", '{"hint_id": "hint_8"}')   # no sentence: nothing to offer
+        await body.act("suggest", '{"hint_id": "hint_8"}')   # no sentence: nothing to show
         self.assertEqual(events, [("suggest", {"hint_id": "hint_7", "text": "We need to unblock it.", "language": "en"})])
         sup = Supervisor.__new__(Supervisor)
-        sup.face, sup.state, said = MagicMock(), "ACTIVE", []
-
-        class Backend:
-            async def say_suggestion(self, hint_id):
-                said.append(hint_id)
-                return True
-
-        sup.backend = Backend()
-        sup.on_tap()                                         # nothing is showing: a touch means nothing
+        sup.face, sup.state = MagicMock(), "ACTIVE"
         sup.on_agent_event("suggest", events[0][1])
-        sup.face.show_for.assert_called_with(20, say="We need to unblock it.")
-        sup.on_tap()
-        sup.on_tap()                                         # once: the second touch says nothing
-        await asyncio.sleep(0)
-        self.assertEqual(said, ["hint_7"])
-        sup.face.set.assert_called_with(say="")
+        sup.face.show_for.assert_called_with(12, say="We need to unblock it.", aloud=False)
+        self.assertFalse(hasattr(sup, "on_tap"))             # a touch says nothing any more
 
-    async def test_a_touch_after_the_sentence_has_gone_or_outside_a_session_says_nothing(self):
+    async def test_a_translation_is_shown_while_mochi_says_it(self):
+        events = []
+        body = Body(FakeSpeaker(), lambda kind, value: events.append((kind, value)))
+        await body.act("translation", '{"text": "We need to postpone the launch to next week.", "language": "en"}')
+        await body.act("translation", '{"language": "en"}')  # no sentence: nothing to show
+        self.assertEqual(len(events), 1)
         sup = Supervisor.__new__(Supervisor)
-        sup.face, sup.state, sup.backend = MagicMock(), "ACTIVE", MagicMock()
-        sup.suggestion = ("hint_7", time.monotonic() - 30)
-        sup.on_tap()
-        sup.suggestion, sup.state = ("hint_7", time.monotonic()), "IDLE"
-        sup.on_tap()
-        sup.backend.say_suggestion.assert_not_called()
+        sup.face, sup.state = MagicMock(), "ACTIVE"
+        sup.on_agent_event("translation", events[0][1])
+        sup.face.show_for.assert_called_with(translation_seconds("We need to postpone the launch to next week."),
+                                             say="We need to postpone the launch to next week.", aloud=True)
+        self.assertEqual(translation_seconds("Ok."), 6.0)
 
-    async def test_the_face_server_passes_a_tap_on(self):
-        face, taps = Face({"port": 0}), []
-        face.on_tap = lambda: taps.append(1)
+    async def test_the_face_server_has_no_tap_route(self):
+        face = Face({"port": 0})
         await face.start()
         port = face._server.sockets[0].getsockname()[1]
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
         writer.write(b"GET /tap HTTP/1.1\r\nHost: x\r\n\r\n")
         await writer.drain()
-        self.assertIn(b"204", await reader.readline())
+        self.assertIn(b"404", await reader.readline())
         writer.close()
         await face.stop()
-        self.assertEqual(taps, [1])
 
 
 class UsedWordTest(unittest.IsolatedAsyncioTestCase):

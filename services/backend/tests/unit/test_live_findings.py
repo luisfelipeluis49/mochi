@@ -4,7 +4,7 @@ as the recogniser wrote them."""
 import pytest
 
 from mochi_backend.intelligence.aloud import wants_to_hear
-from mochi_backend.intelligence.clear_cases import asked_term, asks_for_word
+from mochi_backend.intelligence.clear_cases import asked_term, asks_for_word, question_itself
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
@@ -90,3 +90,29 @@ def test_two_explanations_may_follow_each_other_as_soon_as_a_card_is_gone() -> N
 )
 def test_telling_how_something_is_said_is_not_asking_for_a_word(story: str) -> None:
     assert not asks_for_word(story)
+
+
+# --- the second real meeting, the same day (DECISIONS D-70)
+
+
+def test_how_do_i_say_it_in_portuguese_asks_about_the_sentence_that_follows() -> None:
+    said = "How do I say it in Portuguese? Ah, I'm going to be late for work today."
+    assert asked_term(said) == "i'm going to be late for work today"
+    assert focus_for(said, LEXICON, Language.EN) is Language.PT_BR
+    assert asked_term("How do you say that? I don't know.") is None  # no language named: as before
+    one_piece = 'How do I say it in Portuguese: "i\'m going to be late for work today"?'
+    assert question_itself(said) == one_piece  # what the model is shown
+    garfo = 'I will have to adiar our meeting. How do I say "garfo" in English?'
+    assert question_itself(garfo) == 'How do I say "garfo" in English?'  # as before
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Actually, I'm not even going to ask you to pronounce it for me.",  # it was pronounced
+        "You don't need to pronounce it.",
+        "Não precisa pronunciar, não quero ouvir de novo.",
+    ],
+)
+def test_saying_one_will_not_ask_is_not_asking_to_hear_it(said: str) -> None:
+    assert not wants_to_hear(said)

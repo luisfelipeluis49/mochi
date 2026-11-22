@@ -1,20 +1,21 @@
-"""One-touch assistance (DECISIONS D-59): after a hint, the sentence the speaker was reaching for;
-one touch, and Mochi says it aloud."""
+"""After a hint, the sentence the speaker was reaching for is shown (DECISIONS D-59); a word
+someone asks for outright is said as it is shown, and the touch is gone (D-70)."""
 
 import json
 
 from fastapi.testclient import TestClient
 
 from mochi_backend.app import create_app
-from mochi_backend.gateway.agora.client_port import AgoraError
 from mochi_backend.intelligence.json_chat import JsonChat, JsonChatConfig
 from mochi_backend.intelligence.lexicon import Lexicon
+from mochi_backend.intelligence.model_port import ModelSuggestion
 from mochi_backend.intelligence.openai_phrase_model import OpenAiPhraseModel, parse_phrase
 from mochi_backend.intelligence.phrase_port import NullPhraseModel, PhraseAnswer, PhraseRequest
 from mochi_backend.intelligence.phrasing import Phraser
 from mochi_backend.intelligence.settings import IntelligenceSettings
-from mochi_contracts import Language, Reason, SessionMode, Speak, SuggestedPhrase
+from mochi_contracts import Hint, Language, Reason, SessionMode, Speak, SuggestedPhrase
 from tests.factories import ANA, make_context, make_hint, make_turn
+from tests.fakes.fake_hint_model import FakeHintModel
 from tests.fakes.fake_http_client import FakeHttpClient
 from tests.fakes.fake_phrase_model import FakePhraseModel
 from tests.fakes.fake_sender import FakeSender
@@ -69,48 +70,71 @@ async def test_after_a_hint_the_sentence_goes_where_the_hint_went_and_to_the_dev
     assert harness.agora.spoken == []  # nothing is said until someone asks
 
 
-async def test_one_touch_makes_mochi_say_it_once() -> None:
-    harness, _ = await _meeting()
-    [home] = await harness.connect_all(HOME)
-    hint_id = await _stuck(harness)
-    client = TestClient(create_app(harness.container))
-    said = client.post(f"/api/sessions/demo/hints/{hint_id}/say")
-    assert said.status_code == 200 and said.json() == {"said": True}
-    assert harness.agora.spoken == [("agent-1", SAID_FOR_HER)]
-    speak = [e.payload for e in home.events if isinstance(e.payload, Speak)][-1]
-    assert (speak.text, speak.language) == (SAID_FOR_HER, Language.EN)
-    assert "phrase_said" in harness.logger.names()
-    assert client.post(f"/api/sessions/demo/hints/{hint_id}/say").json() == {"said": False}
-    assert len(harness.agora.spoken) == 1  # a second touch says nothing
-
-
-async def test_a_touch_says_nothing_for_another_hint_a_stale_one_or_a_stopped_session() -> None:
+async def test_there_is_no_touch_any_more_the_sentence_is_only_shown() -> None:
+    # D-70: the touch that made Mochi say the sentence is gone, and so is its route
     harness, _ = await _meeting()
     hint_id = await _stuck(harness)
-    pipeline = harness.container.pipeline
-    assert await pipeline.say_suggestion("hint_other") is False
-    harness.clock.advance(21)  # the suggestion lives twenty seconds
-    assert await pipeline.say_suggestion(hint_id) is False
-    again = await _stuck(harness, "I forgot my, how do you say, guarda-chuva at the office.")
-    await harness.container.sessions.stop()
-    assert await pipeline.say_suggestion(again) is False
     client = TestClient(create_app(harness.container))
-    assert client.post("/api/sessions/p-9/hints/hint_1/say").json() == {"said": False}
+    assert client.post(f"/api/sessions/demo/hints/{hint_id}/say").status_code == 404
     assert harness.agora.spoken == []
 
 
-async def test_agora_failing_is_told_and_a_session_that_ended_gets_no_late_sentence() -> None:
-    harness, _ = await _meeting()
-    hint_id = await _stuck(harness)
-    harness.agora.speak_error = AgoraError("down")
-    assert await harness.container.pipeline.say_suggestion(hint_id) is False
-    assert "agora_speak_failed" in harness.logger.names()
+async def test_a_session_that_ended_gets_no_late_sentence() -> None:
     late, _ = await _meeting()
     [ana] = await late.connect_all(ANA_PHONE)
     await late.say(STUCK)
     await late.container.sessions.stop()  # before the sentence was written
     await late.container.pipeline.settle()
     assert _phrases(ana) == [] and "phrase_suggested" not in late.logger.names()
+
+
+SAY_ASKED = {"MOCHI_SAY_ASKED_WORDS": "true", "MODEL_API_KEY": "sk-test"}
+
+
+async def _asking(model: FakeHintModel | None = None) -> Harness:
+    harness = make_harness(env=SAY_ASKED, model=model, phrases=FakePhraseModel(SAID_FOR_HER))
+    await harness.container.sessions.start()
+    return harness
+
+
+async def test_a_word_someone_asks_for_is_said_as_it_is_shown() -> None:
+    # D-70: "como se diz X?" gets the word on the screen and in Mochi's voice, with no touch
+    harness = await _asking()
+    [home] = await harness.connect_all(HOME)
+    outcome = await harness.say("How do you say guarda-chuva?")
+    assert outcome.reply == "umbrella. umbrella."
+    assert [e.payload.expression for e in home.events if isinstance(e.payload, Hint)] == [
+        "umbrella"
+    ]
+    spoken = [e.payload for e in home.events if isinstance(e.payload, Speak)][-1]
+    assert (spoken.text, spoken.language) == ("umbrella. umbrella.", Language.EN)
+    await harness.container.pipeline.settle()
+    assert _phrases(home) == []  # it was said already: no sentence is suggested after it
+
+
+async def test_a_word_nobody_asked_for_and_a_question_to_a_colleague_stay_silent() -> None:
+    harness = await _asking()
+    assert (await harness.say("I need to adiar my meeting tomorrow.")).reply == ""  # a code switch
+    harness.clock.advance(30)
+    assert (await harness.say("Ben, como se diz recibo?")).reply == ""  # Ben was asked, by name
+    quiet = make_harness()  # the switch off: as before
+    await quiet.container.sessions.start()
+    assert (await quiet.say("How do you say guarda-chuva?")).reply == ""
+
+
+async def test_a_whole_sentence_someone_asks_for_is_said_once() -> None:
+    answer = ModelSuggestion(
+        decision="SHOW_HINT",
+        reason=Reason.SAYS_UNKNOWN,
+        expression="Vou terminar meu trabalho amanhã",
+        meaning="I will finish my work tomorrow",
+        confidence=0.9,
+        expression_language="pt-BR",
+        meaning_language="en",
+    )
+    harness = await _asking(FakeHintModel(answer))
+    asked = 'Hum, how do I say in Portuguese, uh, "I will finish my work tomorrow"?'
+    assert (await harness.say(asked)).reply == "Vou terminar meu trabalho amanhã."
 
 
 async def test_no_sentence_when_there_is_nothing_to_say_or_it_is_switched_off() -> None:

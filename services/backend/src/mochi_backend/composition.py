@@ -154,6 +154,7 @@ def _brain_for(
         explain_terms=settings.mochi_explain_terms,
         suggest_phrases=settings.mochi_suggest_phrases,
         speak_for_me=settings.mochi_speak_for_me,
+        say_asked_words=settings.mochi_say_asked_words,
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
     brain.keep_words_in(MemoryStore(start.events, StorageEventSink(start.storage)))
@@ -319,11 +320,10 @@ def _core(
     )
 
 
-def _one_touch(settings: Settings, core: GatewayCore, agora: AgoraAgentClient) -> OneTouch:
-    """The sentence someone was reaching for, and the touch that has Mochi say it (D-59)."""
+def _one_touch(settings: Settings, core: GatewayCore) -> OneTouch:
+    """The sentence someone was reaching for, shown after their hint (D-59; no touch since D-70)."""
     return OneTouch(
         core,
-        agora,
         enabled=settings.mochi_suggest_phrases,
         ttl_seconds=settings.mochi_suggestion_ttl_seconds,
     )
@@ -390,7 +390,7 @@ def _runtime(
     """One session's parts. The demo session uses the main brain; another gets its own."""
     config = _session_config(settings).for_session(session_id)
     core = _core(settings, adapters, hub, _brain_of(session_id, adapters), people)
-    touch = _one_touch(settings, core, adapters.agora)
+    touch = _one_touch(settings, core)
     pipeline = _pipeline(settings, core, people.voices, touch)
     after = _after_session(settings, adapters, core, people)
     after.saving_with(pipeline.save_learning_events)

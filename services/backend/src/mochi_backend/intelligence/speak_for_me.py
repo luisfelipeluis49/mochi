@@ -40,6 +40,14 @@ _ON = re.compile(
     r"|\bfal[ae]r?\s+por\s+(?:mim|nos|(?:a\s+)?gente)\b|\btraduz\w*\s+(?:pra|para)\s+(?:mim|nos|(?:a\s+)?gente)\b"
     r"|\bseja\s+(?:a\s+minha\s+voz|(?:o\s+)?(?:meu|nosso)\s+interprete)\b"
 )
+# "Mochi, você pode traduzir?", "Mochi, can you translate?": the verb and nothing to translate
+# after it. Seen live (D-70): that is how it was asked, and nothing happened. "Mochi, can you
+# translate fila?" asks for a word.
+_ON_BARE = re.compile(
+    r"\b(?:translate|interpret|traduz(?:ir|a|e)?|interpretar?)"
+    r"(?:[\s,]+(?:please|now|everything|the\s+(?:meeting|conversation)|por\s+favor|agora|tudo"
+    r"|a\s+(?:reuniao|conversa)))*\s*(?:[.!?]|$)"
+)
 # Not asking: "Mochi, don't translate for us", "não precisa falar por mim", "I asked Mochi to
 # speak for me yesterday". With the words that turn it on, these mean stop, or nothing.
 _NOT_ASKING = re.compile(
@@ -109,6 +117,12 @@ def _worth_saying(answer: Interpretation | None, heard: str) -> str | None:
     return None if normalized(sentence) == normalized(heard) else sentence
 
 
+def _just_called(context: SessionContext) -> bool:
+    """True when the sentence before this one had Mochi's name in it."""
+    before = context.recent_turns[-1].text if context.recent_turns else ""
+    return says_mochi(before) or has_wake_phrase(before)
+
+
 def _silent() -> Decision:
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
 
@@ -154,17 +168,21 @@ class SpeakForMe:
             return _silent()  # its own voice, heard by a microphone: not a command, not a sentence
         low = folded(turn.text)
         named = says_mochi(turn.text) or has_wake_phrase(turn.text)
-        command = self._command(turn, low, named)
+        command = self._command(turn, low, named, _just_called(context))
         if command is not None or not self._on or named:
             return command  # a sentence for Mochi is answered, not translated
         return await self._in_the_other_language(turn, context)
 
-    def _command(self, turn: Turn, low: str, named: bool) -> Decision | None:
+    def _command(self, turn: Turn, low: str, named: bool, called: bool) -> Decision | None:
         """What this turn does to the mode. Off is looked for first: "para de falar por mim"
-        holds the words that turn it on, and so does "don't translate for us"."""
-        asks = named and _ON.search(low) is not None
+        holds the words that turn it on, and so does "don't translate for us". `called`: the
+        sentence before this one was for Mochi ("Mochi, pode traduzir?" "Traduzir pra gente?")."""
+        asks = (named or called) and _ON.search(low) is not None
+        asks = asks or (named and _ON_BARE.search(low) is not None)
         if self._stops(low, named) or (asks and _NOT_ASKING.search(low)):
             return self._turn_off(turn) if self._on else None
+        if asks and self._on and not named:
+            return _silent()  # "Traduzir pra gente?" after it said yes: asked and answered
         return self._turn_on(turn) if asks else None
 
     @staticmethod
@@ -224,4 +242,5 @@ class SpeakForMe:
             return None
         target = language_named(answer.language) or request.target
         self._last = other_language(target)
-        return self._says(sentence, target)
+        # the tag puts the sentence on Mochi's screen while it is said (`device_commands`)
+        return self._says(f"[translation {target.value}] {sentence}", target)
