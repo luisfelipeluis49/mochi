@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
 from mochi_backend.gateway.event_hub import EventHub
+from mochi_backend.gateway.guest_reown import hand_guest_words_to_person
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.prompt_echo import without_prompt_echo
@@ -29,6 +30,7 @@ from mochi_contracts import (
     EventType,
     GameState,
     Hint,
+    Language,
     LearningEvent,
     LearningState,
     SessionContext,
@@ -334,7 +336,12 @@ class TurnPipeline:
             return silent_decision()
         millis = (self._clock.now() - started).total_seconds() * 1000
         self._log_decision(turn, decision, millis)
-        return decision
+        return hand_guest_words_to_person(decision, self._store.user_id, self._practised())
+
+    def _practised(self) -> Language | None:
+        """What the person of this web session is learning (None when the session has no person)."""
+        mine = [p for p in self._store.participants if p.user_id == self._store.user_id]
+        return mine[0].target_language if mine else None
 
     def _log_decision(self, turn: Turn, decision: Decision, millis: float) -> None:
         hint = decision.hint

@@ -882,3 +882,53 @@ made by a second builder, in its own commits, against the same written contract.
   Papear should answer to its own name is a decision for Kauê and the team.
 - **Not built.** A company account (several people, an admin view, team totals) needs sign-in; today anyone who knows a
   user id can read that person's words (D-42). The digest is per person, not per team.
+
+## D-44: in a web session, words the guest would learn go to the person, swapped (2026-11-22)
+
+**Why.** Render logs of a real session showed why Training stayed empty. The person (Portuguese at home, learning
+English) said "tênis" inside an English sentence and the hint model produced `tênis (sneakers)`. The whose-word rule
+(AGENTS 7.3) gives a word to the one participant learning the language of the sentence, and in a web session that was
+the invented `guest` (the opposite languages, D-42). The card and its learning event were saved for the guest, so the
+person's Training, My words and screen never saw them. Assigning the pair to the person as it was would teach them
+`tênis`, which they know.
+- **Rule (`gateway/guest_reown.py`, applied to every decision of a session that has a person):** a hint or learning
+  event owned by `guest` becomes the person's with the two sides swapped: the word they are missing in the language
+  they practise (`sneakers`) with what they said as its meaning (`tênis`), `target_language` = their target language,
+  the example (written in the other language) removed. With no meaning it cannot be swapped and is dropped. Owners
+  other than the guest are untouched. The Pi's `demo` session has no person and is unchanged.
+- **Not changed:** `intelligence/` (the whose-word rule, the hint model, the character).
+- **Still not covered, and what Training is meant to be:** "words, contexts and phrases you had a hard time saying or
+  understanding". Today only hints become learning events. In Praticar, Papear's own answer to "how do I say my
+  sneakers are nice?" (a phrase) is spoken and saved nowhere, so a person who only chats with Papear still has an empty
+  Training. Saving those phrases needs the character reply to carry a structured "save this phrase"; that is the next
+  step and a change in `intelligence/`.
+
+## D-45: phrases Papear teaches become Training material (2026-11-22)
+
+**Why.** Training is meant to hold what a person had a hard time saying or understanding, often a whole phrase
+("how do I say my sneakers are nice?"). Only hints became learning events, so a person who just chats with Papear
+(`SPEAK`, no hint) had an empty Training even after D-44.
+- **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: TEXT | MEANING]`: a word,
+  phrase or sentence the person needed (asked how to say it, did not know it, or got it wrong), in the language they
+  learn, with its meaning in their own, at most twelve words, written next to the line it speaks. It is used for single
+  words too, because `[show WORD]` only draws on the device face and saves nothing. The gateway already strips every bracket before speech (`split_commands`, `SpokenRelease`), so it is never
+  said. `intelligence/saved_phrase.py` (`PhraseSaver`) reads it from the spoken line in `DecisionFlow.run` and adds a
+  DISCOVERED `LearningEvent` (`detection_signal: asks_mochi`, `hint_id: null`) for the one participant learning the
+  phrase's language (AGENTS 7.3). At most two per line; the same phrase is not saved twice; a line with no tag, or
+  no speech, changes nothing. In a web session a phrase in the wrong language lands on the guest and D-44 swaps it.
+- **Contracts.** No new event, field or enum: a phrase is a `LearningEvent` whose `expression` has several words.
+  Training, My words and the digest show it as they show a word.
+- **Unverified.** The tag is only as good as the model's habit of writing it. It was tested with a scripted character
+  (`FakeCharacterModel`), never with the live `gpt-5.4-mini`. Watch the `decision` and `learning_event` log lines of a
+  real session after deploy; if the model forgets the tag, the prompt wording is the first thing to change.
+- **Not built.** Phrases the person said badly (grammar feedback is out of scope, AGENTS 8) and sentences the person
+  did not understand when the partner spoke them; both need the character or the hint model to name the phrase.
+- **Seen live (a 10.4 minute web chat, 2026-11-22):** about 60 turns, every one answered by the character (`SPEAK`,
+  no hint): words the person pretended not to know (`portão de ferro`, `apartamento`, `prédio`, `pé direito`) and
+  corrections of past and future sentences (`Eu fui ao parque ontem`, `eu vou comer croissant amanhã`). Nothing was
+  saved, because a woken session sends every sentence to the character and the hint path is skipped, and nothing the
+  character says was stored. That is what this entry fixes, if the model writes the tag.
+- **Open:** the person switched between practising English and Portuguese inside one session while the profile has one
+  target language. A phrase in the language that is not their profile target is swapped by D-44 into the profile
+  target, which is wrong for someone pretending to learn the other language. A per-session choice of language is a
+  product decision.

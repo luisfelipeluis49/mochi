@@ -9,6 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.client_port import AgoraError
 from mochi_backend.intelligence.word_owner import owner_for
+from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_storage import FakeStorage
 from tests.harness import Harness, make_harness
 
@@ -250,3 +251,55 @@ def test_guest_and_unknown_users_cannot_connect(user: str) -> None:
         socket.receive_text()
     assert closed.value.code == 4400
     assert "user=ana|ben|<user_id>" in closed.value.reason
+
+
+def test_a_word_the_guest_would_own_reaches_the_person_in_the_language_they_practise() -> None:
+    # Sam is at home in English and practises Portuguese, and says "adiar" in an English sentence.
+    # The rules give "postpone (adiar)" to the guest, who is nobody. Sam needs "adiar" (what Sam is
+    # learning), with "postpone" as its meaning (D-44).
+    client, harness = _client()
+    sam = _new_user(client, "Sam", comfortable_language="en", target_language="pt-BR")
+    client.post(f"/api/sessions/{WEB}/start", json={"user_id": sam})
+    client.post(f"/dev/sessions/{WEB}/turn", json={"text": ADIAR})
+    shown = harness.container.registry.runtime(WEB).core.live_hint.current
+    assert shown is not None and shown.target_user_id == sam
+    assert (shown.expression, shown.meaning, shown.target_language.value) == (
+        "adiar",
+        "postpone",
+        "pt-BR",
+    )
+    [word] = client.get(f"/api/users/{sam}/words").json()
+    assert (word["expression"], word["meaning"], word["target_language"]) == (
+        "adiar",
+        "postpone",
+        "pt-BR",
+    )
+    assert client.get("/api/users/ana/words").json() == []
+
+
+def test_a_phrase_papear_teaches_becomes_something_to_practise() -> None:
+    # The person asks how to say a phrase; Papear answers with it and tags it, silently (D-45).
+    line = (
+        "[mood happy] You can say: my sneakers are nice."
+        "[phrase: my sneakers are nice | meus tênis são bonitos] Now try it about your own shoes."
+    )
+    harness = make_harness(env=_DEV, character=FakeCharacterModel(line))
+    client = TestClient(create_app(harness.container))
+    luis = _new_user(client, "Luis")
+    _start(client, WEB, luis)
+    turn = client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "Como é que eu falo que meus tênis são bonitos?"}
+    ).json()
+    assert "[" not in turn["reply"] and "phrase" not in turn["reply"]  # never spoken
+    [saved] = client.get(f"/api/users/{luis}/words").json()
+    assert saved["expression"] == "my sneakers are nice"
+    assert (saved["meaning"], saved["target_language"], saved["hint_id"]) == (
+        "meus tênis são bonitos",
+        "en",
+        None,
+    )
+    assert saved["learning_state"] == "DISCOVERED" and saved["detection_signal"] == "asks_mochi"
+    client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "Como é que eu falo que meus tênis são bonitos?"}
+    )
+    assert len(client.get(f"/api/users/{luis}/words").json()) == 1  # said twice: one card

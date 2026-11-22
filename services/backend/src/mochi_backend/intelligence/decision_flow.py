@@ -47,6 +47,7 @@ from mochi_backend.intelligence.quiet_rules import (
     lasting_quiet_reason,
     round_is_active,
 )
+from mochi_backend.intelligence.saved_phrase import PhraseSaver
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
@@ -155,6 +156,9 @@ class DecisionFlow:
         self._cooldown = settings.hint_cooldown
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
+        self._phrases = PhraseSaver(
+            factory, lambda text, fallback: focus_for(text, lexicon, fallback)
+        )
 
     async def run(
         self, turn: Turn, context: SessionContext, sink: TextSink | None = None
@@ -164,7 +168,7 @@ class DecisionFlow:
         `sink`: Mochi's free-chat line may be passed on while it is written (D-37).
         """
         assisted = assisted_updates(turn, context, self._clock, self._ttl)
-        decision = await self._decide(turn, context, sink)
+        decision = self._phrases.add_to(await self._decide(turn, context, sink), context)
         return decision.model_copy(
             update={"learning_events": [*decision.learning_events, *assisted]}
         )
