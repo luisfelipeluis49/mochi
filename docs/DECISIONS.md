@@ -902,3 +902,23 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   sneakers are nice?" (a phrase) is spoken and saved nowhere, so a person who only chats with Papear still has an empty
   Training. Saving those phrases needs the character reply to carry a structured "save this phrase"; that is the next
   step and a change in `intelligence/`.
+
+## D-45: phrases Papear teaches become Training material (2026-11-22)
+
+**Why.** Training is meant to hold what a person had a hard time saying or understanding, often a whole phrase
+("how do I say my sneakers are nice?"). Only hints became learning events, so a person who just chats with Papear
+(`SPEAK`, no hint) had an empty Training even after D-44.
+- **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: PHRASE | MEANING]`: the
+  phrase in the language the person learns, its meaning in their own, at most twelve words, written next to the line it
+  speaks. The gateway already strips every bracket before speech (`split_commands`, `SpokenRelease`), so it is never
+  said. `intelligence/saved_phrase.py` (`PhraseSaver`) reads it from the spoken line in `DecisionFlow.run` and adds a
+  DISCOVERED `LearningEvent` (`detection_signal: asks_mochi`, `hint_id: null`) for the one participant learning the
+  phrase's language (AGENTS 7.3). At most two per line; the same phrase is not saved twice; a line with no tag, or
+  no speech, changes nothing. In a web session a phrase in the wrong language lands on the guest and D-44 swaps it.
+- **Contracts.** No new event, field or enum: a phrase is a `LearningEvent` whose `expression` has several words.
+  Training, My words and the digest show it as they show a word.
+- **Unverified.** The tag is only as good as the model's habit of writing it. It was tested with a scripted character
+  (`FakeCharacterModel`), never with the live `gpt-5.4-mini`. Watch the `decision` and `learning_event` log lines of a
+  real session after deploy; if the model forgets the tag, the prompt wording is the first thing to change.
+- **Not built.** Phrases the person said badly (grammar feedback is out of scope, AGENTS 8) and sentences the person
+  did not understand when the partner spoke them; both need the character or the hint model to name the phrase.
