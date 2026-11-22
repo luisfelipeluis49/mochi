@@ -152,6 +152,7 @@ def _brain_for(
         hint_cooldown=settings.mochi_hint_cooldown,
         explain_terms=settings.mochi_explain_terms,
         suggest_phrases=settings.mochi_suggest_phrases,
+        speak_for_me=settings.mochi_speak_for_me,
     )
     brain = Intelligence(clock=clock, ids=ids, model=_model_for(settings, logger), settings=tuning)
     brain.keep_words_in(MemoryStore(start.events, StorageEventSink(start.storage)))

@@ -1,7 +1,7 @@
 // How a session listens (D-46), the same two ways the Pi works:
-//   listen: a quiet listener. Papear shows hints, speaks only when asked, or to explain an idiom
+//   listen: a quiet listener. Mochi shows hints, speaks only when asked, or to explain an idiom
 //           or a wrong expression. Start sends no wake phrase.
-//   talk:   a conversation. Papear talks with you (Praticar). Start sends the wake phrase.
+//   talk:   a conversation. Mochi talks with you (Praticar). Start sends the wake phrase.
 // The choice is remembered on this device.
 
 import { type KV, localStore, safeGet, safeSet } from "./storage.ts";

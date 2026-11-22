@@ -1,6 +1,6 @@
-// Papear's presence panel: a sober status card with the monogram, a plain-words state and a live
+// Mochi's presence panel: a sober status card with the monogram, a plain-words state and a live
 // audio meter. It replaces the cartoon face of the Pi's screen on the web. The state still comes from
-// lib/face.ts (the same modes as the device); the meter follows Papear's voice while it speaks and
+// lib/face.ts (the same modes as the device); the meter follows Mochi's voice while it speaks and
 // shows a low idle line otherwise. No animation runs under prefers-reduced-motion (styles/app.css).
 
 import type { FaceView } from "../lib/face.ts";
@@ -10,7 +10,7 @@ import { Icon } from "./Icons.tsx";
 export interface FaceProps {
   lang: UiLang;
   view: FaceView;
-  /** Papear's voice loudness 0..1 (the meter moves while speaking) */
+  /** Mochi's voice loudness 0..1 (the meter moves while speaking) */
   level?: number;
 }
 
@@ -31,7 +31,7 @@ export function Face({ lang, view, level = 0 }: FaceProps) {
   return (
     <div className={cls} role="img" aria-label={label}>
       <div className="presence-head" aria-hidden="true">
-        <span className="monogram">P</span>
+        <span className="monogram">M</span>
         <span className="presence-state">{label}</span>
         {view.pop && <span className="presence-pop"><Icon name="speaker" size={16} />{view.pop.value}</span>}
       </div>

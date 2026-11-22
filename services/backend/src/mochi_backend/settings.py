@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     # Mochi says it aloud (D-59). One small model call per hint; needs MODEL_API_KEY.
     mochi_suggest_phrases: bool = True
     mochi_suggestion_ttl_seconds: float = 20.0  # how long the touch works after the suggestion
+    # "Mochi, speak for me": a person with a registered voice talks in their own language and
+    # Mochi says each sentence aloud in the meeting's (D-64). One model call per such sentence.
+    mochi_speak_for_me: bool = True
     mochi_report_model_name: str = ""  # empty: MOCHI_MODEL_NAME
     mochi_report_reasoning_effort: str = ""  # empty: "low" where the hint judge has a setting
     mochi_report_timeout_seconds: float = 60.0

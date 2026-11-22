@@ -10,6 +10,7 @@ from mochi_backend.gateway.turn_pipeline import TurnOutcome
 from mochi_backend.intelligence.character_port import CharacterModel
 from mochi_backend.intelligence.coach_port import CoachModel
 from mochi_backend.intelligence.explain_port import ExplainModel
+from mochi_backend.intelligence.interpret_port import InterpretModel
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.phrase_port import PhraseModel
 from mochi_backend.intelligence.service import Intelligence
@@ -67,13 +68,13 @@ def _brain(
     ids: SequentialIdGenerator,
     model: FakeHintModel | None,
     character: CharacterModel | None,
-    hint_ttl_seconds: float,
+    tuning: IntelligenceSettings,
 ) -> Intelligence:
     brain = Intelligence(
         clock=clock,
         ids=ids,
         model=model or FakeHintModel(),
-        settings=IntelligenceSettings(hint_ttl_seconds, 2.0),
+        settings=tuning,
     )
     if character is not None:
         brain.speak_as(character)
@@ -91,12 +92,13 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     explains: ExplainModel | None = None,
     coach: CoachModel | None = None,
     phrases: PhraseModel | None = None,
+    interprets: InterpretModel | None = None,
 ) -> Harness:
     """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY).
 
     `character`: Mochi's scripted own lines (without one it keeps its fixed lines).
     `explains`, `coach` and `phrases`: the scripted models that explain an idiom, write a
-    report and suggest the sentence someone was reaching for.
+    report, suggest the sentence someone was reaching for and speak for someone.
     """
     # The live transcript is off here unless a test asks for it: with it every sentence adds an
     # event and a device caption, and most tests count exactly what one feature publishes.
@@ -106,12 +108,20 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     kept = storage or NullStorage()
     ttl = settings.mochi_hint_ttl_seconds
     start = StorageStart.read(kept, "memory")
-    brain = intelligence or _brain(clock, ids, model, character, ttl)
+    tuning = IntelligenceSettings(
+        hint_ttl_seconds=ttl,
+        model_timeout_seconds=2.0,
+        explain_terms=settings.mochi_explain_terms,
+        suggest_phrases=settings.mochi_suggest_phrases,
+        speak_for_me=settings.mochi_speak_for_me,
+    )
+    brain = intelligence or _brain(clock, ids, model, character, tuning)
     if isinstance(brain, Intelligence):
         brain.keep_words_in(MemoryStore(start.events, StorageEventSink(kept)))
         _ = explains and brain.explain_with(explains)  # type: ignore[func-returns-value]
         _ = coach and brain.coach_with(coach)  # type: ignore[func-returns-value]
         _ = phrases and brain.phrase_with(phrases)  # type: ignore[func-returns-value]
+        _ = interprets and brain.interpret_with(interprets)  # type: ignore[func-returns-value]
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()

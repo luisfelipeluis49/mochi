@@ -57,7 +57,7 @@ services:
       - key: MOCHI_ASR_LEXICON_WORDS
         value: "true" # ARES hears adiar and guarda-chuva inside English only when they are named (D-40); the D-36 risk is open
       - key: MOCHI_INTERRUPTION
-        value: append # Mochi finishes its answer before the next sentence gets its turn (D-38)
+        value: "" # Agora's default, on the Pi too (D-67): a sentence said while Mochi thinks drops the answer under way. "append" (D-38, D-40) made Mochi finish it first. Needs MOCHI_CANCEL_STALE_TURNS below.
       - key: MOCHI_ASR_KEYWORDS
         value: '["Mochi","Oi Mochi","guarda chuva","saca rolhas"]'
       - key: MOCHI_ASR_CREDENTIAL_MODE

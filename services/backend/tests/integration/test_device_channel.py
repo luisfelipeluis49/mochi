@@ -205,7 +205,8 @@ def test_woken_by_its_wake_phrase_mochi_greets_in_that_language_and_the_meeting_
     assert harness.agora.started[1].greeting.startswith("Hi! I'm listening.")
 
 
-def test_vamos_papear_is_greeted_in_portuguese_and_lets_chat_in_english() -> None:
+def test_a_phrase_without_the_name_is_greeted_in_its_own_language() -> None:
+    # not the shipped wake phrases since D-65, but a device may still be configured with them
     harness = make_harness()
     client = TestClient(create_app(harness.container))
     for phrase, opening in (

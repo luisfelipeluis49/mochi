@@ -60,7 +60,7 @@ class SessionStatus(StrEnum):
 
 
 class SessionMode(StrEnum):
-    """The two kinds of session (Papear, v0.7).
+    """The two kinds of session (v0.7).
 
     `meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is
     stuck and speaks only when asked. `review`: one person goes over their saved words with Mochi

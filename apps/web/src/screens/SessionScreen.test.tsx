@@ -18,15 +18,15 @@ function props(over: Partial<SessionScreenProps> = {}): SessionScreenProps {
   };
 }
 
-test("idle: the Start label and the Oi, Papear line", () => {
+test("idle: the Start label and the Oi, Mochi line", () => {
   const html = renderToString(<SessionScreen {...props()} />);
   assert.ok(html.includes("Start session"));
-  assert.ok(html.includes("Papear listens through your microphone only while a session runs."));
+  assert.ok(html.includes("Mochi listens through your microphone only while a session runs."));
   assert.ok(html.includes("Asleep"));
   assert.match(html, /mode-sleeping/);
   assert.ok(!html.includes("Stop session"));
   const pt = renderToString(<SessionScreen {...props({ lang: "pt-BR" })} />);
-  assert.ok(pt.includes("Começar sessão") && pt.includes("O Papear só ouve pelo seu microfone enquanto uma sessão está ativa."));
+  assert.ok(pt.includes("Começar sessão") && pt.includes("O Mochi só ouve pelo seu microfone enquanto uma sessão está ativa."));
 });
 
 test("capturing with a hint: the expression, the note, lang, aria-live, Stop and the timer", () => {
@@ -74,9 +74,9 @@ test("speech bubble while capturing", () => {
   assert.ok(html.includes("You can say: queue."));
 });
 
-test("before Start the person chooses how Papear listens; the choice is shown and checked", () => {
+test("before Start the person chooses how Mochi listens; the choice is shown and checked", () => {
   const quiet = renderToString(<SessionScreen {...props()} />);
-  assert.ok(quiet.includes("How should Papear listen?") && quiet.includes("Quiet listener") && quiet.includes("Conversation"));
+  assert.ok(quiet.includes("How should Mochi listen?") && quiet.includes("Quiet listener") && quiet.includes("Conversation"));
   assert.match(quiet, /name="session-mode"[^>]*value="listen"[^>]*checked=""|checked=""[^>]*value="listen"/);
   assert.match(renderToString(<SessionScreen {...props({ mode: "talk" })} />), /value="talk"[^>]*checked=""|checked=""[^>]*value="talk"/);
   const pt = renderToString(<SessionScreen {...props({ lang: "pt-BR" })} />);

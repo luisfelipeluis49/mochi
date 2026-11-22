@@ -45,6 +45,38 @@ async def test_a_newer_request_cancels_the_older_decide_and_covers_its_speech() 
     assert whys == ["superseded"]
 
 
+ASKED = "Oi Mochi, what's the word for fila?"
+
+
+async def _interrupted_while_thinking(then: str) -> tuple[Harness, str]:
+    """The Pi's meeting as deployed since D-67: Agora's default interruption, stale turns
+    cancelled. Someone asks Mochi a word and `then` is said before Mochi has answered: Agora
+    hangs up on the question and sends both sentences as one message. Returns Mochi's reply."""
+    harness = await _started(ON)
+    assert harness.gate is not None
+    assert harness.agora.started[0].tuning.interruption == ""  # nothing asks Agora for "append"
+    pipeline = harness.container.pipeline
+    question = asyncio.create_task(pipeline.handle_heard(ASKED, 0))
+    await harness.gate.entered.wait()
+    both = asyncio.create_task(pipeline.handle_heard(f"{ASKED}  {then}", 0))
+    dropped = await question
+    assert dropped.stale and dropped.reply == ""  # the answer under way is never spoken
+    harness.gate.gate.set()
+    return harness, (await both).reply
+
+
+async def test_on_the_pi_a_correction_while_mochi_thinks_gets_the_only_answer() -> None:
+    harness, reply = await _interrupted_while_thinking("Sorry, how do you say recibo?")
+    assert reply == "You can say: receipt."  # not "queue" first and "receipt" after it
+    assert len(harness.container.core.store.turns) == 1
+
+
+async def test_on_the_pi_a_colleague_talking_meanwhile_does_not_lose_the_answer() -> None:
+    harness, reply = await _interrupted_while_thinking("Yeah, okay.")
+    assert reply == "You can say: queue."  # D-38's lost answer: the question is read again
+    assert len(harness.container.core.store.turns) == 1
+
+
 async def test_flag_off_keeps_todays_order_both_turns_decided() -> None:
     harness = await _started(None)
     assert harness.gate is not None

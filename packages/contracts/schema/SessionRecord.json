@@ -1,7 +1,7 @@
 {
   "$defs": {
     "SessionMode": {
-      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
+      "description": "The two kinds of session (v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
       "enum": [
         "meeting",
         "review"

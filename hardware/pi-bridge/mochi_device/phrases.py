@@ -1,12 +1,13 @@
-"""Decides whether a string of recognised speech sounds is someone starting a session ("vamos
-papear", "let's chat") or leaving Mochi ("tchau Mochi").
+"""Decides whether a string of recognised speech sounds is someone starting a session ("oi Mochi",
+"hey Mochi") or leaving Mochi ("tchau Mochi").
 
-The recogniser (see wakeword.py) writes what it hears as phones, not words, so "vamos papear" arrives
-as something like "vamuspapia" and "tchau Mochi" as "tSaumɔtɕi" whichever language was spoken. Here
+The recogniser (see wakeword.py) writes what it hears as phones, not words, so "oi Mochi" arrives
+as something like "ojmɔtɕi" and "tchau Mochi" as "tSaumɔtɕi" whichever language was spoken. Here
 both the heard phones and the configured phrases are folded onto a small alphabet (fold), and a
-phrase counts as heard when its last word, the anchor, is found (weighted edit distance, so "papea"
-and "papier" still count) with its cue words right in front of it. A phrase that has the name
-("mochi") in it is anchored on the name, wherever it stands; any other on its last word.
+phrase counts as heard when its anchor is found (weighted edit distance, so "moshi" and "motchi"
+still count) with its cue words right in front of it. A phrase that has the name ("mochi") in it is
+anchored on the name, wherever it stands; any other on its last word (a phrase without the name,
+such as "vamos papear" or "let's chat", works when it is put in the config).
 
 Folded alphabet: vowels a e i o u ə   consonants b d f g h k l m n p r s t v z, S (sh), Z (zh),
 T / D (th).
@@ -46,7 +47,8 @@ SOUNDS = {
     "e": ["i"], "ai": ["ai"], "bom": ["bo"], "dia": ["dZia"],
     "bye": ["bai"], "goodbye": ["gudbai"], "adeus": ["adeus"], "ate": ["ate"], "logo": ["logu"],
     "tchau": ["tSau", "tSiau", "tSia"],  # "tchau mochi" runs together as "tSianmotSi"
-    # "vamos papear" / "let's chat" (2026-11-22), as the recogniser wrote 450 spoken clips: "vamos"
+    # "vamos papear" / "let's chat" (the wake phrases of D-48; not in the default config since
+    # D-65, kept so they work when configured), as the recogniser wrote 450 spoken clips: "vamos"
     # loses its s ("vamo papear"); the final r of "papear" is rarely
     # there, its e is as often an i, and its second p is now and then a t. The first sound of an
     # utterance is the least reliable one: the v of "vamos" came back as b, d, z, l or not at all,
@@ -110,7 +112,7 @@ class PhraseMatcher:
     def __init__(self, groups: dict[str, list[str]], name: str = "mochi", sounds: dict[str, list[str]] | None = None,
                  name_tolerance: float = 0.45, cue_tolerance: float = 0.3, ignore: list[str] | None = None,
                  careful: tuple[str, ...] = ("goodbye",), costs: Costs | None = None):
-        """groups: {"wake": ["vamos papear", "let's chat"], "goodbye": ["tchau mochi", ...]}. A phrase
+        """groups: {"wake": ["oi mochi", "hey mochi"], "goodbye": ["tchau mochi", ...]}. A phrase
         is its anchor (the name when the phrase has it, else its last word) and the cue words before it.
 
         name_tolerance: how loosely an anchor may be said (edit cost; 0 = exactly as in SOUNDS).

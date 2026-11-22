@@ -1685,7 +1685,104 @@ gone and must not leave a dead writer behind (same reason as `write_behind.py`).
 (publishes, notes, transcript line). No text. Compare it with `arrived_to_decided_ms` and
 `reply_first_byte` to see what this process spends after `decide()`.
 
-## D-64: three smaller backend performance changes (2026-11-22)
+## D-64: speak for me: Mochi says a person's sentences in the meeting's language (2026-11-22)
+
+**Asked** (Suhuai, from the team's product notes): a person says "Hey Mochi, speak for me" (their voice
+must be registered); then they talk in their own language and Mochi translates and says each sentence in
+English, while they go on following the others in the transcript; a voice command turns it off.
+
+**Proposed, built** (AGENTS 7.9), entirely inside `decide()`: `intelligence/speak_for_me.py` holds who Mochi
+speaks for and is asked before everything else; a sentence to say comes back as an ordinary `SPEAK`
+decision, so the gateway, the device and the contracts are unchanged (no new event, route, enum value or
+port method). The sentence is written by one model call (`openai_interpret_model.py`), within the two
+seconds every decision has.
+
+- **On** needs Mochi's name, the words ("speak for me", "talk for me", "fala por mim", "falar por mim"),
+  and a voice the device recognised on that sentence. An unknown voice is told to register first.
+- **What is said:** the person's sentences in the language they are at home in. Their sentences in the
+  meeting's language go through the usual rules; a sentence with Mochi's name in it is for Mochi.
+- **Off:** "Mochi, stop", "Mochi, pode parar", "Mochi, chega", "stop speaking for me", "para de falar por
+  mim", "Mochi, I'll speak myself"; and every new session starts with it off.
+- **A voice the device could not name:** when Mochi speaks for exactly one person, a sentence in that
+  person's language is taken as theirs (in an English meeting nobody else says whole Portuguese
+  sentences); an unnamed voice saying stop turns it off for everyone.
+
+**Tried.** The model's instructions on ten written sentences (`gpt-5.4-mini`, no thinking): seven said
+naturally in the other language, both ways round, and NOTHING for a filler, a sentence already in the
+meeting's language and one addressed to Mochi; 0.8 s on average. Then three real sessions on the Pi's own
+backend (real Agora, recogniser and model; spoken clips; the device's voice reports sent as the Pi's
+tracker would send them):
+
+- "Hey Mochi, speak for me" → confirmed; "A gente precisa adiar o lançamento para a semana que vem." →
+  Mochi: "We need to postpone the launch until next week."; "Porque a gente ainda precisa destravar a
+  autenticação." → "Because we still need to unblock authentication."; Ana's own "I agree with that plan."
+  and Ben's question were left alone. The model took 0.6 to 1.0 s per sentence.
+- **Two things the sessions found.** "Mochi, para de falar por mim" contains the words that turn the mode
+  ON and did so: off is now looked for first. And the recogniser wrote the same clip as "Mochi, pode
+  falar por mim" in the next run, which asks for the opposite, and wrote a Brazilian-accented "Mochi,
+  stop" as "Mochi está". So Mochi now teaches the short way out in the person's own language ("Mochi,
+  pode parar", which was understood and turned it off), and the long phrases are only also accepted.
+
+**After a review before the merge (same day):** the short stop words ("stop", "pode parar", "chega", "eu
+falo") count only as the last thing said in a sentence with Mochi's name: "Mochi, como eu falo fila em
+inglês?" and "Mochi, quando chega o relatório?" turned the mode off. From the person Mochi speaks for, the
+stop phrase alone is enough when the name was misheard ("Moji, pode parar"). A stop in a voice the device
+took for a colleague's stops it for everyone, as an unnamed voice already did (it was ignored, with nothing
+said). A demo reset clears the mode, and the model's connection is opened when the session starts.
+
+**Open:**
+- **With Agora's default interruption (D-67) a translation can be lost**: see D-67, "Speak for me wants the
+  opposite setting". The live runs above were on `append`.
+- **It leans on who-said-it** (D-46, D-49): right about nine times in ten in a quiet room, worse with
+  other voices. A sentence given to the wrong person is either not said, or said for someone who did not
+  ask. The clips above had their speaker reported, not recognised.
+- **The wait.** A sentence is said about two seconds after it ends plus the model's second; someone who
+  talks in long paragraphs gets Mochi's voice a sentence behind them, on top of their own.
+- **Mochi's English goes into the room** and may come back as a turn (AGENTS 12.3).
+- Only the two languages, only towards the language the person is learning.
+- What Mochi said for someone is not kept, and it is not marked in the transcript (the line shows what
+  they said; `agent.speak.requested` carries what Mochi said).
+- `main`'s D-63 (one writer per client in the hub) arrived the same hour; this is the next number.
+- `main` then used D-64 for its own next entry (three performance changes); merged here, that one is D-66.
+
+## D-65: the name is Mochi again; a session starts with a greeting to Mochi (2026-11-22)
+
+**Asked** (Suhuai, for the team): the rebrand goes back to Mochi. Only the name changes, no feature; and
+the wake expressions change with it, in English and in Portuguese.
+
+- **The name.** The product, the web app and the companion are all **Mochi**. "Papear" (D-43, D-57) is gone
+  from what a person sees and from the documents people work from: the web app's texts in both languages,
+  its title, monogram (M) and icon; `AGENTS.md`, the READMEs, `docs/TEAM_VIEW.md`; the character prompt
+  (Mochi no longer says it belongs to Papear); the contracts' descriptions (the JSON Schemas were
+  regenerated). The sober look of D-57, the two listening modes, the digest and everything else stay.
+- **No contract change.** No field, event, route or enum value was renamed, added or removed. One example
+  value changed: the demo company is "Mochi Demo" (`roster.py`, the two example payloads).
+- **The wake phrases** (`[wake]` in `hardware/pi-bridge/config/mochi.toml`) are the greetings again:
+  "oi mochi", "olá mochi" (Portuguese) and "hi mochi", "hey mochi", "hello mochi" (English). "vamos papear",
+  "let's chat" and "let's papear" (D-48) no longer start a session. The web's Start already sent
+  "oi mochi" / "hey mochi" as `woken_by`, so the web and the backend are unchanged there.
+- **Kept from D-48:** the matcher still finds a phrase without the name by its last word, and "vamos" still
+  counts as Portuguese on the Pi and in the backend, so "vamos papear" or "let's chat" work again when
+  someone puts them in `[wake]`. Their tests stay (as a configurable phrase, not the shipped one).
+- **Not rewritten:** older entries here, the older changelog lines in `AGENTS.md`, `BUILD_LOG.md` and
+  `PROVENANCE.md` still say Papear. They are history.
+
+**Tried.** Backend `make verify` (1790 passed, 7 skipped; schema check clean; 1799 after the merge with `main` and D-67), the Pi bridge's tests (146),
+the web app's tests (210), type check and build. Nobody has said the greetings to the device since the
+change; their numbers are D-48's comparison row ("oi/olá mochi" 80 of 105 clean, 72 of 105 far; "hi/hey
+mochi" 115 of 126 and 97 of 126).
+
+**Open:**
+- A database that already has the demo company keeps the name "Papear Demo": the seed never overwrites a
+  company (`seed_company`). One `UPDATE` on the deployed Postgres, or leave it.
+- The deployed web app and backend say Papear until they are deployed again.
+- The owners' yes, as for D-43 to D-64: `apps/web` (Tasnim), `hardware/` and contracts (Matheus), gateway
+  (Luís), the character prompt (Kauê).
+
+## D-66: three smaller backend performance changes (2026-11-22)
+
+*Written on `main` as D-64 (commit 8da0696); renumbered when `main` was merged into `hardware`, where D-64 is
+speak for me and D-65 the name. The commit message on `main` still says D-64.*
 
 Found by reading the code, like D-63; none is measured yet.
 
@@ -1701,3 +1798,63 @@ Found by reading the code, like D-63; none is measured yet.
   `scripts/eval-intelligence.sh` before and after, and Kauê's agreement.
 - **Not done:** indexes in `team/ledger.py` (its scans run at the end of a session or on an admin
   request, not per turn) and a pool for Postgres connections (writes are already off the loop).
+
+## D-67: Mochi can be interrupted on the Pi as on the web (2026-11-22)
+
+**Asked** (Suhuai): the web app has a fix that stops Mochi answering on when the person interrupts it, to
+correct something or to change direction; the Pi should have the same.
+
+**What the web's fix is** (D-57, `SessionConfig.for_session`): a web session gets Agora's default
+interruption whatever `MOCHI_INTERRUPTION` says. The Pi's `demo` session was left on `append` (D-38, D-40),
+and `append` is the error itself: Mochi says the answer under way in full and then answers the sentence
+that was meant to stop it.
+
+**What the Pi already had** (D-50): someone talking over Mochi's *voice* is noticed on the Pi, which
+silences its speaker, tells the backend (`/interrupt`) and sends the microphone again. Nothing upstream can
+do that part, because the Pi sends no microphone while Mochi speaks (D-35). So one case was left: a sentence
+said while Mochi is still *thinking*, when its voice has not started and the Pi has nothing to stop.
+
+**Changed:** the deployed `MOCHI_INTERRUPTION` is empty (`render.yaml`, `.env.example`, and this Pi's own
+`.env`, which also gets `MOCHI_CANCEL_STALE_TURNS=true`). No code path is new; `for_session` keeps forcing
+the default for web sessions, and the setting stays the Pi's switch back to `append`.
+
+**Why this does not bring D-38's lost answer back.** D-38 measured Agora's default without
+`MOCHI_CANCEL_STALE_TURNS` (D-37): the question Agora gave up on was still decided, answered into a closed
+connection and counted as handled, so only the second sentence was answered. With the flag (deployed since
+D-40) the abandoned turn is cancelled before it commits and its text is *not* counted as handled; Agora's
+next request repeats everything since Mochi last spoke, so the question is read again together with what
+interrupted it (`TurnPipeline._heard`). Typed, with the fake Agora, the Pi's session as deployed:
+
+| said while Mochi thinks about "Oi Mochi, what's the word for fila?" | spoken |
+|---|---|
+| "Sorry, how do you say recibo?" (a correction) | "You can say: receipt." once; "queue" never |
+| "Yeah, okay." (a colleague, not to Mochi) | "You can say: queue." once |
+
+**Tests:** `test_stale_turns.py` (the two rows above), `test_presets.py` (`render.yaml` keeps the two
+settings together). `make verify`: 1799 passed, 7 skipped.
+
+**Open:**
+- **Not tried with voices or real Agora.** The above is the gateway's logic on typed sentences. That Agora
+  hangs up on the question and sends both sentences in one message is what D-37 and `VERIFIED.md` saw live.
+- **The half second after the answer is written.** A sentence that starts between the backend's reply and
+  Mochi's first sound still loses that answer: it was committed, so it is not read again. `append` did not
+  have this; it is the price, and it is small next to the thinking time (2 to 3 s on the Pi, D-40).
+- **A correction that is not a question.** "No, I mean the word for recibo." after the question was answered
+  "queue" by the lexicon rules in the typed test: the first word asked for wins there. With a model writing
+  the line this may differ; not looked at (Kauê's rules).
+- **In a meeting, a correction said over Mochi's voice** stops it (D-50) and is then not taken as said to
+  Mochi: it waits for its name again. Unchanged here.
+- **Takes effect on the device when the deployed backend has the new value:** this Pi talks to the backend
+  on Render, whose `MOCHI_INTERRUPTION` is still `append` until `render.yaml` reaches it or the variable is
+  changed there by hand.
+- **Speak for me wants the opposite setting** (found in the review before the merge, not yet seen live).
+  Someone Mochi speaks for goes on talking, so their next sentence is said while Mochi is thinking about, or
+  about to say, the one before. With Agora's default that sentence drops the translation under way; when it
+  was already written it is not read again (the item above), and the sentence is never said. With `append`
+  every translation is spoken, in order. A turn cancelled this way also comes back joined with the next
+  one and gets one speaker, so "Ben's sentence + Ana's 'Mochi, speak for me'" can be given to Ben. Until
+  this is measured, a meeting that will use speak for me is better on `append`.
+- **The deployed backend is not managed by a Render blueprint** (checked on 2026-11-22: the account has
+  none), so `render.yaml` reaching `main` changes nothing there: `MOCHI_INTERRUPTION` on Render stays
+  `append` until someone changes that variable by hand and redeploys.
+- Gateway and deploy files are Luís's; needs his yes.

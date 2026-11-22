@@ -2,7 +2,7 @@
   "$defs": {
     "Company": {
       "additionalProperties": false,
-      "description": "A company that uses Papear. PROPOSAL (v0.7, DECISIONS D-45).",
+      "description": "A company that uses Mochi. PROPOSAL (v0.7, DECISIONS D-45).",
       "properties": {
         "company_id": {
           "title": "Company Id",

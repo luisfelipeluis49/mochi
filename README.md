@@ -1,7 +1,7 @@
-# Papear (Mochi)
+# Mochi
 
-Papear is language learning for companies, in their own meetings (English and Brazilian
-Portuguese). **Mochi**, a small device on the meeting table or a phone with the app, listens during
+Mochi is language learning for companies, in their own meetings (English and Brazilian
+Portuguese). A small device on the meeting table, or a phone with the app, listens during
 a meeting people start, tells registered voices apart, shows a one-word hint when someone is stuck,
 and remembers the words each person needed. Later each person goes over their words with Mochi in a
 **review** on their phone, and the company's administrators see how the team is doing in a **team
@@ -91,6 +91,7 @@ when run from source.
 | `MOCHI_EXPLAIN_TERMS` | true | idioms and technical terms are explained to the people listening (D-53); one more small model call per sentence; needs `MODEL_API_KEY` |
 | `MOCHI_SUGGEST_PHRASES` | true | after a hint, the whole sentence the speaker was reaching for is suggested, and one touch has Mochi say it (D-59); one small model call per hint; needs `MODEL_API_KEY` |
 | `MOCHI_SUGGESTION_TTL_SECONDS` | 20 | how long the touch works after a suggestion |
+| `MOCHI_SPEAK_FOR_ME` | true | "Mochi, speak for me": a person with a registered voice talks in their own language and Mochi says each sentence aloud in the meeting's (D-64); one model call per such sentence; needs `MODEL_API_KEY` |
 | `MOCHI_SPEECH_REPORTS` | true | after Stop each person gets a private report of what was wrong in what they said (D-54); one model call per person and session; needs `MODEL_API_KEY` |
 | `MOCHI_REPORT_MODEL_NAME` | (empty) | the model that writes the reports; empty: `MOCHI_MODEL_NAME` |
 | `MOCHI_REPORT_REASONING_EFFORT` | (empty) | empty: `low` where `MOCHI_MODEL_REASONING_EFFORT` is set, else none |

@@ -1,18 +1,18 @@
-# Papear (Mochi) — working context for the team and its coding agents
+# Mochi — working context for the team and its coding agents
 
 This file is the root `AGENTS.md` of the repository. It is written so that a coding agent can read it once and start work without reading anything else. Humans: give your agent this file plus one small task from Section 8.
 
 - **Status:** hackathon MVP. Contracts **v0.7, proposed on 2026-11-21** with the product change below (DECISIONS D-43 to D-45) and waiting for the owners' sign-off; see the changelog at the end. Everything marked *proposed* in v0.5 and v0.6 that survived is still proposed.
-- **What changed on 2026-11-21:** the product is now **Papear**, language learning for companies. Mochi sits in a company's meetings. There are two kinds of session, **Meeting** and **Review**, plus a **company view** for administrators. **The game (Describe & Guess, "Jogar") is gone**, and so is the three-way choice after the wake phrase.
+- **What changed on 2026-11-21:** the product is now language learning for companies. Mochi sits in a company's meetings. There are two kinds of session, **Meeting** and **Review**, plus a **company view** for administrators. **The game (Describe & Guess, "Jogar") is gone**, and so is the three-way choice after the wake phrase.
 - **What changed on 2026-11-22 (later, D-51 to D-55, proposed):** a meeting now has a **live transcript**; a **code switch** is marked in it for everyone; **idioms and technical terms** are explained to the people listening; after Stop each person gets a private **report** of what was wrong in what they said; and a saved word said later with no hint becomes **"Used on your own"**.
 - **Older documents:** `Mochi_Product_MVP_Design_v2.1.md`, the deck "Mochi — Visão de Produto" and `vision/Mochi_Product_Vision.md` describe the earlier consumer product (three modes, a game, watch and glasses add-ons). Where they disagree with this file, this file wins.
 - **One rule above all:** the contracts in Section 6 are shared. Do not rename, add, or remove a field, event, endpoint, or enum value on your own. Propose it to a human.
 
 ---
 
-## 1. What Papear is
+## 1. What Mochi is
 
-Papear helps people who work in a language they are still learning. **Mochi** is its companion: the small device on the meeting table (Mochi Home), or a phone running the Mochi app. People register their voice in advance. In a meeting Mochi follows what each person says, notices when someone is stuck on a word, and shows that word, without a sound. Later each person looks at their own progress on their phone and goes over their words with Mochi. The company's administrators see how the team is doing as a whole.
+Mochi helps people who work in a language they are still learning. It is a companion: the small device on the meeting table (Mochi Home), or a phone running the Mochi app. People register their voice in advance. In a meeting Mochi follows what each person says, notices when someone is stuck on a word, and shows that word, without a sound. Later each person looks at their own progress on their phone and goes over their words with Mochi. The company's administrators see how the team is doing as a whole.
 
 | Session | What Mochi does | Who talks | Where |
 |---|---|---|---|
@@ -22,7 +22,7 @@ Papear helps people who work in a language they are still learning. **Mochi** is
 Around the sessions:
 
 - **My words / analytics** (phone): each person's saved words, how far each one got, and the moments they needed them.
-- **Team view** (phone, administrators): every member's learning data added up: the expressions the team needs most, the mistakes it shares, who is active, how many words stick. This is also what makes Papear better for a company over time: the words its people need at work are known.
+- **Team view** (phone, administrators): every member's learning data added up: the expressions the team needs most, the mistakes it shares, who is active, how many words stick. This is also what makes Mochi better for a company over time: the words its people need at work are known.
 
 It **remembers** the words each person needed. The core of the MVP is the meeting: it proves that Mochi follows a real conversation between people, tells them apart, acts at the right time and makes it useful.
 
@@ -31,9 +31,9 @@ The hackathon MVP supports **English and Brazilian Portuguese**, **one company**
 Product rules that decide design arguments:
 
 1. **Humans first.** In a meeting, help people talk to each other, never to Mochi. Talking to Mochi is the point only in a review, or when someone asks it something.
-2. **Quiet by default.** In a meeting, say nothing unless someone asked Mochi by name, and put a word on the screen only when it is clearly worth it: a hint for someone who is stuck, or what an idiom or a technical term means (7.6). The live transcript (6.2) is the one thing shown all the time, small, and it can be switched off. The web app's quiet listener (D-62) may also explain an idiom or a wrong expression aloud, unasked, in a sentence or two; the device never does.
+2. **Quiet by default.** In a meeting, say nothing unless someone asked Mochi by name, and put a word on the screen only when it is clearly worth it: a hint for someone who is stuck, or what an idiom or a technical term means (7.6). The live transcript (6.2) is the one thing shown all the time, small, and it can be switched off. Someone who asked Mochi to speak for them (7.9) is spoken for until they say stop. The web app's quiet listener (D-62) may also explain an idiom or a wrong expression aloud, unasked, in a sentence or two; the device never does.
 3. **Personal.** A saved word, what is kept of what a person said, and what Mochi noticed was wrong in it (their report, 7.7) belong to that person and are shown only to them. The company sees numbers: how many people needed an expression or share a kind of mistake, never who, and never anyone's sentences. *The live transcript is not a store:* a sentence is shown, as it is said, to the screens of the session it was said in (the people there heard it), and that is all.
-4. **Only when started.** No audio leaves the device before the wake phrase ("Vamos papear" / "Let's chat") or Start, and none after Stop. The Pi may listen **locally** for the wake phrase; that audio is not recorded or sent anywhere. No audio is stored. **Since 2026-11-22 (D-46) the sentences of a session are stored**, each with the person whose registered voice said it; a person can read their own, nobody can read another's, and a sentence no known voice said has no reader at all once the session is over (while it runs it is in the live transcript like any other).
+4. **Only when started.** No audio leaves the device before the wake phrase ("Oi, Mochi" / "Hey, Mochi") or Start, and none after Stop. The Pi may listen **locally** for the wake phrase; that audio is not recorded or sent anywhere. No audio is stored. **Since 2026-11-22 (D-46) the sentences of a session are stored**, each with the person whose registered voice said it; a person can read their own, nobody can read another's, and a sentence no known voice said has no reader at all once the session is over (while it runs it is in the live transcript like any other).
 
 ## 2. The MVP as one walkthrough
 
@@ -45,7 +45,7 @@ Two example people are used everywhere, including in tests:
 The demo, which is also the acceptance test for the whole build:
 
 1. **Register.** Before the meeting each person tells Mochi their name once ("Mochi, learn my voice. I'm Ana") and it learns the voice.
-2. **Observe.** Someone says "Vamos papear!" or "Let's chat!" (or taps Start on a phone). Mochi says one short line ("Hi! I'm listening. Call me if you need a word.") and the meeting begins. Ana and Ben talk in English. Mochi shows a listening face and stays silent.
+2. **Observe.** Someone says "Oi, Mochi!" or "Hey, Mochi!" (or taps Start on a phone). Mochi says one short line ("Hi! I'm listening. Call me if you need a word.") and the meeting begins. Ana and Ben talk in English. Mochi shows a listening face and stays silent.
 3. **Help.** Ana says `I need to adiar my meeting tomorrow.` Mochi's screen shows **postpone**. Ana says `I forgot my guarda-chuva at the office.` Mochi's screen shows **umbrella**. Nothing is said aloud. Each hint is saved for Ana, with the moment she needed it.
 4. **Remember.** Ana goes on: `Right, I need to postpone it.` After the meeting her phone shows two cards: *postpone — Used with help* and *umbrella — Hint shown*. Ben's phone shows neither.
 
@@ -57,8 +57,7 @@ The demo, which is also the acceptance test for the whole build:
 
 | Term | Meaning |
 |---|---|
-| **Papear** | The product: language learning for companies, in their own meetings |
-| **Mochi** | Papear's companion, as people meet it: the device and the voice |
+| **Mochi** | The product: language learning for companies, in their own meetings. Also its companion, as people meet it: the device and the voice |
 | **Mochi Home** | The device: Raspberry Pi 5, EMEET M1A speakerphone, 3.5-inch screen, printed shell |
 | **Pi bridge** | The program on the Pi: it listens locally for the wake phrase, then sends the M1A microphone to Agora and plays Agora's audio back, follows the backend's device state, applies the device commands, and tells the backend whose registered voice it hears. It never decides when Mochi helps |
 | **Agora agent** | Agora's Conversational AI Engine, started by our backend in "custom LLM" mode. It transcribes each finished sentence, calls our backend with the text, and speaks whatever text we return |
@@ -72,7 +71,7 @@ The demo, which is also the acceptance test for the whole build:
 | **Word moment** | One time someone needed a word. A learning event is one card per person and word; a moment is every occurrence |
 | **Session record** | One session as the analytics keep it: when, who was there, how many sentences each recognised voice said |
 | **Utterance** | One finished sentence of a session, stored with the person whose registered voice said it (or nobody) |
-| **Company, member** | A company that uses Papear and the people in it; a member is `admin` or `member` |
+| **Company, member** | A company that uses Mochi and the people in it; a member is `admin` or `member` |
 | **Team view** | The administrators' page: the members' learning data added up |
 | **Transcript line** | One finished sentence as the screens of a session get it while it is said, with what Mochi noticed in it (**marks**) |
 | **Mark** | Something noticed in a sentence: a code switch, or an idiom or technical term with what it means |
@@ -120,7 +119,7 @@ mochi/
   services/backend/intelligence/    Kaue      decide(), review rules, memory
   services/backend/team/            (new, D-45: owner to be agreed)   ledger, session journal, team view
   services/backend/storage/         Luis      Postgres / local file / memory
-  apps/web/                         Tasnim    the Papear web app: Onboarding, Session, Training, Digest, Analytics (D-56, D-57)
+  apps/web/                         Tasnim    the Mochi web app: Onboarding, Session, Training, Digest, Analytics (D-56, D-57)
   apps/glasses/                     Suhuai    Mochi AR (outside the hackathon build)
   hardware/pi-bridge/               Matheus   Agora IoT SDK audio bridge
   hardware/pi-setup/                Matheus   kiosk launch, device diagnostics
@@ -255,7 +254,7 @@ GET  /ws?view=audience               Audience view on the projector
 
 Session
 POST /api/sessions/{id}/start        start the Agora agent; capturing = true. Body (optional):
-                                     { "woken_by": "vamos papear" }             the device heard its wake phrase
+                                     { "woken_by": "oi mochi" }                 the device heard its wake phrase
                                      { "mode": "review", "user_id": "ana" }     Ana's review; without `mode`: a meeting
                                      A review for an unknown or missing user_id: 422.
 POST /api/sessions/{id}/stop         stop the Agora agent; capturing = false
@@ -352,6 +351,7 @@ GET  /api/devices/home_pi_01/state   carries "commands": [ { "command_id", "kind
 - Mochi's silent commands `[listen]` and `[chat]` (never sent to the device) still switch it between watching and taking part. `[play]` is gone.
 - **Many sessions at once (D-41).** `demo` stays the Pi's session. Any other id is a session a client opens (a phone's), with its own channel, agent and hints; nothing is shared between sessions except what is stored (saved words, the company's history). `&session=<id>` on `/ws?user=`, `?user=&surface=ar` and `?view=audience` follows that session (default `demo`). At most 8 live; a full house stops the oldest phone session. Unknown session: 404.
 - **Web app users and sessions (D-56).** `POST /api/users` `{ "display_name", "comfortable_language"?, "target_language"? }` → 201 `User` (id = slug-xxxxxx); `GET /api/users/{user_id}` (`guest` is reserved: 404); `GET /api/users/{user_id}/words` (newest first); `GET /api/users/{user_id}/sessions` → the web's own session records, newest first (`record_id`, `session_id`, `user_id`, `started_at`, `ended_at`, `minutes`, `hint_count`, `learning_event_ids`: a different shape from the company's `SessionRecord` of 6.7, see D-58). `POST /api/sessions/{id}/start` with a `user_id` and no `mode`: the session is that person's; its participants are the user and `guest` (the user's languages the other way round, so the whose-word rule still finds one learner) and `focus` is the user's target language; 409 on `demo`, 404 for an unknown user. It leaves a web session record when it ends. Such a session uses Agora's default interruption: speaking over Mochi cuts it off (D-57).
+- **Interrupting Mochi (D-50, D-57, D-67).** In every session a sentence said while Mochi is thinking drops the answer under way (Agora's default interruption); the gateway reads the abandoned sentence again together with the new one (`MOCHI_CANCEL_STALE_TURNS=true`), so a correction gets the only answer and a colleague's remark does not lose it. A web session has this whatever is configured; the Pi's `demo` session has what `MOCHI_INTERRUPTION` says, which is empty since D-67 (`append`, D-38 and D-40, made Mochi finish the old answer and then answer the correction). While Mochi's voice is playing the Pi sends no microphone (D-35), so talking over it is noticed on the Pi itself, which silences its speaker and calls `POST /api/sessions/{id}/interrupt` (D-50).
 - **In a web user's own session (D-57, D-60 to D-62).** Started with its wake phrase it is a conversation with Mochi; started without, a quiet listener that may explain an expression aloud. A word the rules would give to `guest` goes to the person, the two sides swapped. A phrase Mochi teaches (`[phrase: text | meaning]`, never spoken) is saved as a card.
 - **Who is who (D-58).** The *roster* is the company's members: they are the participants of the device's meetings and the owners of its voices. The *user directory* also knows the people the web app made. `/ws?user=`, `GET /api/users/{id}` and a review accept a person from either; `guest` never.
 - The intelligence port has eleven methods: the three in 6.5 plus `reset`, `session_started`, `interrupted` and `device_status`, and `explain`, `suggest`, `coach` and `used_alone` (6.5; `gateway/intelligence_port.py` is the source).
@@ -367,7 +367,7 @@ The full description, with the tables and one example of every answer, is `docs/
 ```json
 // Company                     // Member
 { "company_id": "demo",        { "company_id": "demo", "user_id": "ana",
-  "name": "Papear Demo" }        "role": "admin", "team": "Product" }
+  "name": "Mochi Demo" }         "role": "admin", "team": "Product" }
 
 // TeamMember: what the members routes return and accept
 { "user": { "user_id": "caio", "display_name": "Caio", "comfortable_languages": ["pt-BR"], "target_language": "en" },
@@ -426,7 +426,7 @@ The full description, with the tables and one example of every answer, is `docs/
 - A hint was shown for one of the last two turns (cooldown).
 - The model call takes longer than two seconds. A slow reply from Mochi's character voice never delays a hint.
 
-Match Mochi's name loosely when someone asks it something during a session: speech-to-text writes "Moshi", "Mochie", "Motchi". (What starts a session is a different phrase, heard on the Pi itself: "Vamos papear" / "Let's chat", D-48.)
+Match Mochi's name loosely when someone asks it something during a session: speech-to-text writes "Moshi", "Mochie", "Motchi". (What starts a session is a greeting to Mochi, heard on the Pi itself: "Oi, Mochi" / "Hey, Mochi", D-65.)
 
 ### 7.3 Whose word is it
 
@@ -486,6 +486,17 @@ A hint gives a stuck speaker the word. Sometimes the word is not enough:
 - Only in a meeting, only after a silent hint (someone who asked Mochi by name is answered aloud already), only for a sentence of four words or more. A suggestion is dropped when it is what she said already, is not in the language she was speaking, or is too long. `MOCHI_SUGGEST_PHRASES=false` switches it off; without a model key there is none.
 - Mochi saying the sentence does not move her card: it was Mochi who said the word, not she.
 
+### 7.9 Speak for me (proposed, D-64)
+
+For someone who cannot yet say it in the language of the meeting, and has something to say.
+
+- **On.** A person says, by name, `Hey Mochi, speak for me` (or `Oi Mochi, fala por mim`). Their voice must be one Mochi knows (registered, and recognised on that sentence): "for me" has to be somebody. Mochi confirms in one line. A voice it cannot name is told so, and nothing changes. Nobody can ask for someone else.
+- **While it is on.** Each sentence that person says in the language they are at home in, Mochi says aloud in the language they are learning, which is the meeting's ("A gente precisa adiar o lançamento" → "We need to postpone the launch"): what they said, in the first person, nothing added. A sentence they say in the meeting's language themselves is theirs, and the usual rules apply to it (a hint when they are stuck). A sentence with Mochi's name in it is for Mochi, not for the room. Everyone else's sentences are left alone. The live transcript goes on as before, so they can follow what the others say.
+- **Off.** `Mochi, stop` or `Mochi, pode parar` (also `Mochi, stop speaking for me`, `Mochi, chega`, `Mochi, I'll speak myself`). Mochi names the short one when the mode turns on: the long Portuguese one, "para de falar por mim", was heard live as "pode falar por mim", which asks for the opposite. It is also off at the start of every session.
+- When the device could not tell whose voice a sentence was, and Mochi is speaking for exactly one person, a sentence in that person's language is taken to be theirs. A stop in any other voice than theirs (one it could not name, or one it took for a colleague's) turns the mode off for everyone: better silent than speaking for someone who wants to speak. The short stop words count only at the end of the sentence ("Mochi, quando chega o relatório?" is a question).
+- One model call per sentence said for someone; it must answer within the limit of 7.2 or nothing is said. Only in a meeting. `MOCHI_SPEAK_FOR_ME=false` switches it off; without a model key the mode turns on and says nothing.
+- Nothing is saved as a word: the person was not trying to say it in the other language. Their sentences are stored as anyone's are (D-46).
+
 ## 8. Milestones: what to build, in order
 
 Every milestone after M0 is a complete demo. All owners build the same milestone at the same time. A milestone is reached only when it has been seen working on the real devices. M0 to M2 were reached before the product change; the game milestones (old M3 and M4) are replaced.
@@ -528,11 +539,11 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 
 ### 9.4 Tasnim — `apps/web`
 
-Rebuilt in November 2026 (D-56) and renamed **Papear** for companies (D-57): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
+Rebuilt in November 2026 (D-56) and reshaped for companies (D-57; it was called Papear until D-65): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
 
 - **Screens:**
   - **Onboarding** (`/welcome`): asks for a name only and creates the user with `POST /api/users`. The id is kept in `localStorage`.
-  - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's microphone through Agora. A sober status panel (state, audio meter), the hint card, what Papear says and who is talking are live. Speaking over Papear cuts it off (D-57).
+  - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's microphone through Agora. A sober status panel (state, audio meter), the hint card, what Mochi says and who is talking are live. Speaking over Mochi cuts it off (D-57).
   - **Training** (`/training`): spaced recall of the person's saved words, answered by typing or speaking.
   - **Digest** (`/digest`): a weekly wrap-up (Monday to Sunday, with a week picker) across all of the person's sessions.
   - **Analytics** (`/analytics`): progress, each word's state path, and minutes per session.
@@ -583,8 +594,16 @@ Do not write code that assumes these work. If your task depends on one, say so i
 9. **The live transcript, the explainer and the reports with real voices.** Built and tested with typed sentences and scripted models (D-51 to D-55). On 2026-11-22 the explainer's instructions were tried on 24 written sentences with the real model (12 with an idiom or term, 12 ordinary): all 24 right, 0.7 s each; the coach's on 12 sentences: six real mistakes found, none invented. That is a look, not a measurement: nobody has seen a caption, a marked code switch or an explanation on Mochi's screen in a real meeting, and no report has been written from a machine transcript of real speech, where a misheard word can look like a mistake.
 10. **Who reads the live transcript.** There is no sign-in, so anyone who opens `/ws?user=<a known id>` or `?view=audience` on a running session gets its lines, as they already got its hints. The transcript says much more than a hint does. `MOCHI_LIVE_TRANSCRIPT=false` is the switch until sign-in exists.
 11. **One-touch assistance with a finger and a voice.** Built and tested with typed sentences and scripted models (D-59); see D-59 for what was tried with the real model and a real session. Nobody has touched Mochi's real screen in a real meeting yet, and whether Mochi's own sentence comes back as a turn through a real room's microphone is item 3 above.
+12. **Speak for me in a real meeting.** Built and tested with typed sentences and a scripted model, and tried in a real session with spoken clips (D-64). Not seen: a real person speaking for minutes with Mochi's voice following each sentence (the wait between a sentence and Mochi saying it, people talking over it, a sentence the device gives to the wrong person), nor whether Mochi's spoken English comes back as a turn of its own (item 3).
+13. **Interrupting Mochi on the device.** The Pi's session has Agora's default interruption since D-67, tested with typed sentences and the fake Agora only: a question abandoned while Mochi thinks is read again with what followed it. Not seen with real voices: how often a colleague speaking in the half second between the answer being written and being spoken loses it (the case D-38 measured, then without `MOCHI_CANCEL_STALE_TURNS`), and the Pi's own stop when talked over (D-50) has not been tried at the real device either. Speak for me (7.9) has not been tried with it: a person who goes on talking drops the translation under way, which `append` did not (D-67). The deployed backend still has `append` until the variable is changed on Render by hand.
 
 ## 13. Changelog
+
+- **Mochi can be interrupted on the Pi as on the web (2026-11-22, D-67).** The deployed `MOCHI_INTERRUPTION` is empty (it was `append`): a sentence said while Mochi thinks drops the answer under way, and the gateway reads the abandoned sentence again with the new one (6.6). No code path, field, event or route is new. `main`'s three performance changes are merged (D-66; `main` calls that entry D-64).
+
+- **The name is Mochi again (2026-11-22, D-65).** The product was called Papear from D-43 to D-64; the team went back to **Mochi**, for the product, the web app and the companion alike. Nothing else changes: no field, event, route or enum value. A session starts with a greeting to Mochi again ("oi Mochi", "olá Mochi", "hi Mochi", "hey Mochi", "hello Mochi"), not "vamos papear" / "let's chat" (D-48). The demo company is "Mochi Demo". Older entries below still say Papear; they are history.
+
+- **v0.7, speak for me (proposed, 2026-11-22, D-64).** "Mochi, speak for me": a person with a registered voice talks in their own language and Mochi says each sentence aloud in the meeting's, until "Mochi, stop speaking for me" (7.9). No new event, route or enum value: what Mochi says is an ordinary `agent.speak.requested`. `MOCHI_SPEAK_FOR_ME`.
 
 - **v0.7, one-touch assistance (proposed, 2026-11-22, D-59).** After a silent hint the whole sentence the speaker was reaching for is suggested (`phrase.suggested`, device command `suggest`); one touch on Mochi's screen, or `POST /api/sessions/{id}/hints/{hint_id}/say`, and Mochi says it aloud. Port method `suggest` (eleven now). `MOCHI_SUGGEST_PHRASES`, `MOCHI_SUGGESTION_TTL_SECONDS`.
 

@@ -1,8 +1,8 @@
-# The company side of Papear: data model, backend logic and API
+# The company side of Mochi: data model, backend logic and API
 
 **Status:** proposed on 2026-11-21 (DECISIONS D-45), built in `services/backend` and tested without devices. For whoever builds the team view and the personal analytics on the phone.
 
-Papear is sold to companies. A company wants to know whether its people are getting more at ease in the language they work in, and which words and mistakes come up at work. Each person wants their own progress and nobody reading over their shoulder. This document says what is stored, how each person's learning data is added up for administrators, and what the phone can ask for.
+Mochi is sold to companies. A company wants to know whether its people are getting more at ease in the language they work in, and which words and mistakes come up at work. Each person wants their own progress and nobody reading over their shoulder. This document says what is stored, how each person's learning data is added up for administrators, and what the phone can ask for.
 
 ## 1. What is collected, and when
 
@@ -98,7 +98,7 @@ The JSON Schema of every shape is in `packages/contracts/schema/` (`TeamInsights
 
 ```json
 {
-  "company": { "company_id": "demo", "name": "Papear Demo" },
+  "company": { "company_id": "demo", "name": "Mochi Demo" },
   "generated_at": "2026-11-21T12:00:00.000Z",
   "period_days": 30,
   "totals": { "members": 4, "active_members": 3, "meetings": 6, "reviews": 2,
@@ -131,7 +131,7 @@ What each part answers, and how it is computed:
 
 | Part | The administrator's question | Computed from |
 |---|---|---|
-| `totals` | Is Papear being used? | Records and moments in the period. `active_members`: members whose voice was recognised in a session, who did a review, or who needed a word. `meeting_minutes`: finished meetings only. `words`: different expressions needed |
+| `totals` | Is Mochi being used? | Records and moments in the period. `active_members`: members whose voice was recognised in a session, who did a review, or who needed a word. `meeting_minutes`: finished meetings only. `words`: different expressions needed |
 | `funnel` | Do the words stick? | Every member's cards, all time: how many were ever at least `DISCOVERED` / `ASSISTED` / `REINFORCED` / `USED_INDEPENDENTLY` (a card's whole history counts, not only where it is now) |
 | `signals` | How do our people get stuck? | Moments in the period by `reason`: switching language, saying they do not know, false friends, trailing off... `share` is of all moments |
 | `shared_gaps` | Which words does the team need for its work? | Moments in the period, without the false friends, grouped by expression and language: how many **people**, how many **times**, why, and when last. The ones most people share come first; ten at most |
@@ -207,7 +207,7 @@ The app ignores event types it does not know, so it keeps working as it is. To s
 
 To see the events without building anything: run the backend with `MOCHI_AGORA_MODE=fake MOCHI_ENABLE_DEV_ROUTES=true`, start a session, `scripts/say.sh "Let's circle back on pricing after the launch."`, and open any view with `?debug=1`; or `GET /dev/sessions/demo/transcript`, which shows each sentence with its marks.
 
-## 7. Using the data to make Papear better for a company (not built)
+## 7. Using the data to make Mochi better for a company (not built)
 
 The reason to collect moments per company is that the words its people need at work become known. Three uses, in the order they would pay off:
 
