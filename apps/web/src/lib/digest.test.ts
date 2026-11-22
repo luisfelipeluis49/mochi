@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDigest, closingKey } from "./digest.ts";
+import { buildDigest, nextDay, weekKeys } from "./digest.ts";
 import type { LearningEvent, SessionRecord } from "../contracts.ts";
 import type { Progress } from "./training.ts";
 
@@ -18,70 +18,67 @@ function word(id: string, history: [LearningEvent["learning_state"], string][], 
   };
 }
 
-const r1 = rec("1", "2026-11-21T13:00:00.000Z", "2026-11-21T13:12:30.000Z", {
-  learning_event_ids: ["postpone", "umbrella", "gone", "queue"], hint_count: 3,
-});
-const words = [
-  word("postpone", [["DISCOVERED", "2026-11-21T13:01:00.000Z"], ["ASSISTED", "2026-11-21T13:03:00.000Z"]]),
-  word("umbrella", [["DISCOVERED", "2026-11-21T13:05:00.000Z"]]),
-  word("queue", [["DISCOVERED", "2026-11-20T10:00:00.000Z"], ["REINFORCED", "2026-11-21T13:10:00.000Z"]]),
-  word("receipt", [["DISCOVERED", "2026-11-19T10:00:00.000Z"]]),
-];
+// 2026-11-21 is a Saturday: its week is Mon 16 Nov .. Sun 22 Nov.
 const NOW = Date.parse("2026-11-21T15:00:00.000Z");
+const monday = rec("1", "2026-11-16T13:00:00.000Z", "2026-11-16T13:10:00.000Z", { hint_count: 2 });
+const saturday = rec("2", "2026-11-21T13:00:00.000Z", "2026-11-21T13:12:30.000Z", { hint_count: 3 });
+const saturday2 = rec("3", "2026-11-21T14:00:00.000Z", "2026-11-21T14:05:00.000Z", { hint_count: 0 });
+const lastWeek = rec("0", "2026-11-12T13:00:00.000Z", "2026-11-12T13:20:00.000Z", { hint_count: 5 });
+const all = [lastWeek, monday, saturday, saturday2];
+const words = [
+  word("postpone", [["DISCOVERED", "2026-11-16T13:01:00.000Z"], ["ASSISTED", "2026-11-21T13:03:00.000Z"]]),
+  word("umbrella", [["DISCOVERED", "2026-11-21T13:05:00.000Z"]]),
+  word("queue", [["DISCOVERED", "2026-11-12T10:00:00.000Z"], ["REINFORCED", "2026-11-21T13:10:00.000Z"]]),
+  word("receipt", [["DISCOVERED", "2026-11-19T10:00:00.000Z"]], { meaning: null }),
+];
 
-test("the newest record is selected; header in the locale", () => {
-  const old = rec("0", "2026-11-20T13:00:00.000Z", "2026-11-20T13:05:00.000Z");
-  const d = buildDigest([old, r1], words, {}, NOW, en)!;
-  assert.equal(d.session.record_id, "1");
-  assert.equal(d.header, "Saturday, 21 Nov · 10:00 · 12.5 min · 3 hints");
-  assert.deepEqual(d.options.map((o) => o.record_id), ["1", "0"]);
-  assert.equal(buildDigest([old, r1], words, {}, NOW, en, "0")!.session.record_id, "0");
-  const pt = buildDigest([r1], words, {}, NOW, { lang: "pt-BR", timeZone: TZ })!;
-  assert.match(pt.header, /^sábado, 21 de nov\.? · 10:00 · 12,5 min · 3 dicas$/);
+test("a week runs Monday to Sunday and weeks go back", () => {
+  assert.deepEqual(weekKeys(NOW, 0, TZ), ["2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22"]);
+  assert.equal(weekKeys(NOW, 1, TZ)[0], "2026-11-09");
+  assert.equal(weekKeys(Date.parse("2026-11-22T20:00:00.000Z"), 0, TZ)[0], "2026-11-16"); // a Sunday still belongs to its Monday
+  assert.equal(nextDay("2026-11-30"), "2026-12-01");
 });
 
-test("words are grouped by what happened in the window; unknown ids are skipped", () => {
-  const d = buildDigest([r1], words, {}, NOW, en)!;
+test("totals add up every session of the week, not one", () => {
+  const d = buildDigest(all, words, {}, NOW, en);
+  assert.deepEqual(d.totals, { sessions: 3, minutes: 27.5, hints: 5, activeDays: 2 });
+  assert.equal(d.empty, false);
+  assert.deepEqual(d.days.map((x) => x.minutes), [10, 0, 0, 0, 0, 17.5, 0]);
+  assert.deepEqual(d.days.map((x) => x.sessions), [1, 0, 0, 0, 0, 2, 0]);
+});
+
+test("the week before gives the comparison, and offset 1 is that week", () => {
+  const d = buildDigest(all, words, {}, NOW, en);
+  assert.equal(d.previous.minutes, 20);
+  assert.equal(d.deltaMinutes, 7.5);
+  const prev = buildDigest(all, words, {}, NOW, en, 1);
+  assert.equal(prev.totals.sessions, 1);
+  assert.equal(prev.offset, 1);
+});
+
+test("words are grouped by what happened during the week", () => {
+  const d = buildDigest(all, words, {}, NOW, en);
   const g = Object.fromEntries(d.groups.map((x) => [x.state, x.words.map((w) => w.expression)]));
-  assert.deepEqual(g, { DISCOVERED: ["postpone", "umbrella"], ASSISTED: ["postpone"], REINFORCED: ["queue"] });
-  assert.equal(d.noWords, false);
-  assert.equal(d.groups[0].titleKey, "digest_new");
+  assert.deepEqual(g, { DISCOVERED: ["postpone", "umbrella", "receipt"], ASSISTED: ["postpone"], REINFORCED: ["queue"] });
+  assert.equal(d.newWords, 3);
 });
 
-test("a session whose words are all gone has no words", () => {
-  const d = buildDigest([rec("2", "2026-11-21T13:00:00.000Z", "2026-11-21T13:10:00.000Z", { learning_event_ids: ["gone"] })], words, {}, NOW, en)!;
-  assert.deepEqual(d.groups, []);
-  assert.equal(d.noWords, true);
+test("a week with no session is empty but still has seven days", () => {
+  const d = buildDigest(all, words, {}, NOW, en, 3);
+  assert.equal(d.empty, true);
+  assert.equal(d.days.length, 7);
+  assert.equal(d.options.length, 8);
+  assert.equal(d.options[0].label, "This week");
 });
 
-test("practise next: training-due first, then DISCOVERED oldest first, at most 3", () => {
+test("practise next: training-due first, then the oldest DISCOVERED, only words with a meaning, at most 3", () => {
   const progress: Progress = { queue: { box: 2, due_at: NOW - 1000, correct: 1, wrong: 0, last_at: 0 } };
-  const d = buildDigest([r1], words, progress, NOW, en)!;
-  assert.deepEqual(d.practiseNext.map((w) => w.expression), ["queue", "receipt", "umbrella"]);
+  const d = buildDigest(all, words, progress, NOW, en);
+  assert.deepEqual(d.practiseNext.map((w) => w.expression), ["queue", "umbrella"]);
+  assert.ok(!d.practiseNext.some((w) => w.expression === "receipt")); // no meaning: Training cannot use it
 });
 
-test("the closing line follows the hint count", () => {
-  assert.equal(closingKey(0), "digest_close_none");
-  assert.equal(closingKey(1), "digest_close_few");
-  assert.equal(closingKey(3), "digest_close_few");
-  assert.equal(closingKey(4), "digest_close_many");
-  assert.equal(buildDigest([{ ...r1, hint_count: 0 }], words, {}, NOW, en)!.closingKey, "digest_close_none");
-});
-
-test("no records is the empty state", () => {
-  assert.equal(buildDigest([], words, {}, NOW, en), null);
-});
-
-test("today's totals use local days, across midnight", () => {
-  // 02:30Z on the 22nd is 23:30 on the 21st in São Paulo; 03:30Z is 00:30 on the 22nd.
-  const late = rec("a", "2026-11-22T02:20:00.000Z", "2026-11-22T02:30:00.000Z", { hint_count: 2 }); // 10 min, the 21st
-  const after = rec("b", "2026-11-22T03:00:00.000Z", "2026-11-22T03:30:00.000Z", { hint_count: 1 }); // 30 min, the 22nd
-  const now21 = Date.parse("2026-11-22T02:50:00.000Z"); // 23:50 on the 21st
-  const d21 = buildDigest([late, r1], [], {}, now21, en)!;
-  assert.deepEqual({ s: d21.today.sessions, m: d21.today.minutes, h: d21.today.hints }, { s: 2, m: 22.5, h: 5 });
-  assert.equal(d21.today.line, "2 sessions · 22.5 min · 5 hints");
-  const now22 = Date.parse("2026-11-22T04:00:00.000Z"); // 01:00 on the 22nd
-  const d22 = buildDigest([after, late, r1], [], {}, now22, en)!;
-  assert.deepEqual({ s: d22.today.sessions, m: d22.today.minutes, h: d22.today.hints }, { s: 1, m: 30, h: 1 });
-  assert.equal(d22.today.line, "1 session · 30 min · 1 hint");
+test("the range reads in the language", () => {
+  assert.equal(buildDigest(all, words, {}, NOW, en).range, "16 Nov – 22 Nov");
+  assert.match(buildDigest(all, words, {}, NOW, { lang: "pt-BR", timeZone: TZ }).range, /^16 de nov\.? – 22 de nov\.?$/);
 });

@@ -23,6 +23,6 @@ test("a targeted hint does not say For everyone; pt-BR copy", () => {
 
 test("the used badge", () => {
   const html = renderToString(<HintCard lang="en" hint={null} note="" remaining={0} used={{ word: "umbrella" }} />);
-  assert.ok(html.includes("★ You used it!"));
+  assert.ok(html.includes("Word used"));
   assert.ok(html.includes("umbrella"));
 });

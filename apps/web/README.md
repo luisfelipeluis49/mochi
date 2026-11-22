@@ -1,11 +1,11 @@
-# Mochi web app (`apps/web`)
+# Papear web app (`apps/web`)
 
 The web app does in a browser what Mochi Home (the Raspberry Pi) does, through the same backend. A
-person tells Mochi their name and starts a session. Mochi listens through the browser's microphone,
+person tells Papear their name and starts a session. Papear listens through the browser's microphone,
 shows a hint under its face when they get stuck on a word, and speaks through the Agora audio. The
-app then keeps their words for Training, a Digest of each session, and Analytics.
+app then keeps their words for Training, a weekly Digest across all their sessions, and Analytics.
 
-It replaces the old app. The old `/home`, `/m` and `/audience` views are gone. Mochi's own screen is
+It replaces the old app. The old `/home`, `/m` and `/audience` views are gone. Papear's own screen is
 now `hardware/pi-setup/face.html`. `PROPOSAL_contracts_v0.5.md` and `PROPOSAL_phone_microphone.md`
 are kept as history only.
 
@@ -14,9 +14,9 @@ are kept as history only.
 | URL | Screen | What it does |
 |---|---|---|
 | `/welcome` | Onboarding | Asks for a name only, with the two languages pre-filled. `POST /api/users` creates the user id under which the data is stored. |
-| `/session` | Session | Mochi Home in the browser: the face, the live hint, what Mochi said, Start and Stop, the hints of this session, and the voice volume. `/` goes here. |
+| `/session` | Session | the device (Mochi Home) in the browser: the face, the live hint, what Papear said, Start and Stop, the hints of this session, and the voice volume. `/` goes here. |
 | `/training` | Training | Spaced recall of the saved words. The prompt is the meaning, and the answer is typed or spoken. |
-| `/digest` | Digest | A recap of the latest session (or a chosen one): new words, words used with help, words recalled in a game, today's totals, and what to practise next. |
+| `/digest` | Digest | A wrap-up of one calendar week (Monday to Sunday) across ALL the person's sessions, with a week picker: sessions, minutes practised, active days, minutes per day against the week before, new words, words used with help, words recalled in a game, and what to practise next. |
 | `/analytics` | Analytics | Tiles, minutes per session, where the words are, and each word's state path. |
 | `/profile` | Profile | Name and languages, the interface language, and "Forget me on this device". |
 
@@ -24,17 +24,17 @@ The layout is a bottom tab bar on phones (under 600 px), a left rail on tablets 
 side nav on desktops (1024 px and up). The interface is in English and Brazilian Portuguese. The
 language comes from `?lang=`, then from the stored choice, then from the browser.
 
-## Mochi Home on the web (short version)
+## Papear Home on the web (short version)
 
 | Pi | Web |
 |---|---|
-| Wake phrase "Oi, Mochi" | **Start session** (sends `woken_by` in the UI language, so Mochi greets in it) |
+| Wake phrase "Oi, Mochi" (the backend still listens for it) | **Start session** (sends `woken_by` in the UI language, so Papear greets in it) |
 | "tchau Mochi" / `bye` | **Stop session** (the face says bye for 2 s, then a "Session saved" card) |
-| Face modes `sleeping`, `waking`, `awake`, `hearing`, `thinking`, `speaking`, `bye` | The same face (an inline SVG). The modes come from the session state, the browser's microphone level and Mochi's voice level. |
+| Face modes `sleeping`, `waking`, `awake`, `hearing`, `thinking`, `speaking`, `bye` | A plain status panel (monogram, state text and an audio meter, no cartoon face). The modes come from the session state, the browser's microphone level and Papear's voice level. |
 | Moods | Worked out in the browser: `happy` after Start, `curious` with a hint, `proud` when a word reaches `ASSISTED`, `excited` on `REINFORCED`, `oops` on an error, `sleepy` after 5 quiet minutes |
 | `word` + `note` | The HintCard: the word, "English · adiar", the example, and a countdown |
-| Volume `pop` | The "Mochi's voice" slider, with the same pop badge |
-| `online: false` | An offline banner and a greyed face |
+| Volume `pop` | The "Papear's voice" slider, with the same pop badge |
+| `online: false` | An offline banner and a greyed status panel |
 | Describe & Guess, tap and long press, temperature, voices | **Not built** (see below) |
 
 ## Microphone and HTTPS
@@ -44,7 +44,7 @@ backend, so the browser asks on the first visit. Browsers allow the microphone o
 pages (`localhost` counts as secure). When the microphone cannot be used, the app says why: the page
 is not secure, the browser cannot use a microphone, access is blocked, the page is inside another app,
 there is no microphone, or the microphone is busy. Each reason has its own fix. "Continue without
-microphone" enters the app with Start disabled. Mochi only hears while a session runs. Closing the
+microphone" enters the app with Start disabled. Papear only hears while a session runs. Closing the
 tab during a session stops it (`sendBeacon`), but locking a phone or switching apps does not.
 
 ## Run
@@ -60,7 +60,7 @@ MOCHI_BACKEND_URL=http://<host>:8000 npm run dev       # a backend somewhere els
 with it.
 
 **Without a backend:** open `http://localhost:5173/?mock=1`. The mock backend runs in the page and
-plays the AGENTS.md demo for the stored user. Mochi greets you, then shows **postpone** (adiar),
+plays the AGENTS.md demo for the stored user. Papear greets you, then shows **postpone** (adiar),
 **umbrella** (guarda-chuva) and **queue** (fila), and marks postpone "Used with help". Past sessions
 are pre-filled so that Digest and Analytics have data. Nothing leaves the browser. `?mock=1&as=Ana` skips
 onboarding with a stored mock user named Ana.
@@ -97,7 +97,7 @@ the container from starting.
 `apps/web/Dockerfile`, with health check `/web-healthz`. After the backend's first deploy, set
 `BACKEND_URL` by hand to its `https://` URL, with no trailing slash. Render gives `mochi-web` its own
 public `https://` URL, and that is the address to open on phones. Both services are on the free plan
-and sleep after 15 minutes. While the backend wakes, the app shows "Mochi is waking up…" (for up to a
+and sleep after 15 minutes. While the backend wakes, the app shows "Papear is waking up…" (for up to a
 minute).
 
 ## Not built
@@ -105,7 +105,7 @@ minute).
 - **Describe & Guess in a web session.** The secret word goes only to the device's connection, and a
   web session has none. This is an open decision. If a round runs anyway, the app shows only its
   public line.
-- **Mochi's temperature, voice enrolment and the tap/long press**, which are Pi-only.
+- **Papear's temperature, voice enrolment and the tap/long press**, which are Pi-only.
 - **Training does not change `learning_state`.** Its progress stays on this device. `USED_INDEPENDENTLY`
   is still an open decision (D-42).
 - **Sign-in.** The user id is kept in `localStorage`. If the backend loses it (no database and a

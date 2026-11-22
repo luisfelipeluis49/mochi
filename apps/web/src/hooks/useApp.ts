@@ -44,7 +44,7 @@ export interface AppModel {
   voice: { lastHearingAt: number; lastLoudAt: number; level: number };
   hasSpeech: boolean;
   onboarding: OnboardingState;
-  digestRecord: string | null;
+  digestWeek: number;
   timeZone?: string;
 }
 
@@ -63,7 +63,7 @@ export interface AppActions {
   setLang(l: UiLang): void;
   forget(): void;
   trainingResult(wordId: string, outcome: Outcome): void;
-  selectRecord(id: string): void;
+  selectWeek(offset: number): void;
 }
 
 export function bannerOf(e: unknown): Banner {
@@ -95,7 +95,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
 
   const [screen, setScreen] = useState<Screen>(() => routeOf(location.pathname).screen);
   const [onboarding, setOnboarding] = useState<OnboardingState>({ busy: false, error: null });
-  const [digestRecord, setDigestRecord] = useState<string | null>(null);
+  const [digestWeek, setDigestWeek] = useState<number>(0);
   const mic = useAgoraMic(deps.joinVoice);
   const micRef = useRef(mic);
   micRef.current = mic;
@@ -210,13 +210,12 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   const refresh = useCallback(async () => {
     const u = stateRef.current.user;
     if (!u) return;
-    try {
-      const [words, records] = await Promise.all([api.words(u.user_id), api.sessions(u.user_id)]);
-      dispatch({ type: "words", words });
-      dispatch({ type: "records", records });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) lostUser();
-    }
+    // Independent calls: a failing sessions list must not hide the words (Training needs them).
+    const [words, records] = await Promise.allSettled([api.words(u.user_id), api.sessions(u.user_id)]);
+    if (words.status === "fulfilled") dispatch({ type: "words", words: words.value });
+    if (records.status === "fulfilled") dispatch({ type: "records", records: records.value });
+    const lost = [words, records].some((r) => r.status === "rejected" && r.reason instanceof ApiError && r.reason.status === 404);
+    if (lost) lostUser();
   }, [api, lostUser]);
   useEffect(() => {
     if (state.identity !== "ok" || !userId) return;
@@ -224,7 +223,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
     void refresh();
   }, [state.identity, userId, refresh, progressStore]);
   useEffect(() => {
-    if ((screen === "digest" || screen === "analytics") && state.identity === "ok") void refresh();
+    if ((screen === "digest" || screen === "analytics" || screen === "training") && state.identity === "ok") void refresh();
   }, [screen, state.identity, refresh]);
 
   // ---- WebSocket: open for the life of the app on ?user=&session= ----
@@ -390,12 +389,12 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
       progressStore.write(s.user.user_id, progress);
       dispatch({ type: "progress", progress });
     },
-    selectRecord: setDigestRecord,
+    selectWeek: setDigestWeek,
   };
 
   return {
     model: {
-      state, screen, now, hasSpeech, onboarding, digestRecord,
+      state, screen, now, hasSpeech, onboarding, digestWeek,
       voice: { lastHearingAt: mic.lastHearingAt, lastLoudAt: mic.lastLoudAt, level: mic.level },
     },
     actions,

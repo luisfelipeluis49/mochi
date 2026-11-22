@@ -1,12 +1,14 @@
-// The digest: a recap of one session (section 3.5). Pure: records, words, training progress and the
-// clock in, a view model out. The time zone is injectable so tests are stable.
+// The weekly digest: a wrap-up of ALL of a person's sessions in one calendar week (Monday to Sunday),
+// not of a single session. Pure: records, words, training progress and the clock in, a view model out.
+// The time zone is injectable so tests are stable.
 
 import type { LearningEvent, LearningState, SessionRecord } from "../contracts.ts";
-import { type CopyKey, plural, t } from "./i18n.ts";
-import { type Fmt, clock, dayKey, longDay, minutes } from "./format.ts";
-import type { Progress } from "./training.ts";
+import { type CopyKey, t } from "./i18n.ts";
+import { type Fmt, dayKey, previousDay, shortDay } from "./format.ts";
+import { type Progress, isTrainable } from "./training.ts";
 
-export const DIGEST_OPTIONS = 10;
+/** How many weeks back the week picker offers (this week = 0). */
+export const WEEKS_BACK = 8;
 export const PRACTISE_NEXT = 3;
 
 export interface DigestWord {
@@ -21,16 +23,36 @@ export interface DigestGroup {
   words: DigestWord[];
 }
 
-export interface DigestView {
-  options: { record_id: string; label: string }[];
-  session: SessionRecord;
-  header: string;
+export interface DigestDay {
+  key: string;
+  /** "Mon" / "seg." */
+  label: string;
+  minutes: number;
+  sessions: number;
+}
+
+export interface Totals {
+  sessions: number;
+  minutes: number;
+  hints: number;
+  activeDays: number;
+}
+
+export interface WeekView {
+  offset: number;
+  /** "17 Nov – 23 Nov" */
+  range: string;
+  options: { offset: number; label: string }[];
+  totals: Totals;
+  previous: Totals;
+  /** minutes this week minus minutes the week before (one decimal) */
+  deltaMinutes: number;
+  days: DigestDay[];
+  newWords: number;
   groups: DigestGroup[];
-  /** true when the session saved no word we can find */
-  noWords: boolean;
-  today: { sessions: number; minutes: number; hints: number; line: string };
   practiseNext: DigestWord[];
-  closingKey: CopyKey;
+  /** true when no session ended in this week */
+  empty: boolean;
 }
 
 const GROUPS: { state: LearningState; titleKey: CopyKey }[] = [
@@ -39,71 +61,92 @@ const GROUPS: { state: LearningState; titleKey: CopyKey }[] = [
   { state: "REINFORCED", titleKey: "digest_reinforced" },
 ];
 
-const byEndDesc = (a: SessionRecord, b: SessionRecord) => Date.parse(b.ended_at) - Date.parse(a.ended_at);
-const firstAt = (w: LearningEvent) => Date.parse(w.state_history[0]?.at ?? "") || 0;
+const round1 = (n: number) => Math.round(n * 10) / 10;
 const toWord = (w: LearningEvent): DigestWord => ({ id: w.learning_event_id, expression: w.expression, meaning: w.meaning });
+const firstAt = (w: LearningEvent) => Date.parse(w.state_history[0]?.at ?? "") || 0;
 
-export function closingKey(hintCount: number): CopyKey {
-  if (hintCount <= 0) return "digest_close_none";
-  if (hintCount <= 3) return "digest_close_few";
-  return "digest_close_many";
+/** The day after a dayKey: "2026-11-21" -> "2026-11-22". Pure calendar arithmetic. */
+export function nextDay(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
-export function recordLabel(r: SessionRecord, f: Fmt): string {
-  const at = Date.parse(r.started_at);
-  return `${longDay(at, f)} · ${clock(at, f)}`;
+/** 0 = Monday ... 6 = Sunday, for a dayKey. */
+function weekdayIndex(key: string): number {
+  const [y, m, d] = key.split("-").map(Number);
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
 }
 
-/** Returns null when there is no session yet (the empty state). */
+/** The seven dayKeys (Monday first) of the week that is `offset` weeks before the one holding `nowMs`. */
+export function weekKeys(nowMs: number, offset: number, timeZone?: string): string[] {
+  let monday = dayKey(nowMs, timeZone);
+  for (let i = weekdayIndex(monday); i > 0; i--) monday = previousDay(monday);
+  for (let i = 0; i < offset * 7; i++) monday = previousDay(monday);
+  const keys = [monday];
+  while (keys.length < 7) keys.push(nextDay(keys[keys.length - 1]));
+  return keys;
+}
+
+const asNoon = (key: string) => Date.parse(`${key}T12:00:00.000Z`);
+const dayLabel = (key: string, f: Fmt) =>
+  new Intl.DateTimeFormat(f.lang === "pt-BR" ? "pt-BR" : "en-GB", { timeZone: "UTC", weekday: "short" }).format(new Date(asNoon(key)));
+const keyLabel = (key: string, f: Fmt) => shortDay(asNoon(key), { lang: f.lang, timeZone: "UTC" });
+const rangeOf = (keys: string[], f: Fmt) => `${keyLabel(keys[0], f)} – ${keyLabel(keys[6], f)}`;
+
+function totalsOf(records: SessionRecord[], keysSet: Set<string>, timeZone?: string): { totals: Totals; perDay: Map<string, { minutes: number; sessions: number }> } {
+  const perDay = new Map<string, { minutes: number; sessions: number }>();
+  let minutes = 0, hints = 0, sessions = 0;
+  for (const r of records) {
+    const key = dayKey(Date.parse(r.ended_at), timeZone);
+    if (!keysSet.has(key)) continue;
+    const d = perDay.get(key) ?? { minutes: 0, sessions: 0 };
+    d.minutes += r.minutes;
+    d.sessions += 1;
+    perDay.set(key, d);
+    minutes += r.minutes;
+    hints += r.hint_count;
+    sessions += 1;
+  }
+  return { totals: { sessions, minutes: round1(minutes), hints, activeDays: perDay.size }, perDay };
+}
+
+/** The wrap-up of one week. Always returns a view; `empty` says the week had no session. */
 export function buildDigest(
-  records: SessionRecord[], words: LearningEvent[], progress: Progress, nowMs: number, f: Fmt, selectedId?: string | null,
-): DigestView | null {
-  const sorted = [...records].sort(byEndDesc);
-  if (sorted.length === 0) return null;
-  const session = sorted.find((r) => r.record_id === selectedId) ?? sorted[0];
-  const byId = new Map(words.map((w) => [w.learning_event_id, w]));
+  records: SessionRecord[], words: LearningEvent[], progress: Progress, nowMs: number, f: Fmt, offset = 0,
+): WeekView {
+  const keys = weekKeys(nowMs, offset, f.timeZone);
+  const keySet = new Set(keys);
+  const { totals, perDay } = totalsOf(records, keySet, f.timeZone);
+  const before = weekKeys(nowMs, offset + 1, f.timeZone);
+  const previous = totalsOf(records, new Set(before), f.timeZone).totals;
 
-  const start = Date.parse(session.started_at);
-  const end = Date.parse(session.ended_at);
-  const inWindow = (at: string) => {
-    const ms = Date.parse(at);
-    return ms >= start && ms <= end;
-  };
-  const found = session.learning_event_ids.map((id) => byId.get(id)).filter((w): w is LearningEvent => !!w);
+  const days = keys.map((key) => ({
+    key, label: dayLabel(key, f), minutes: round1(perDay.get(key)?.minutes ?? 0), sessions: perDay.get(key)?.sessions ?? 0,
+  }));
+
+  // what happened to each word during the week: any step of its history that falls on one of the seven days
+  const inWeek = (at: string) => keySet.has(dayKey(Date.parse(at), f.timeZone));
   const groups = GROUPS.map((g) => ({
     ...g,
-    words: found.filter((w) => w.state_history.some((h) => h.learning_state === g.state && inWindow(h.at))).map(toWord),
+    words: words.filter((w) => w.state_history.some((h) => h.learning_state === g.state && inWeek(h.at))).map(toWord),
   })).filter((g) => g.words.length > 0);
+  const newWords = groups.find((g) => g.state === "DISCOVERED")?.words.length ?? 0;
 
-  const today = dayKey(nowMs, f.timeZone);
-  const todays = sorted.filter((r) => dayKey(Date.parse(r.ended_at), f.timeZone) === today);
-  const tSessions = todays.length;
-  const tMinutes = Math.round(todays.reduce((s, r) => s + r.minutes, 0) * 10) / 10;
-  const tHints = todays.reduce((s, r) => s + r.hint_count, 0);
-
-  const due = words.filter((w) => progress[w.learning_event_id] && progress[w.learning_event_id].due_at <= nowMs)
+  // Practise next: training-due words first, then the oldest still only "DISCOVERED". Only words Training can use.
+  const usable = words.filter((w) => isTrainable(w, w.user_id ?? ""));
+  const due = usable.filter((w) => progress[w.learning_event_id] && progress[w.learning_event_id].due_at <= nowMs)
     .sort((a, b) => progress[a.learning_event_id].due_at - progress[b.learning_event_id].due_at);
-  const discovered = words.filter((w) => w.learning_state === "DISCOVERED").sort((a, b) => firstAt(a) - firstAt(b));
+  const discovered = usable.filter((w) => w.learning_state === "DISCOVERED").sort((a, b) => firstAt(a) - firstAt(b));
   const next: LearningEvent[] = [];
   for (const w of [...due, ...discovered]) {
     if (next.length >= PRACTISE_NEXT) break;
     if (!next.includes(w)) next.push(w);
   }
 
-  const at = Date.parse(session.started_at);
-  const header = [longDay(at, f), clock(at, f), t(f.lang, "min_short", { n: minutes(session.minutes, f) }), plural(f.lang, "hints", session.hint_count)].join(" · ");
+  const options = Array.from({ length: WEEKS_BACK }, (_, i) => ({ offset: i, label: i === 0 ? t(f.lang, "digest_this_week") : rangeOf(weekKeys(nowMs, i, f.timeZone), f) }));
 
   return {
-    options: sorted.slice(0, DIGEST_OPTIONS).map((r) => ({ record_id: r.record_id, label: recordLabel(r, f) })),
-    session,
-    header,
-    groups,
-    noWords: groups.length === 0,
-    today: {
-      sessions: tSessions, minutes: tMinutes, hints: tHints,
-      line: [plural(f.lang, "sessions", tSessions), t(f.lang, "min_short", { n: minutes(tMinutes, f) }), plural(f.lang, "hints", tHints)].join(" · "),
-    },
-    practiseNext: next.map(toWord),
-    closingKey: closingKey(session.hint_count),
+    offset, range: rangeOf(keys, f), options, totals, previous, deltaMinutes: round1(totals.minutes - previous.minutes),
+    days, newWords, groups, practiseNext: next.map(toWord), empty: totals.sessions === 0,
   };
 }

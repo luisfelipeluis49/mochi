@@ -18,15 +18,15 @@ function props(over: Partial<SessionScreenProps> = {}): SessionScreenProps {
   };
 }
 
-test("idle: the Start label and the Oi, Mochi line", () => {
+test("idle: the Start label and the Oi, Papear line", () => {
   const html = renderToString(<SessionScreen {...props()} />);
   assert.ok(html.includes("Start session"));
-  assert.ok(html.includes("Same as saying “Oi, Mochi!”"));
+  assert.ok(html.includes("Papear listens through your microphone only while a session runs."));
   assert.ok(html.includes("Asleep"));
   assert.match(html, /mode-sleeping/);
   assert.ok(!html.includes("Stop session"));
   const pt = renderToString(<SessionScreen {...props({ lang: "pt-BR" })} />);
-  assert.ok(pt.includes("Começar sessão") && pt.includes("É como dizer “Oi, Mochi!”"));
+  assert.ok(pt.includes("Começar sessão") && pt.includes("O Papear só ouve pelo seu microfone enquanto uma sessão está ativa."));
 });
 
 test("capturing with a hint: the expression, the note, lang, aria-live, Stop and the timer", () => {
@@ -39,12 +39,11 @@ test("capturing with a hint: the expression, the note, lang, aria-live, Stop and
   assert.ok(html.includes("Listening"));
   assert.ok(html.includes("01:05"));
   assert.match(html, /class="word-chip" lang="en">postpone/);
-  assert.match(html, /mood-curious/);
 });
 
-test("starting: Waking Mochi with a spinner", () => {
+test("starting: Connecting with a spinner", () => {
   const html = renderToString(<SessionScreen {...props({ phase: "starting", face: faceOf({ ...restingFace("en"), starting: true }, 0) })} />);
-  assert.ok(html.includes("Waking Mochi…"));
+  assert.ok(html.includes("Connecting…"));
   assert.match(html, /class="spinner"/);
   assert.match(html, /mode-waking/);
 });

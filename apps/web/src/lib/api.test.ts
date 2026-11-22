@@ -135,3 +135,10 @@ test("beaconStop posts an empty body to the stop path", () => {
   assert.equal(beaconStop("w-3f9c1a2b", {}), false);
   assert.equal(beaconStop("w-3f9c1a2b", undefined), false);
 });
+
+test("one word the client does not understand does not hide the others", async () => {
+  const bad = { ...word, learning_event_id: "bad", learning_state: "FROM_A_NEWER_BACKEND" };
+  const f = fakeFetch(() => ({ status: 200, json: [bad, word] }));
+  const api = createApi({ fetch: f.fn });
+  assert.deepEqual(await api.words(user.user_id), [word]);
+});
