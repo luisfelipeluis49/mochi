@@ -882,3 +882,23 @@ made by a second builder, in its own commits, against the same written contract.
   Papear should answer to its own name is a decision for Kauê and the team.
 - **Not built.** A company account (several people, an admin view, team totals) needs sign-in; today anyone who knows a
   user id can read that person's words (D-42). The digest is per person, not per team.
+
+## D-44: in a web session, words the guest would learn go to the person, swapped (2026-11-22)
+
+**Why.** Render logs of a real session showed why Training stayed empty. The person (Portuguese at home, learning
+English) said "tênis" inside an English sentence and the hint model produced `tênis (sneakers)`. The whose-word rule
+(AGENTS 7.3) gives a word to the one participant learning the language of the sentence, and in a web session that was
+the invented `guest` (the opposite languages, D-42). The card and its learning event were saved for the guest, so the
+person's Training, My words and screen never saw them. Assigning the pair to the person as it was would teach them
+`tênis`, which they know.
+- **Rule (`gateway/guest_reown.py`, applied to every decision of a session that has a person):** a hint or learning
+  event owned by `guest` becomes the person's with the two sides swapped: the word they are missing in the language
+  they practise (`sneakers`) with what they said as its meaning (`tênis`), `target_language` = their target language,
+  the example (written in the other language) removed. With no meaning it cannot be swapped and is dropped. Owners
+  other than the guest are untouched. The Pi's `demo` session has no person and is unchanged.
+- **Not changed:** `intelligence/` (the whose-word rule, the hint model, the character).
+- **Still not covered, and what Training is meant to be:** "words, contexts and phrases you had a hard time saying or
+  understanding". Today only hints become learning events. In Praticar, Papear's own answer to "how do I say my
+  sneakers are nice?" (a phrase) is spoken and saved nowhere, so a person who only chats with Papear still has an empty
+  Training. Saving those phrases needs the character reply to carry a structured "save this phrase"; that is the next
+  step and a change in `intelligence/`.
