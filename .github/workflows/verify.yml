@@ -20,11 +20,13 @@ jobs:
       - run: docker build -t mochi-web apps/web
       - name: smoke-test mochi-web
         run: |
-          docker run -d -p 8080:8080 -e BACKEND_URL=http://127.0.0.1:9 --name web mochi-web
+          docker run -d -p 8080:8080 -e BACKEND_URL=http://127.0.0.1:9/ --name web mochi-web
           for i in $(seq 1 10); do curl -fsS http://localhost:8080/web-healthz && break; sleep 1; done
           curl -fsS http://localhost:8080/web-healthz
           curl -fsS http://localhost:8080/session | grep -q '<div id="root">'
           docker exec web nginx -t
+          # a trailing slash on BACKEND_URL is stripped, so /api paths reach the backend unchanged
+          docker exec web grep -q 'proxy_pass http://127.0.0.1:9;' /etc/nginx/conf.d/default.conf
   apps:
     runs-on: ubuntu-latest
     strategy:
