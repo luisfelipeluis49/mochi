@@ -12,6 +12,7 @@ from threading import Lock
 
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import Storage, voice_key
+from mochi_backend.storage.session_record import SessionRecord
 from mochi_contracts import LearningEvent, User, VoiceProfile
 
 CLEAR_KEY = "events:clear"
@@ -89,6 +90,11 @@ class WriteBehindStorage:
         """Pass-through: runs once at startup, before any turn."""
         self._inner.seed_users(users)
 
+    def save_user(self, user: User) -> None:
+        """Queue the write on the same worker as the events: a user row is always written before
+        that user's first learning event, which references it (D-42)."""
+        self._later(f"user:{user.user_id}", lambda: self._inner.save_user(user))
+
     def load_events(self) -> list[LearningEvent]:
         """Pass-through read."""
         return self._inner.load_events()
@@ -112,3 +118,11 @@ class WriteBehindStorage:
     def delete_voice(self, name: str) -> None:
         """Queue the delete."""
         self._later(f"voice:{voice_key(name)}", lambda: self._inner.delete_voice(name))
+
+    def load_sessions(self) -> list[SessionRecord]:
+        """Pass-through read."""
+        return self._inner.load_sessions()
+
+    def save_session(self, record: SessionRecord) -> None:
+        """Queue the write (after the user's own row, which it references)."""
+        self._later(f"session:{record.record_id}", lambda: self._inner.save_session(record))

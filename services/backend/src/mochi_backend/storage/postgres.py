@@ -5,9 +5,11 @@ from collections.abc import Callable
 import psycopg
 from pydantic import ValidationError
 
+from mochi_backend.platform.clock import parse_iso_z
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage import schema
 from mochi_backend.storage.port import voice_key
+from mochi_backend.storage.session_record import SessionRecord
 from mochi_contracts import Language, LearningEvent, User, VoiceProfile
 
 CONNECT_TIMEOUT_SECONDS = 5
@@ -45,9 +47,12 @@ class PostgresStorage:
         """Insert the users that do not exist yet; an existing one is left as it is."""
         with self._connect() as connection:
             for user in users:
-                languages = [language.value for language in user.comfortable_languages]
-                params = (user.user_id, user.display_name, languages, user.target_language.value)
-                connection.execute(schema.INSERT_USER, params)
+                connection.execute(schema.INSERT_USER, _user_params(user))
+
+    def save_user(self, user: User) -> None:
+        """Insert one user if missing (`ON CONFLICT DO NOTHING`)."""
+        with self._connect() as connection:
+            connection.execute(schema.INSERT_USER, _user_params(user))
 
     def load_events(self) -> list[LearningEvent]:
         """Every learning event in the order it was first saved."""
@@ -113,6 +118,25 @@ class PostgresStorage:
         with self._connect() as connection:
             connection.execute(schema.DELETE_VOICE, (voice_key(name),))
 
+    def load_sessions(self) -> list[SessionRecord]:
+        """Every session record, oldest first by `ended_at`."""
+        with self._connect() as connection:
+            rows = connection.execute(schema.SELECT_SESSIONS).fetchall()
+        return self._parsed("session_records", rows, _session)
+
+    def save_session(self, record: SessionRecord) -> None:
+        """Insert one record; one already there by id is left as it is."""
+        params = (
+            record.record_id,
+            record.user_id,
+            record.session_id,
+            parse_iso_z(record.started_at),
+            parse_iso_z(record.ended_at),
+            record.model_dump_json(),
+        )
+        with self._connect() as connection:
+            connection.execute(schema.INSERT_SESSION, params)
+
     def unsaved_writes(self) -> int:
         """Writes are direct here (`WriteBehindStorage` queues them), so nothing is waiting."""
         return 0
@@ -120,6 +144,15 @@ class PostgresStorage:
 
 def _event(row: tuple[object, ...]) -> LearningEvent:
     return LearningEvent.model_validate_json(str(row[1]))
+
+
+def _session(row: tuple[object, ...]) -> SessionRecord:
+    return SessionRecord.model_validate_json(str(row[1]))
+
+
+def _user_params(user: User) -> tuple[str, str, list[str], str]:
+    languages = [language.value for language in user.comfortable_languages]
+    return (user.user_id, user.display_name, languages, user.target_language.value)
 
 
 def _user(row: tuple[object, ...]) -> User:

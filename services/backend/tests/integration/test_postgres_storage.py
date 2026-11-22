@@ -12,12 +12,14 @@ import pytest
 
 from mochi_backend.gateway.roster import DEMO_USERS
 from mochi_backend.storage.postgres import PostgresStorage
+from mochi_backend.storage.session_record import SessionRecord
 from mochi_contracts import (
     Language,
     LearningEvent,
     LearningState,
     Reason,
     StateChange,
+    User,
     VoiceProfile,
 )
 from tests.fakes.fake_sender import FakeEventLogger
@@ -29,7 +31,7 @@ pytestmark = pytest.mark.skipif(not URL, reason="MOCHI_TEST_DATABASE_URL is not 
 @pytest.fixture
 def storage() -> Iterator[PostgresStorage]:
     with psycopg.connect(URL, autocommit=True) as connection:
-        connection.execute("DROP TABLE IF EXISTS voices, learning_events, users")
+        connection.execute("DROP TABLE IF EXISTS session_records, voices, learning_events, users")
     database = PostgresStorage(URL, FakeEventLogger())
     database.prepare()
     database.seed_users(DEMO_USERS)
@@ -96,3 +98,38 @@ def test_a_voice_keeps_its_vector_and_is_replaced_by_name_in_any_case(
     assert (voice.name, voice.language, voice.voiceprint) == ("ANA", "en", vector)
     storage.delete_voice("ana")
     assert storage.load_voices() == []
+
+
+def _record(record_id: str, ended: str, user: str = "luis-3f9c1a") -> SessionRecord:
+    return SessionRecord(
+        record_id=record_id,
+        session_id="w-1a2b3c4d",
+        user_id=user,
+        started_at="2026-11-21T10:00:00.000Z",
+        ended_at=ended,
+        minutes=12.5,
+        hint_count=3,
+        learning_event_ids=["learn_002"],
+    )
+
+
+def test_a_web_user_and_their_session_records_round_trip_and_survive_a_reset(
+    storage: PostgresStorage,
+) -> None:
+    luis = User(
+        user_id="luis-3f9c1a",
+        display_name="Luís",
+        comfortable_languages=[Language.PT_BR],
+        target_language=Language.EN,
+    )
+    storage.save_user(luis)
+    storage.save_user(luis.model_copy(update={"display_name": "Other"}))  # never overwrites
+    storage.save_event(_event("learn_002", "postpone", user="luis-3f9c1a"))
+    storage.save_session(_record("rec_2", "2026-11-21T10:12:30.000Z"))
+    storage.save_session(_record("rec_1", "2026-11-21T10:05:00.000Z"))
+    storage.save_session(_record("rec_1", "2026-11-21T10:05:00.000Z"))  # written once
+    storage.clear_events()
+    assert [r.record_id for r in storage.load_sessions()] == ["rec_1", "rec_2"]
+    assert storage.load_sessions()[1] == _record("rec_2", "2026-11-21T10:12:30.000Z")
+    names = {u.user_id: u.display_name for u in storage.load_users()}
+    assert names["luis-3f9c1a"] == "Luís"

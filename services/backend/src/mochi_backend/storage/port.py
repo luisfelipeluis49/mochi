@@ -2,6 +2,7 @@
 
 from typing import Protocol
 
+from mochi_backend.storage.session_record import SessionRecord
 from mochi_contracts import LearningEvent, User, VoiceProfile
 
 
@@ -11,7 +12,8 @@ def voice_key(name: str) -> str:
 
 
 class Storage(Protocol):
-    """Durable copies of users, learning events and voices. Reads happen once, at startup."""
+    """Durable copies of users, learning events, voices and session records. Reads happen once,
+    at startup."""
 
     def load_users(self) -> list[User]:
         """Every known user (empty when nothing is stored)."""
@@ -19,6 +21,10 @@ class Storage(Protocol):
 
     def seed_users(self, users: list[User]) -> None:
         """Add users that are missing; never overwrites one that exists."""
+        ...
+
+    def save_user(self, user: User) -> None:
+        """Add one user if missing (a web user, D-42); an existing one is left as it is."""
         ...
 
     def load_events(self) -> list[LearningEvent]:
@@ -45,6 +51,14 @@ class Storage(Protocol):
         """Forget one voice, vector included. No error when it is not there."""
         ...
 
+    def load_sessions(self) -> list[SessionRecord]:
+        """Every session record, oldest first. A demo reset never deletes them."""
+        ...
+
+    def save_session(self, record: SessionRecord) -> None:
+        """Add one session record (written once, never changed)."""
+        ...
+
     def unsaved_writes(self) -> int:
         """Writes that failed and still wait for another try (0 when everything is saved)."""
         ...
@@ -58,6 +72,9 @@ class NullStorage:
         return []
 
     def seed_users(self, users: list[User]) -> None:
+        """Nothing to do."""
+
+    def save_user(self, user: User) -> None:
         """Nothing to do."""
 
     def load_events(self) -> list[LearningEvent]:
@@ -78,6 +95,13 @@ class NullStorage:
         """Nothing to do."""
 
     def delete_voice(self, name: str) -> None:
+        """Nothing to do."""
+
+    def load_sessions(self) -> list[SessionRecord]:
+        """Nothing stored."""
+        return []
+
+    def save_session(self, record: SessionRecord) -> None:
         """Nothing to do."""
 
     def unsaved_writes(self) -> int:

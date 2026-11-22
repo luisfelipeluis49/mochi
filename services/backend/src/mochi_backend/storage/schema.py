@@ -37,6 +37,18 @@ CREATE_TABLES = (
         updated_at timestamptz NOT NULL DEFAULT now()
     )
     """,
+    # One finished web session of one person (D-42). Last: it references `users`. `body` is the
+    # whole SessionRecord; the other columns are for looking at the table by hand.
+    """
+    CREATE TABLE IF NOT EXISTS session_records (
+        record_id text PRIMARY KEY,
+        user_id text REFERENCES users (user_id) ON DELETE CASCADE,
+        session_id text NOT NULL,
+        started_at timestamptz NOT NULL,
+        ended_at timestamptz NOT NULL,
+        body jsonb NOT NULL
+    )
+    """,
 )
 
 INSERT_USER = """
@@ -65,3 +77,8 @@ UPSERT_VOICE = """
 """
 SELECT_VOICES = "SELECT name, user_id, language, voiceprint, saved FROM voices ORDER BY name_key"
 DELETE_VOICE = "DELETE FROM voices WHERE name_key = %s"
+INSERT_SESSION = """
+    INSERT INTO session_records (record_id, user_id, session_id, started_at, ended_at, body)
+    VALUES (%s, %s, %s, %s, %s, %s::jsonb) ON CONFLICT (record_id) DO NOTHING
+"""
+SELECT_SESSIONS = "SELECT record_id, body::text FROM session_records ORDER BY ended_at, record_id"

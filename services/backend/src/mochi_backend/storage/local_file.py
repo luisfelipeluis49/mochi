@@ -13,6 +13,7 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage.port import voice_key
+from mochi_backend.storage.session_record import SessionRecord
 from mochi_contracts import LearningEvent, User, VoiceProfile
 
 
@@ -25,6 +26,7 @@ class LocalFileStorage:
         self._users: dict[str, User] = {}
         self._events: dict[str, LearningEvent] = {}
         self._voices: dict[str, VoiceProfile] = {}
+        self._sessions: list[SessionRecord] = []
         self._read()
 
     def _read(self) -> None:
@@ -35,6 +37,7 @@ class LocalFileStorage:
         self._users = {u.user_id: u for u in self._rows("users", saved, User)}
         self._events = {e.learning_event_id: e for e in self._rows("events", saved, LearningEvent)}
         self._voices = {voice_key(v.name): v for v in self._rows("voices", saved, VoiceProfile)}
+        self._sessions = self._rows("sessions", saved, SessionRecord)
 
     def _rows[T: BaseModel](
         self, table: str, saved: dict[str, list[object]], model: type[T]
@@ -53,6 +56,7 @@ class LocalFileStorage:
                 "users": [u.model_dump(mode="json") for u in self._users.values()],
                 "events": [e.model_dump(mode="json") for e in self._events.values()],
                 "voices": [v.model_dump(mode="json") for v in self._voices.values()],
+                "sessions": [r.model_dump(mode="json") for r in self._sessions],
             }
         )
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,6 +74,10 @@ class LocalFileStorage:
         """Add the users that are missing."""
         self._users |= {u.user_id: u for u in users if u.user_id not in self._users}
         self._write()
+
+    def save_user(self, user: User) -> None:
+        """Add the user if missing."""
+        self.seed_users([user])
 
     def load_events(self) -> list[LearningEvent]:
         """Events in the order first saved."""
@@ -97,6 +105,16 @@ class LocalFileStorage:
     def delete_voice(self, name: str) -> None:
         """Forget one voice."""
         self._voices.pop(voice_key(name), None)
+        self._write()
+
+    def load_sessions(self) -> list[SessionRecord]:
+        """Session records, oldest first."""
+        return list(self._sessions)
+
+    def save_session(self, record: SessionRecord) -> None:
+        """Add a record (one already there by id is left as it is)."""
+        if all(kept.record_id != record.record_id for kept in self._sessions):
+            self._sessions.append(record)
         self._write()
 
     def unsaved_writes(self) -> int:
