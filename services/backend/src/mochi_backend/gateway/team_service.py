@@ -5,6 +5,7 @@ are, exactly as `/ws?user=ana` is. The role rules below are the real ones; only 
 identity is missing, and it slots in here when sign-in exists.
 """
 
+import asyncio
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -128,6 +129,18 @@ class TeamService:
         """The team view for the last `period_days`; administrators only."""
         company = self._allow(company_id, viewer, admin_only=True)
         return team_insights(self._facts(company), self._clock.now(), period_days, self._min_people)
+
+    async def insights_in_thread(
+        self, company_id: str, viewer: str | None, period_days: int
+    ) -> TeamInsights:
+        """`insights`, with the adding up done on a worker thread so live turns are not held up.
+
+        The facts are copied on the loop first, so the thread never reads what a turn is changing.
+        Example: `await service.insights_in_thread("demo", "ana", 30)`.
+        """
+        company = self._allow(company_id, viewer, admin_only=True)
+        facts, now = self._facts(company), self._clock.now()
+        return await asyncio.to_thread(team_insights, facts, now, period_days, self._min_people)
 
     def sessions(self, company_id: str, viewer: str | None) -> list[SessionRecord]:
         """Every session of the company, newest first; administrators only. No sentences."""

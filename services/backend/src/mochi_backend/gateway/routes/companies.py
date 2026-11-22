@@ -63,7 +63,7 @@ async def company_insights(
 
     Example: `GET /api/companies/demo/insights?viewer=ana&days=30`.
     """
-    return container.team_service.insights(company_id, viewer, days)
+    return await container.team_service.insights_in_thread(company_id, viewer, days)
 
 
 @router.get("/api/companies/{company_id}/sessions")

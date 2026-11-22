@@ -1684,3 +1684,20 @@ gone and must not leave a dead writer behind (same reason as `write_behind.py`).
 **Log.** `turn_committed {segment_id, commit_ms}`: time from the decision to the end of the commit
 (publishes, notes, transcript line). No text. Compare it with `arrived_to_decided_ms` and
 `reply_first_byte` to see what this process spends after `decide()`.
+
+## D-64: three smaller backend performance changes (2026-11-22)
+
+Found by reading the code, like D-63; none is measured yet.
+
+- **Saved words are indexed by person** (`intelligence/memory_store.py`). `words_for` ran on every turn
+  for every person and scanned every event; it now reads a per-person index with the same order
+  (newest first; a replaced event keeps its place, one that changes owner moves).
+- **The team view is added up on a worker thread** (`TeamService.insights_in_thread`, used by
+  `GET /api/companies/{id}/insights`). The facts are copied on the event loop first, so the thread
+  reads nothing a turn is changing. `insights` stays for callers that want it synchronous.
+- **The hint model's answer is capped at 400 tokens** (`MAX_ANSWER_TOKENS`), only for calls that answer without thinking: reasoning tokens count against the cap, and a cut-off false-friend check (`reasoning_effort: low`) would silently lose its hint. The JSON is about 100,
+  so a good answer never meets it; a runaway one is cut and read as "no hint". Trimming the fields
+  the model is asked for (`example`, `candidates`) would save more but changes behaviour: it needs
+  `scripts/eval-intelligence.sh` before and after, and Kauê's agreement.
+- **Not done:** indexes in `team/ledger.py` (its scans run at the end of a session or on an admin
+  request, not per turn) and a pool for Postgres connections (writes are already off the loop).
