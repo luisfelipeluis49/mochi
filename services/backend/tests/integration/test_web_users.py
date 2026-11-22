@@ -303,3 +303,56 @@ def test_a_phrase_papear_teaches_becomes_something_to_practise() -> None:
         f"/dev/sessions/{WEB}/turn", json={"text": "Como é que eu falo que meus tênis são bonitos?"}
     )
     assert len(client.get(f"/api/users/{luis}/words").json()) == 1  # said twice: one card
+
+
+IDIOM = "Honestly it is raining cats and dogs outside today."
+EXPLAINED = (
+    '[mood curious] "Raining cats and dogs" means raining very hard.'
+    "[phrase: raining cats and dogs | chovendo muito]"
+)
+
+
+def _quiet_web(character: FakeCharacterModel) -> tuple[TestClient, Harness, str]:
+    harness = make_harness(env=_DEV, character=character)
+    client = TestClient(create_app(harness.container))
+    person = _new_user(client, "Luis")
+    started = client.post(f"/api/sessions/{WEB}/start", json={"user_id": person})  # not woken
+    assert started.status_code == 200
+    return client, harness, person
+
+
+def test_a_quiet_web_session_explains_an_idiom_without_being_asked_and_saves_it() -> None:
+    character = FakeCharacterModel(EXPLAINED)
+    client, _, person = _quiet_web(character)
+    turn = client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM}).json()
+    assert turn["decision"]["decision"] == "SPEAK"
+    assert "very hard" in turn["reply"] and "phrase" not in turn["reply"]
+    assert character.requests[0].explains and not character.requests[0].woken
+    [saved] = client.get(f"/api/users/{person}/words").json()
+    assert saved["expression"] == "raining cats and dogs"
+
+
+def test_a_quiet_web_session_says_nothing_when_nothing_needs_explaining() -> None:
+    character = FakeCharacterModel("[quiet]")
+    client, _, person = _quiet_web(character)
+    turn = client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "We are going to the park later."}
+    )
+    assert turn.json()["decision"]["decision"] == "IGNORE" and turn.json()["reply"] == ""
+    assert client.get(f"/api/users/{person}/words").json() == []
+    short = client.post(f"/dev/sessions/{WEB}/turn", json={"text": "Yes, of course."})
+    assert short.json()["decision"]["decision"] == "IGNORE"
+    assert len(character.requests) == 1  # a short sentence is never worth a model call
+
+
+def test_the_pi_and_a_woken_web_session_do_not_explain_on_their_own() -> None:
+    character = FakeCharacterModel(EXPLAINED)
+    harness = make_harness(env=_DEV, character=character)
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/demo/start")  # the Pi's: nobody woke it, two people talk
+    pi = client.post("/dev/sessions/demo/turn", json={"text": IDIOM}).json()
+    assert pi["decision"]["decision"] == "IGNORE" and character.requests == []
+    person = _new_user(client, "Luis")
+    _start(client, WEB, person)  # woken ("hey mochi"): it is a conversation
+    client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM})
+    assert character.requests and character.requests[0].woken and not character.requests[0].explains

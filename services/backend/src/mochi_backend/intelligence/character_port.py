@@ -35,6 +35,7 @@ class CharacterRequest(BaseModel):
     named: bool = True  # False: nobody clearly called Mochi; it may answer [quiet]
     language: Language = Language.EN  # the language the sentence is in: the reply's language
     woken: bool = False  # the person woke Mochi to talk to it (not a talk between two people)
+    explains: bool = False  # a quiet listener that may explain an expression nobody asked about
     given: list[str] = []  # words Mochi handed over earlier in this talk: a goodbye may name one
 
 

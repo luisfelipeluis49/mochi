@@ -37,7 +37,9 @@ class IntelligencePort(Protocol):
         """Clear saved words and any game."""
         ...
 
-    def session_started(self, woken: bool, language: Language | None = None) -> None:
+    def session_started(
+        self, woken: bool, language: Language | None = None, explains: bool = False
+    ) -> None:
         """A session begins. `woken`: Mochi was called on the device; it listens for an answer.
 
         `language`: the one it was called in and greeted in, when known ("oi Mochi" is pt-BR).

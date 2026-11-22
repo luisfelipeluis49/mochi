@@ -70,6 +70,17 @@ IN_TALK_NOTE = (
 )
 
 
+# A quiet listener (a web session nobody woke): it speaks unasked only to explain or correct.
+EXPLAIN_NOTE = (
+    "Nobody called you: you are listening to a conversation. Speak ONLY if the sentence uses an "
+    "idiom, a figure of speech or an expression the other person may not understand, or uses an "
+    "expression wrongly or unnaturally, and a short explanation or correction would help. Then "
+    "explain it in one or two short sentences in the language of the sentence, and add "
+    "[phrase: EXPRESSION | MEANING]. For anything else, grammar slips and small mistakes "
+    "included, reply with exactly [quiet]."
+)
+
+
 class _Message(BaseModel):
     content: str | None = None
 
@@ -117,7 +128,9 @@ def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:
         note = WORD_NOTE.format(word=request.word, meaning=request.meaning or "unknown")
         messages.append({"role": "system", "content": note})
     if not request.named:
-        note = IN_TALK_NOTE if request.woken else OVERHEARD_NOTE
+        note = (
+            IN_TALK_NOTE if request.woken else EXPLAIN_NOTE if request.explains else OVERHEARD_NOTE
+        )
         messages.append({"role": "system", "content": note})
     messages.append({"role": "system", "content": LANGUAGE_NOTES[request.language]})
     if request.given and not request.word:  # last, next to the sentence: it was ignored higher up
