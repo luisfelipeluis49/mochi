@@ -5,7 +5,7 @@
 // "Start session" (on the Pi you say "Hi Mochi"; here you tap) and Mochi joins the meeting LIVE
 // through this phone: it listens with the phone's mic, speaks through the phone, and the stage in
 // the middle behaves like Mochi's own screen (sessionStage.ts ← home.ts), with the company face
-// (HeadsetFace.tsx: a calm face wearing a meeting headset):
+// (CompanyFace.tsx: a calm navy face, a soft teal glow while it listens):
 //   idle → Mochi resting + "Start session"
 //   listening → Mochi's face, awake     hint → the word (and its meaning and example)
 //   speaking → what Mochi says           choosing → "what do you want to do today?"
@@ -20,7 +20,7 @@ import { showLive } from "../lib/phoneMic.ts";
 import { type Stage, sessionStage } from "../lib/sessionStage.ts";
 import { type ClientState, speakerName } from "../lib/store.ts";
 import type { PhoneMic } from "../lib/usePhoneMic.ts";
-import { HeadsetFace } from "./HeadsetFace.tsx";
+import { CompanyFace } from "./CompanyFace.tsx";
 
 interface Props {
   user: string;
@@ -41,7 +41,7 @@ function StageView({ stage, lang, speaker }: { stage: Stage; lang: Language; spe
     case "idle":
       return (
         <div className="stage stage-light">
-          <HeadsetFace awake={false} />
+          <CompanyFace awake={false} />
           <p className="stage-title">{t.readyTitle}</p>
           <p className="stage-text">{t.readyText}</p>
         </div>
@@ -50,14 +50,14 @@ function StageView({ stage, lang, speaker }: { stage: Stage; lang: Language; spe
       return (
         <div className="stage stage-light">
           {speaker && <span className="speaker-badge">{speaker}</span>}
-          <HeadsetFace awake />
+          <CompanyFace awake />
           <p className="stage-label">{t.modeFace[stage.mode]}</p>
         </div>
       );
     case "choosing":
       return (
         <div className="stage stage-light">
-          <HeadsetFace awake small />
+          <CompanyFace awake small />
           <p className="stage-title">{t.choosing}</p>
           <p className="stage-label">{t.modeName.practice} · {t.modeName.together} · {t.modeName.activity}</p>
         </div>
@@ -65,7 +65,7 @@ function StageView({ stage, lang, speaker }: { stage: Stage; lang: Language; spe
     case "speaking":
       return (
         <div className="stage stage-light">
-          <HeadsetFace awake talking small />
+          <CompanyFace awake talking small />
           <p className="stage-said">“{stage.text}”</p>
         </div>
       );
