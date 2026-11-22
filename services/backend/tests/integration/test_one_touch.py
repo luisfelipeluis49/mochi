@@ -117,6 +117,8 @@ async def test_a_word_nobody_asked_for_and_a_question_to_a_colleague_stay_silent
     assert (await harness.say("I need to adiar my meeting tomorrow.")).reply == ""  # a code switch
     harness.clock.advance(30)
     assert (await harness.say("Ben, como se diz recibo?")).reply == ""  # Ben was asked, by name
+    harness.clock.advance(30)
+    assert (await harness.say("Como se diz fila, Ben?")).reply == ""  # his name at the end
     quiet = make_harness()  # the switch off: as before
     await quiet.container.sessions.start()
     assert (await quiet.say("How do you say guarda-chuva?")).reply == ""

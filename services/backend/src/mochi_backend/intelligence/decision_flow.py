@@ -11,9 +11,11 @@ from mochi_backend.intelligence.character_port import ReviewWord
 from mochi_backend.intelligence.clear_cases import (
     addressed_partner,
     asked_term,
+    asks_directly,
     asks_for_word,
     detect_clear,
     mochi_entry,
+    names_a_colleague,
     question_itself,
     unfinished_question,
 )
@@ -208,10 +210,11 @@ class DecisionFlow:
     def _asked_outright(self, turn: Turn, context: SessionContext) -> bool:
         """ "Como se diz X?", "How do I say X in Portuguese?": the answer is said as it is shown
         (D-70). Someone who asks wants to say it next, and a screen does not tell how it sounds.
-        Not when a colleague was asked by name, and not while Mochi answers in its own words."""
-        if not self._say_asked or not asks_for_word(turn.text):
+        Not when a colleague is named in it, not for words of asking inside a statement ("you
+        need to learn how to say no"), and not while Mochi answers in its own words."""
+        if not self._say_asked or not asks_directly(turn.text):
             return False
-        return not addressed_partner(turn.text, context) and not self._talk.attentive
+        return not names_a_colleague(turn.text, context) and not self._talk.attentive
 
     def _may_be_heard(self, turn: Turn, context: SessionContext) -> bool:
         """Someone asked how a word sounds, and it is for Mochi to answer.
@@ -240,6 +243,7 @@ class DecisionFlow:
     def _reading_out(self, decision: Decision, word: str, language: Language) -> Decision:
         """The same decision, with Mochi saying just the word, twice: nothing else to mishear.
         A whole sentence is said once ("Vou terminar meu trabalho amanhã." twice was a lot)."""
+        word = word.rstrip(" .!?")  # the model ends a sentence with its full stop
         said = f"{word}. {word}." if len(word.split()) <= _WORDS_SAID_TWICE else f"{word}."
         speak = Speak(text=said, language=language, reason=SpeakReason.ASKS_MOCHI)
         return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})

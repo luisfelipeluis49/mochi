@@ -2055,9 +2055,34 @@ authentication."; "I forgot my guarda-chuva at the office." → silent hint and 
 → "Ok, oi pessoal, é muito bom conhecer vocês aqui."; "O prazer é meu. Vamos começar pela proposta?" →
 "The pleasure is mine. Shall we start with the proposal?"; "Mochi, pode parar." → off.
 
+**After a review before any deploy (same day).** Each of these is now a test:
+- *The mode turned itself back on.* A "for us" request counted in any sentence after one with Mochi's
+  name, and the stop command has its name: "Mochi, pode parar." then "Viu? Ele estava traduzindo pra
+  gente." started it again. The sentence after a call now has to be short (five words), within 12 s, and
+  the call must not have been a stop.
+- *The verb alone was too wide.* "Mochi, como se diz traduzir?", "Mochi, that was hard to translate" and
+  "Mochi, quem vai traduzir?" turned it on. It now has to be a request: "can you translate", "pode
+  traduzir", or the verb opening a clause ("Mochi, traduz, por favor").
+- *"It" pointed at any sentence that followed*, and that sentence was then translated aloud: "Como se diz
+  isso em inglês? Não sei." The sentence after the question now needs four words and must not drop the
+  question ("não sei", "never mind", "deixa pra lá", "do you know").
+- *Asked in passing.* "You need to learn how to say no to clients." and "Não sei como se fala com ele."
+  hold the words of asking; an asked word is said aloud only when the question opens a clause or ends in a
+  question mark (`asks_directly`), and not when a colleague's name is anywhere in it ("Como se diz recibo,
+  Ben?").
+- *The "no" was too wide*: "I don't want to get it wrong, how do you pronounce it?" was refused. Only a no
+  that governs the asking counts ("not going to ask", "don't need to pronounce").
+- *The device's `backends.py`* had a block pasted twice by a careless edit; rebuilt from the version before.
+
+Also found while re-checking with the real model: for `how do I say in Portuguese, uh, "I will finish my
+work tomorrow"?` the model answered two times in four, because it was not told which words were asked
+about (the language is named first). It is told now: four in four. A sentence's own full stop is dropped
+before Mochi adds one.
+
 **Tests:** `test_one_touch.py` (the route is 404; an asked word is said, a code switch and a question to a
-named colleague are not, a sentence once), `test_speak_for_me.py` (the new ways of asking, the card),
-`test_live_findings.py`, the device's `SentenceBarTest`. `make verify`: 1887 passed; pi-bridge: 146.
+named colleague are not, a sentence once), `test_speak_for_me.py` (the new ways of asking, what is not
+asking, the card), `test_live_findings.py`, the device's `SentenceBarTest`. `make verify`: 1911 passed;
+pi-bridge: 146.
 
 **Open:**
 - **The device has to be restarted** to show a translation and to stop reacting to a touch: the service

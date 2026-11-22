@@ -192,10 +192,40 @@ async def test_saying_no_with_the_words_that_ask_does_not_turn_it_on(said: str) 
     assert not mode.on
 
 
-async def test_asking_mochi_to_translate_one_word_is_not_asking_for_the_mode() -> None:
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Mochi, can you translate fila?",
+        "Mochi, como se traduz prazo?",
+        "Mochi, como se diz traduzir?",  # the word asked about is "translate"
+        "Mochi, how do you say translate?",
+        "Mochi, that was hard to translate.",
+        "Mochi, how do you translate?",
+        "Mochi, quem vai traduzir?",
+    ],
+)
+async def test_talking_to_mochi_about_translating_is_not_asking_for_the_mode(said: str) -> None:
     mode = _mode()
-    for said in ("Mochi, can you translate fila?", "Mochi, como se traduz prazo?"):
-        assert await mode.take(_by(said), make_context()) is None
+    assert await mode.take(_by(said), make_context()) is None
+    assert not mode.on
+
+
+@pytest.mark.parametrize(
+    ("before", "said"),
+    [
+        ("Mochi, pode parar.", "Viu? Ele estava traduzindo pra gente."),  # it had just stopped
+        ("Mochi, stop.", "Translate for us?"),  # a stop is not a call
+        ("Thanks, Mochi.", "Can you speak for us at the client meeting tomorrow?"),  # a long one
+    ],
+)
+async def test_a_sentence_after_mochis_name_does_not_turn_it_on_by_accident(
+    before: str, said: str
+) -> None:
+    mode = _mode()
+    context = make_context().model_copy(update={"recent_turns": [make_turn(before, 1)]})
+    assert await mode.take(_by(said, None, 4), context) is None
+    late = make_context().model_copy(update={"recent_turns": [make_turn("Mochi, me ajuda?", 1)]})
+    assert await mode.take(_by("Traduzir pra gente?", None, 40), late) is None  # long after
     assert not mode.on
 
 
