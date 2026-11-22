@@ -1,5 +1,5 @@
-"""Speak for me (DECISIONS D-64): a person with a registered voice asks Mochi to speak for them,
-talks in their own language, and Mochi says each sentence in the meeting's, until told to stop."""
+"""Speak for me (DECISIONS D-64, D-69): someone asks Mochi to speak for them, and from then on it
+says every sentence of the meeting in the other language, whoever said it, until told to stop."""
 
 import pytest
 
@@ -15,9 +15,9 @@ from mochi_backend.intelligence.openai_interpret_model import (
     parse_interpretation,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
-from mochi_backend.intelligence.speak_for_me import SpeakForMe, home_of
+from mochi_backend.intelligence.speak_for_me import SpeakForMe
 from mochi_contracts import DecisionKind, Language, SessionMode, Speak, Turn
-from tests.factories import ANA, BEN, make_context, make_turn
+from tests.factories import ANA, make_context, make_turn
 from tests.fakes.fake_http_client import FakeHttpClient
 from tests.fakes.fake_interpret_model import FakeInterpretModel
 from tests.harness import HOME, Harness, make_harness
@@ -25,7 +25,9 @@ from tests.unit.test_explaining import _reply
 
 ADIAR_PT = "A gente precisa adiar o lançamento para a semana que vem."
 ADIAR_EN = "We need to postpone the launch to next week."
-SCRIPT = {"adiar o lançamento": ADIAR_EN, "talk to the supplier": "Vamos falar com o fornecedor."}
+SUPPLIER_EN = "I think we should talk to the supplier first."
+SUPPLIER_PT = "Acho que a gente deveria falar com o fornecedor primeiro."
+SCRIPT = {"adiar o lançamento": ADIAR_EN, "talk to the supplier": SUPPLIER_PT}
 
 
 async def _meeting(**env: str) -> tuple[Harness, FakeInterpretModel]:
@@ -35,74 +37,47 @@ async def _meeting(**env: str) -> tuple[Harness, FakeInterpretModel]:
     return harness, model
 
 
-async def _says(harness: Harness, who: str | None, text: str) -> str:
-    """One sentence in the voice the device recognised; returns what Mochi says aloud."""
+async def _says(harness: Harness, text: str, who: str | None = None) -> str:
+    """One sentence, in a voice the device may or may not know; returns what Mochi says aloud."""
     harness.container.core.store.speaker = who
     return (await harness.say(text)).reply
 
 
-async def test_a_known_voice_turns_it_on_and_her_sentences_are_said_in_english() -> None:
+async def test_anyone_turns_it_on_and_every_sentence_is_said_in_the_other_language() -> None:
     harness, model = await _meeting()
     [home] = await harness.connect_all(HOME)
-    welcome = await _says(harness, "ana", "Hey Mochi, speak for me.")
-    assert "speak for you" in welcome and "Mochi, pode parar" in welcome  # the way out, in hers
-    assert await _says(harness, "ana", ADIAR_PT) == ADIAR_EN
+    welcome = await _says(harness, "Hey Mochi, speak for me.")  # no voice Mochi knows: no matter
+    assert "translate" in welcome and "Mochi, pode parar" in welcome  # both ways out are named
+    assert await _says(harness, ADIAR_PT) == ADIAR_EN
     spoken = [e.payload for e in home.events if isinstance(e.payload, Speak)][-1]
     assert (spoken.text, spoken.language) == (ADIAR_EN, Language.EN)
-    [asked] = model.requests
-    assert (asked.source, asked.target, asked.text) == (Language.PT_BR, Language.EN, ADIAR_PT)
+    assert await _says(harness, SUPPLIER_EN, "ben") == SUPPLIER_PT  # the colleague, the other way
+    ways = [(asked.source, asked.target) for asked in model.requests]
+    assert ways == [(Language.PT_BR, Language.EN), (Language.EN, Language.PT_BR)]
     assert harness.container.core.intelligence.words_for("ana") == []  # nothing to learn here
 
 
-async def test_only_her_own_language_is_said_for_her_and_nobody_elses_sentences_are() -> None:
+async def test_a_voice_command_turns_it_off_and_it_starts_off_in_every_session() -> None:
     harness, model = await _meeting()
-    await _says(harness, "ana", "Oi Mochi, fala por mim, por favor.")
-    assert await _says(harness, "ana", "I agree with that plan.") == ""  # she said it herself
-    assert await _says(harness, "ben", "Vamos adiar o lançamento então.") == ""  # Ben did not ask
-    assert await _says(harness, "ben", "Shall we move on to the budget?") == ""
-    assert model.requests == []
-    assert await _says(harness, None, ADIAR_PT) == ADIAR_EN  # a voice not named, in her language
-
-
-async def test_a_voice_command_turns_it_off_again() -> None:
-    harness, model = await _meeting()
-    await _says(harness, "ana", "Mochi, speak for me.")
-    stopped = await _says(harness, "ana", "Mochi, stop speaking for me.")
-    assert "over to you" in stopped.lower()
-    assert await _says(harness, "ana", ADIAR_PT) == "" and model.requests == []
-    await _says(harness, "ana", "Mochi, fala por mim.")
-    assert "com você" in await _says(harness, "ana", "Pode parar de falar por mim, obrigada.")
-    await _says(harness, "ana", "Mochi, speak for me.")
-    await _says(harness, None, "Mochi, pode parar.")  # nobody known says stop: better silent
-    assert await _says(harness, "ana", ADIAR_PT) == ""
-
-
-async def test_it_needs_a_voice_mochi_knows_and_starts_off_in_every_session() -> None:
-    harness, model = await _meeting()
-    refused = await _says(harness, None, "Hey Mochi, speak for me.")
-    assert "whose voice I know" in refused
-    assert await _says(harness, None, ADIAR_PT) == "" and model.requests == []
-    await _says(harness, "ana", "Mochi, speak for me.")
+    assert await _says(harness, ADIAR_PT) == ""  # nobody asked yet
+    await _says(harness, "Oi Mochi, fala por mim, por favor.")
+    assert await _says(harness, ADIAR_PT) == ADIAR_EN
+    assert await _says(harness, "Mochi, pode parar.") == "Combinado, agora é com vocês."
+    assert await _says(harness, ADIAR_PT) == ""
+    await _says(harness, "Mochi, translate for us.")
     await harness.container.sessions.stop()
     await harness.container.sessions.start()
-    assert await _says(harness, "ana", ADIAR_PT) == ""  # a new meeting: she has to ask again
-
-
-async def test_it_works_the_other_way_round_and_can_be_switched_off() -> None:
-    harness, _ = await _meeting()
-    await _says(harness, "ben", "Mochi, speak for me.")
-    said = await _says(harness, "ben", "I think we should talk to the supplier first.")
-    assert said == "Vamos falar com o fornecedor."
-    off, model = await _meeting(MOCHI_SPEAK_FOR_ME="false")
-    await _says(off, "ana", "Hey Mochi, speak for me.")
-    assert await _says(off, "ana", ADIAR_PT) == "" and model.requests == []
+    assert await _says(harness, ADIAR_PT) == "" and len(model.requests) == 1
+    off, unused = await _meeting(MOCHI_SPEAK_FOR_ME="false")
+    await _says(off, "Hey Mochi, speak for me.")
+    assert await _says(off, ADIAR_PT) == "" and unused.requests == []
 
 
 def _mode(model: FakeInterpretModel | None = None) -> SpeakForMe:
     return SpeakForMe(model or FakeInterpretModel(SCRIPT), Lexicon.load(), IntelligenceSettings())
 
 
-def _by(text: str, who: str | None, seconds: float = 0.0) -> Turn:
+def _by(text: str, who: str | None = None, seconds: float = 0.0) -> Turn:
     return make_turn(text, seconds).model_copy(update={"speaker_user_id": who})
 
 
@@ -111,16 +86,18 @@ def _by(text: str, who: str | None, seconds: float = 0.0) -> Turn:
     [
         "Hey Mochi, speak for me.",
         "Mochi can you talk for me please",
+        "Mochi, translate for us.",
         "Oi Mochi, fala por mim.",
         "Mochi, pode falar por mim?",
         "Moshi, fale por mim",
+        "Mochi, traduz pra gente.",
     ],
 )
 async def test_the_ways_of_asking(command: str) -> None:
     mode = _mode()
-    answer = await mode.take(_by(command, "ana"), make_context())
+    answer = await mode.take(_by(command), make_context())
     assert answer is not None and answer.decision is DecisionKind.SPEAK
-    assert mode.speaking_for == ["ana"]
+    assert mode.on
 
 
 @pytest.mark.parametrize(
@@ -130,36 +107,77 @@ async def test_the_ways_of_asking(command: str) -> None:
         "Mochi, para de falar por mim.",  # seen live: it holds "falar por mim" and turned it ON
         "Moshi, pode parar de falar por mim?",
         "Para de falar por mim, por favor.",
+        "Mochi, stop translating for us.",
         "Mochi, I'll speak myself.",
         "Mochi, pode parar.",
         "Mochi, stop.",
         "Okay Mochi, chega, obrigada.",
+        "Moji, pode parar.",  # the name misheard: the stop phrase and nothing else is enough
+        "Hey Moshe, stop.",
     ],
 )
 async def test_the_ways_of_stopping_it(command: str) -> None:
     mode = _mode()
     await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
-    answer = await mode.take(_by(command, "ana", 5), make_context())
+    answer = await mode.take(_by(command, "ben", 5), make_context())  # anyone may stop it
     assert answer is not None and answer.speak is not None
     assert "mood" not in answer.speak.text  # the goodbye line, not the welcome again
-    assert mode.speaking_for == []
+    assert not mode.on
 
 
-async def test_what_is_not_a_command_and_what_is_not_said() -> None:
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Oi Mochi, como eu falo fila em inglês?",  # "eu falo" is not "I'll speak"
+        "Mochi, quando chega o relatório?",  # "chega": it arrives
+        "Mochi, how do you say stop sign in Portuguese?",
+        "Please stop talking, Ben.",  # to a person
+        "Pode parar.",  # no name at all: a sentence of the meeting
+        "A gente pode parar de adiar o lançamento?",
+    ],
+)
+async def test_a_stop_word_in_a_question_or_in_the_meetings_own_talk_does_not_turn_it_off(
+    sentence: str,
+) -> None:
+    mode = _mode()
+    await mode.take(_by("Mochi, speak for me."), make_context())
+    await mode.take(_by(sentence, None, 5), make_context())
+    assert mode.on
+
+
+async def test_what_is_not_a_command_and_what_is_not_translated() -> None:
     mode = _mode()
     context = make_context()
-    assert await mode.take(_by("Can you speak for me at the meeting, Ben?", "ana"), context) is None
-    assert await mode.take(_by("Mochi, stop speaking for me.", "ana"), context) is None  # was off
-    assert mode.speaking_for == []
-    await mode.take(_by("Mochi, speak for me.", "ana"), context)
-    assert await mode.take(_by("Please stop talking, Ben.", "ana"), context) is None  # to a person
-    assert mode.speaking_for == ["ana"]
-    assert await mode.take(_by("Mochi, como se diz fila em inglês?", "ana"), context) is None
-    assert await mode.take(_by("Hum, é.", "ana"), context) is None  # the model: NOTHING
+    assert await mode.take(_by("Can you speak for me at the meeting, Ben?"), context) is None
+    assert await mode.take(_by("Mochi, stop speaking for me."), context) is None  # it was off
+    assert await mode.take(_by(ADIAR_PT), context) is None and not mode.on
+    await mode.take(_by("Mochi, speak for me."), context)
+    assert await mode.take(_by("Mochi, como se diz fila em inglês?"), context) is None  # for Mochi
+    assert await mode.take(_by("Hum, é."), context) is None  # the model: NOTHING
     review = make_context(participants=[ANA], mode=SessionMode.REVIEW)
-    assert await mode.take(_by(ADIAR_PT, "ana"), review) is None
+    assert await mode.take(_by(ADIAR_PT), review) is None
     mode.fresh_session()
-    assert mode.speaking_for == [] and home_of(BEN) is Language.EN
+    assert not mode.on
+
+
+async def test_its_own_sentence_coming_back_is_not_translated_again() -> None:
+    model = FakeInterpretModel(SCRIPT)
+    mode = _mode(model)
+    await mode.take(_by("Mochi, speak for me."), make_context())
+    said = await mode.take(_by(ADIAR_PT, None, 3), make_context())
+    assert said is not None and said.speak is not None and said.speak.text == ADIAR_EN
+    echo = await mode.take(_by(ADIAR_EN, None, 9), make_context())  # the microphone heard Mochi
+    assert echo is not None and echo.decision is DecisionKind.IGNORE
+    assert len(model.requests) == 1
+
+
+async def test_a_short_sentence_goes_on_in_the_language_of_the_one_before() -> None:
+    model = FakeInterpretModel(SCRIPT)
+    mode = _mode(model)
+    await mode.take(_by("Mochi, speak for me."), make_context())
+    await mode.take(_by(ADIAR_PT, None, 3), make_context())
+    await mode.take(_by("Ok.", None, 6), make_context())
+    assert [asked.source for asked in model.requests] == [Language.PT_BR, Language.PT_BR]
 
 
 async def test_a_model_that_fails_or_echoes_says_nothing_and_the_openai_adapter() -> None:
@@ -169,8 +187,8 @@ async def test_a_model_that_fails_or_echoes_says_nothing_and_the_openai_adapter(
 
     for model in (Broken(), FakeInterpretModel({"adiar": ADIAR_PT}), NullInterpretModel()):
         mode = _mode(model)  # type: ignore[arg-type]
-        await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
-        assert await mode.take(_by(ADIAR_PT, "ana"), make_context()) is None
+        await mode.take(_by("Mochi, speak for me."), make_context())
+        assert await mode.take(_by(ADIAR_PT), make_context()) is None
     answer = '{"decision": "SAY", "sentence": "We need to postpone it."}'
     http = FakeHttpClient([_reply(answer), _reply("nope")])
     config = JsonChatConfig("https://llm/v1", "tiny", "k", 2.0)
@@ -186,54 +204,8 @@ async def test_a_model_that_fails_or_echoes_says_nothing_and_the_openai_adapter(
     await adapter.warm_up()
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "Oi Mochi, como eu falo fila em inglês?",  # "eu falo" is not "I'll speak"
-        "Mochi, quando chega o relatório?",  # "chega": it arrives
-        "Mochi, how do you say stop sign in Portuguese?",
-    ],
-)
-async def test_a_question_for_mochi_with_a_stop_word_in_it_does_not_turn_it_off(
-    question: str,
-) -> None:
-    mode = _mode()
-    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
-    assert await mode.take(_by(question, "ana", 5), make_context()) is None
-    assert mode.speaking_for == ["ana"]
-
-
-@pytest.mark.parametrize(
-    ("command", "voice"),
-    [
-        ("Moji, pode parar.", "ana"),  # the name misheard: the stop phrase alone is enough from her
-        ("Pode parar.", None),  # no voice recognised, and Mochi speaks for one person
-        ("Hey Moshe, stop.", "ana"),
-        ("Mochi, pode parar.", "ben"),  # the device took her voice for Ben's: it still stops
-    ],
-)
-async def test_the_stop_phrase_works_with_a_misheard_name_or_a_mistaken_voice(
-    command: str, voice: str | None
-) -> None:
-    mode = _mode()
-    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
-    answer = await mode.take(_by(command, voice, 5), make_context())
-    assert answer is not None and answer.speak is not None
-    assert mode.speaking_for == []
-
-
-async def test_a_sentence_that_only_holds_a_stop_word_is_still_said_for_her() -> None:
-    mode = _mode()
-    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
-    assert await mode.take(_by("Pode parar.", "ben", 5), make_context()) is None  # Ben, to someone
-    said = await mode.take(
-        _by("A gente pode parar de adiar o lançamento?", "ana", 6), make_context()
-    )
-    assert mode.speaking_for == ["ana"] and said is not None  # a sentence, not the command
-
-
-async def test_a_demo_reset_leaves_mochi_speaking_for_nobody() -> None:
+async def test_a_demo_reset_leaves_mochi_translating_for_nobody() -> None:
     harness, _ = await _meeting()
-    await _says(harness, "ana", "Hey Mochi, speak for me.")
+    await _says(harness, "Hey Mochi, speak for me.")
     harness.container.core.intelligence.reset()
-    assert await _says(harness, "ana", ADIAR_PT) == ""
+    assert await _says(harness, ADIAR_PT) == ""
