@@ -40,9 +40,17 @@ _OFF_PLAIN = re.compile(
 # words that turn it on: in a live session "para de falar por mim" was heard as "pode falar por
 # mim", which asks for the opposite (D-64).
 _OFF_NAMED = re.compile(
-    r"\bstop\b|\bthat'?s\s+enough\b|\bi(?:'ll|\s+will|\s+can)\s+speak\s+(?:for\s+)?myself\b"
-    r"|\bpar[ae]r?\s+de\s+falar\b|\bpode\s+parar\b|\bchega\b"
-    r"|\b(?:deixa\s+que\s+)?eu\s+(?:mesm[oa]\s+)?falo\b"
+    r"\bthat'?s\s+enough\b|\bi(?:'ll|\s+will|\s+can)\s+speak\s+(?:for\s+)?myself\b"
+    r"|\bpar[ae]r?\s+de\s+falar\b|\bdeixa\s+que\s+eu\s+falo\b|\beu\s+mesm[oa]\s+falo\b"
+)
+# The short ones count only as the last thing said: "Mochi, pode parar" is a command, "Mochi,
+# quando chega o relatório?" and "Mochi, como eu falo fila em inglês?" are questions.
+_TAIL = r"(?:[\s,]+(?:now|please|thanks|thank\s+you|agora|por\s+favor|obrigad[oa]))*[\s.!?]*$"
+_OFF_SHORT = re.compile(r"\b(?:stop|pode\s+parar|chega|eu\s+falo)" + _TAIL)
+# With no name heard, from the person Mochi speaks for: the stop phrase and nothing else, after at
+# most a greeting and one word (the name as the recogniser misheard it: "Moji, pode parar").
+_OFF_ALONE = re.compile(
+    r"^(?:(?:hey|hi|oi|ei|ola)[\s,]+)?(?:\w+[\s,]+)?(?:stop|pode\s+parar|chega)" + _TAIL
 )
 ON_LINES = {
     Language.EN: "[mood happy] Okay, I'll speak for you. To take over, say: {stop}.",
@@ -59,6 +67,11 @@ NO_VOICE_LINES = {
     Language.EN: "I can only speak for someone whose voice I know. Say: Mochi, learn my voice.",
     Language.PT_BR: "Eu só falo por alguém cuja voz eu conheço. Diga: Mochi, aprende a minha voz.",
 }
+
+
+def _named_stop(low: str) -> bool:
+    """A sentence with Mochi's name in it that tells it to stop. Example: "mochi, pode parar"."""
+    return bool(_OFF_NAMED.search(low) or _OFF_SHORT.search(low))
 
 
 def _says(text: str, language: Language) -> Decision:
@@ -109,11 +122,13 @@ class SpeakForMe:
         low = folded(turn.text)
         named = says_mochi(turn.text) or has_wake_phrase(turn.text)
         # Off is looked for first: "para de falar por mim" holds the words that turn it on.
-        if _OFF_PLAIN.search(low) or (named and _OFF_NAMED.search(low)):
+        if _OFF_PLAIN.search(low) or (named and _named_stop(low)):
             return self._turn_off(turn)
         if named and _ON.search(low):
             return self._turn_on(turn, context)
         person = None if named else self._whose(turn, context)  # a sentence for Mochi is not said
+        if person and _OFF_ALONE.search(low):
+            return self._turn_off(turn)
         return await self._said_for(person, turn, context) if person else None
 
     def _language(self, text: str) -> Language:
@@ -130,12 +145,13 @@ class SpeakForMe:
         return _says(ON_LINES[language].format(stop=STOP_PHRASES[home_of(person)]), language)
 
     def _turn_off(self, turn: Turn) -> Decision | None:
-        """Stop for the person who asked; a voice Mochi could not name stops it for everyone
-        (better silent than speaking for someone who wants to speak). None when it was off."""
+        """Stop for the person who asked. Any other voice (one Mochi could not name, or one it took
+        for a colleague: the device gets the speaker wrong now and then) stops it for everyone:
+        better silent than speaking for someone who wants to speak. None when it was off."""
         who = turn.speaker_user_id
-        if not self._for or (who is not None and who not in self._for):
+        if not self._for:
             return None
-        self._for = set() if who is None else self._for - {who}
+        self._for = self._for - {who} if who in self._for else set()
         language = self._language(turn.text)
         return _says(OFF_LINES[language], language)
 

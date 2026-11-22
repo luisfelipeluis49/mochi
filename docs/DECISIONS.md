@@ -1723,7 +1723,16 @@ tracker would send them):
   stop" as "Mochi está". So Mochi now teaches the short way out in the person's own language ("Mochi,
   pode parar", which was understood and turned it off), and the long phrases are only also accepted.
 
+**After a review before the merge (same day):** the short stop words ("stop", "pode parar", "chega", "eu
+falo") count only as the last thing said in a sentence with Mochi's name: "Mochi, como eu falo fila em
+inglês?" and "Mochi, quando chega o relatório?" turned the mode off. From the person Mochi speaks for, the
+stop phrase alone is enough when the name was misheard ("Moji, pode parar"). A stop in a voice the device
+took for a colleague's stops it for everyone, as an unnamed voice already did (it was ignored, with nothing
+said). A demo reset clears the mode, and the model's connection is opened when the session starts.
+
 **Open:**
+- **With Agora's default interruption (D-67) a translation can be lost**: see D-67, "Speak for me wants the
+  opposite setting". The live runs above were on `append`.
 - **It leans on who-said-it** (D-46, D-49): right about nine times in ten in a quiet room, worse with
   other voices. A sentence given to the wrong person is either not said, or said for someone who did not
   ask. The clips above had their speaker reported, not recognised.
@@ -1838,4 +1847,14 @@ settings together). `make verify`: 1799 passed, 7 skipped.
 - **Takes effect on the device when the deployed backend has the new value:** this Pi talks to the backend
   on Render, whose `MOCHI_INTERRUPTION` is still `append` until `render.yaml` reaches it or the variable is
   changed there by hand.
+- **Speak for me wants the opposite setting** (found in the review before the merge, not yet seen live).
+  Someone Mochi speaks for goes on talking, so their next sentence is said while Mochi is thinking about, or
+  about to say, the one before. With Agora's default that sentence drops the translation under way; when it
+  was already written it is not read again (the item above), and the sentence is never said. With `append`
+  every translation is spoken, in order. A turn cancelled this way also comes back joined with the next
+  one and gets one speaker, so "Ben's sentence + Ana's 'Mochi, speak for me'" can be given to Ben. Until
+  this is measured, a meeting that will use speak for me is better on `append`.
+- **The deployed backend is not managed by a Render blueprint** (checked on 2026-11-22: the account has
+  none), so `render.yaml` reaching `main` changes nothing there: `MOCHI_INTERRUPTION` on Render stays
+  `append` until someone changes that variable by hand and redeploys.
 - Gateway and deploy files are Luís's; needs his yes.

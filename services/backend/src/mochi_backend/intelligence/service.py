@@ -236,7 +236,7 @@ class Intelligence:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # called outside a loop (a script, a plain test): nothing to hurry
             return
-        for thinker in self._thinkers:
+        for thinker in (*self._thinkers, self._interprets):
             if isinstance(thinker, WarmsUp):
                 task = loop.create_task(thinker.warm_up())
                 self._warming.add(task)
@@ -261,6 +261,7 @@ class Intelligence:
         self._talk.hush()
 
     def reset(self) -> None:
-        """Clear saved words and Mochi's conversation (demo reset)."""
+        """Clear saved words and Mochi's conversation (demo reset); it speaks for nobody."""
         self._memory.reset()
         self._talk.reset()
+        self._voice.fresh_session()

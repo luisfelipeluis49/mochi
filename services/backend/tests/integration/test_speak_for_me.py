@@ -158,7 +158,6 @@ async def test_what_is_not_a_command_and_what_is_not_said() -> None:
     assert await mode.take(_by("Hum, é.", "ana"), context) is None  # the model: NOTHING
     review = make_context(participants=[ANA], mode=SessionMode.REVIEW)
     assert await mode.take(_by(ADIAR_PT, "ana"), review) is None
-    assert await mode.take(_by("Mochi, stop speaking for me.", "ben"), context) is None  # not his
     mode.fresh_session()
     assert mode.speaking_for == [] and home_of(BEN) is Language.EN
 
@@ -185,3 +184,56 @@ async def test_a_model_that_fails_or_echoes_says_nothing_and_the_openai_adapter(
     assert isinstance(sent, dict) and "adiar" in str(sent["messages"])
     assert await adapter.interpret(asked) is None and parse_interpretation("[]") is None
     await adapter.warm_up()
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Oi Mochi, como eu falo fila em inglês?",  # "eu falo" is not "I'll speak"
+        "Mochi, quando chega o relatório?",  # "chega": it arrives
+        "Mochi, how do you say stop sign in Portuguese?",
+    ],
+)
+async def test_a_question_for_mochi_with_a_stop_word_in_it_does_not_turn_it_off(
+    question: str,
+) -> None:
+    mode = _mode()
+    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
+    assert await mode.take(_by(question, "ana", 5), make_context()) is None
+    assert mode.speaking_for == ["ana"]
+
+
+@pytest.mark.parametrize(
+    ("command", "voice"),
+    [
+        ("Moji, pode parar.", "ana"),  # the name misheard: the stop phrase alone is enough from her
+        ("Pode parar.", None),  # no voice recognised, and Mochi speaks for one person
+        ("Hey Moshe, stop.", "ana"),
+        ("Mochi, pode parar.", "ben"),  # the device took her voice for Ben's: it still stops
+    ],
+)
+async def test_the_stop_phrase_works_with_a_misheard_name_or_a_mistaken_voice(
+    command: str, voice: str | None
+) -> None:
+    mode = _mode()
+    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
+    answer = await mode.take(_by(command, voice, 5), make_context())
+    assert answer is not None and answer.speak is not None
+    assert mode.speaking_for == []
+
+
+async def test_a_sentence_that_only_holds_a_stop_word_is_still_said_for_her() -> None:
+    mode = _mode()
+    await mode.take(_by("Mochi, speak for me.", "ana"), make_context())
+    assert await mode.take(_by("Pode parar.", "ben", 5), make_context()) is None  # Ben, to someone
+    said = await mode.take(
+        _by("A gente pode parar de adiar o lançamento?", "ana", 6), make_context()
+    )
+    assert mode.speaking_for == ["ana"] and said is not None  # a sentence, not the command
+
+
+async def test_a_demo_reset_leaves_mochi_speaking_for_nobody() -> None:
+    harness, _ = await _meeting()
+    await _says(harness, "ana", "Hey Mochi, speak for me.")
+    harness.container.core.intelligence.reset()
+    assert await _says(harness, "ana", ADIAR_PT) == ""
