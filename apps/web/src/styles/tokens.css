@@ -19,19 +19,12 @@
   --color-danger: #B3261E;        /* 6.1:1 on bg */
   --color-focus: #1F7A4D;         /* focus ring: 3px solid, offset 2px */
 
-  --radius-s: 8px; --radius-m: 14px; --radius-l: 24px;
+  --radius-s: 4px; --radius-m: 8px; --radius-l: 12px;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --text-s: 0.875rem; --text-m: 1rem; --text-l: 1.25rem; --text-xl: 1.75rem; --text-hint: clamp(2.5rem, 9vw, 6rem);
-  --shadow-card: 0 1px 2px rgb(26 26 23 / 0.06), 0 4px 16px rgb(26 26 23 / 0.06);
+  --shadow-card: 0 1px 2px rgb(26 26 23 / 0.08);
 
-  /* Mochi's face: the Pi's cream-and-ink look (hardware/pi-setup/face.html), mapped to the tokens above. */
-  --face-bg: var(--color-surface-2);
-  --face-ink: var(--color-text);
-  --face-blush: var(--color-accent);
-  --face-mouth: var(--color-text);
-  --face-tongue: var(--color-accent);
-  --face-shine: var(--color-surface);
 
   --nav-phone-h: 64px;
   --nav-rail-w: 88px;

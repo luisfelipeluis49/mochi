@@ -15,17 +15,17 @@ const f = { lang: "en" as const, timeZone: "UTC" };
 
 test("Digest filled", () => {
   const html = renderToString(<DigestScreen lang="en" view={buildDigest(seed.records, seed.words, {}, NOW, f)} onSelect={noop} onGoTraining={noop} onGoSession={noop} />);
-  assert.ok(html.includes("Digest"));
-  assert.ok(html.includes("11 min · 3 hints"));
+  assert.ok(html.includes("Weekly digest"));
+  assert.ok(html.includes("Sessions") && html.includes("Minutes practised") && html.includes("Active days"));
+  assert.ok(html.includes("Minutes per day"));
   assert.ok(html.includes("New words") && html.includes("corkscrew"));
   assert.ok(html.includes("Practise next") && html.includes("Practise these now"));
-  assert.ok(html.includes("A few words came up."));
-  assert.match(html, /<select id="digest-session"/);
+  assert.match(html, /<select id="digest-week"/);
 });
 
-test("Digest empty", () => {
-  const html = renderToString(<DigestScreen lang="pt-BR" view={null} onSelect={noop} onGoTraining={noop} onGoSession={noop} />);
-  assert.ok(html.includes("Nenhuma sessão ainda. Comece uma e o resumo aparece aqui."));
+test("Digest empty week", () => {
+  const html = renderToString(<DigestScreen lang="pt-BR" view={buildDigest([], [], {}, NOW, { lang: "pt-BR", timeZone: "UTC" })} onSelect={noop} onGoTraining={noop} onGoSession={noop} />);
+  assert.ok(html.includes("Nenhuma sessão nesta semana ainda."));
   assert.ok(html.includes("Começar uma sessão"));
 });
 

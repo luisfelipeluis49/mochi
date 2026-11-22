@@ -47,12 +47,12 @@ export function mockModel(opts: { lang?: UiLang; screen?: Screen; capturing?: bo
   }
   const state = actions.reduce(appReducer, initialApp({ lang, user, sessionId: sid }));
   return {
-    state, screen: opts.screen ?? "session", now, hasSpeech: false, onboarding: { busy: false, error: null }, digestRecord: null,
+    state, screen: opts.screen ?? "session", now, hasSpeech: false, onboarding: { busy: false, error: null }, digestWeek: 0,
     voice: { lastHearingAt: 0, lastLoudAt: 0, level: 0 }, timeZone: "UTC",
   };
 }
 
 export const noopActions: AppActions = {
   navigate() {}, start() {}, stop() {}, rejoin() {}, retryGate() {}, continueWithoutMic() {}, retryProbe() {}, setVolume() {},
-  dismissBanner() {}, dismissSaved() {}, submitName() {}, setLang() {}, forget() {}, trainingResult() {}, selectRecord() {},
+  dismissBanner() {}, dismissSaved() {}, submitName() {}, setLang() {}, forget() {}, trainingResult() {}, selectWeek() {},
 };

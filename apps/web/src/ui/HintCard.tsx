@@ -11,7 +11,7 @@ export interface HintCardProps {
   note: string;
   /** fraction of time left, 1 -> 0 */
   remaining: number;
-  /** "★ You used it!" badge with the word, or null */
+  /** "Word used" badge with the word, or null */
   used: { word: string } | null;
 }
 

@@ -31,13 +31,13 @@ join with the microphone. When a step after the start fails, the app sends `POST
 | `httpProblem.ts` | Maps a status code or network failure to a `ProblemKind` (section 6.1), including the 90 s waking-to-unreachable edge. |
 | `probe.ts` | The `/healthz` probe loop: it retries after 2, 4 and 8 s, then every 15 s, and reports waking, unreachable or offline. |
 | `socket.ts` | The `/ws?user=&session=` URL, the backoff (1, 2, 4, 8, then 15 s), message parsing, and the rule that close code 4400 means a lost user. |
-| `events.ts` | The live-state reducer: drops duplicate `sequence` numbers, holds the session state, the live hint and its expiry (from the server's own times), the hints of this session, what Mochi said, and the words by id, and tracks the "used" and "proud" moments. |
+| `events.ts` | The live-state reducer: drops duplicate `sequence` numbers, holds the session state, the live hint and its expiry (from the server's own times), the hints of this session, what Papear said, and the words by id, and tracks the "used" and "proud" moments. |
 | `appState.ts` | The app store: gate, probe, identity, socket, the session phase (idle, starting, capturing, stopping), banners, "ended elsewhere", reload/rejoin, volume, records, progress. |
 | `mic.ts` | `runMicGate(env)` (secure context, `mediaDevices`, permissions query, `getUserMedia`, the 8 s "slow" prompt) and `micProblemOf(error)` (DOM names and Agora codes; the Agora codes are unverified). |
 | `agora.ts` | Loads the SDK from the CDN (pinned 4.24.8) and wraps join, publish (AEC/ANS/AGC), play, volume, levels and leave behind `VoiceLink`. It reports failures as `VoiceError`: `agora_sdk`, `agora_join` or a mic problem. |
-| `face.ts` | `faceOf(input, now)`: Mochi's mode, mood, word, note, who, badge and pop, as in the section 3.3 table. Also `speakingUntil`. |
+| `face.ts` | `faceOf(input, now)`: Papear's mode, mood, word, note, who, badge and pop, as in the section 3.3 table. Also `speakingUntil`. |
 | `training.ts` | `checkAnswer` (normalising, articles, accents, Levenshtein), the Leitner `schedule`, `dueCards`, `nextDue`, `ProgressStore` (`mochi.training.v1.<user>`), accuracy. |
-| `digest.ts` | `buildDigest`: the selected record, its header, the words grouped by what happened in the session window, today's totals, what to practise next, and the closing line. |
+| `digest.ts` | `buildDigest`: the wrap-up of one calendar week (Monday to Sunday, `weekKeys`) across all sessions: totals, the week before, minutes per day, words grouped by what happened that week, and what to practise next. |
 | `analytics.ts` | `buildAnalytics`: tiles, the day streak, the bars for the last 10 records, the state counts, and `statePath`. |
 | `i18n.ts` | All copy in `en` and `pt-BR` with the same keys (enforced by the types), `t`, `plural`, `languageName`, UI-language detection and storage, `wokenBy`. |
 | `format.ts` | `Intl` dates (`en-GB` / `pt-BR`), minutes, `mm:ss`, relative times, `dayKey` (with an injectable time zone). |
@@ -49,9 +49,9 @@ join with the microphone. When a step after the start fails, the app sends `POST
 
 | File | What it shows |
 |---|---|
-| `Face.tsx` | Mochi's face as an inline SVG (shapes from `hardware/pi-setup/face.html`). CSS `mode-*`/`mood-*` classes choose the eyes and mouth. It has the "who" badge, the volume pop and the offline label. `role="img"` with an `aria-label`. |
+| `Face.tsx` | Papear's presence panel: monogram, state text and an audio meter. CSS `mode-*` classes colour the meter; `has-problem` and `is-offline` mark errors. It has the volume pop and the offline label. `role="img"` with an `aria-label`. |
 | `HintCard.tsx` | The live hint: the word (with `lang`), the note, the example, the countdown bar, "For everyone", and "★ You used it!". `aria-live`. |
-| `SpeechBubble.tsx` | What Mochi said. `aria-live`. |
+| `SpeechBubble.tsx` | What Papear said. `aria-live`. |
 | `StatusChip.tsx` | Asleep, Waking up, Listening, or No connection. |
 | `Nav.tsx` | One `<nav>` laid out as a tab bar, a rail or a side nav. `aria-current` on the active item. `Avatar`, `linkClick`. |
 | `Problem.tsx` | A full-screen problem (`role="alert"`) for a `MicProblem` or a `ProblemKind`. |
@@ -65,7 +65,7 @@ join with the microphone. When a step after the start fails, the app sends `POST
 | `MicGate.tsx` | "Allow the microphone" while the browser asks, with "Allow microphone" after 8 s. Also `Loading`. |
 | `Unreachable.tsx` | Shows waking, unreachable or offline while `/healthz` does not answer. |
 | `Onboarding.tsx` | The name, plus the languages (pre-filled; they always differ). Shows the `profile_lost` note and the 422 and unreachable errors. |
-| `SessionScreen.tsx` | Mochi Home in the browser. Two columns from 840 px. |
+| `SessionScreen.tsx` | The device (Mochi Home) in the browser. Two columns from 840 px. |
 | `TrainingScreen.tsx` | `TrainingCard`, `TrainingDone`, `TrainingEmpty`, and the round logic. "Say it" appears only with `SpeechRecognition`. |
 | `DigestScreen.tsx` / `AnalyticsScreen.tsx` | Render the view models from `lib/digest.ts` and `lib/analytics.ts`. The chart is SVG with a hidden table. |
 | `ProfileScreen.tsx` | Languages, the UI language switch, and "Forget me on this device". |

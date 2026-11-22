@@ -96,7 +96,7 @@ export class MockBackend {
   userFor(id: string): User {
     const known = this.users.get(id);
     if (known) return known;
-    return this.addUser({ user_id: id, display_name: id.replace(/-[0-9a-f]{6}$/, "").replace(/-/g, " ") || "Mochi friend", comfortable_languages: ["pt-BR"], target_language: "en" });
+    return this.addUser({ user_id: id, display_name: id.replace(/-[0-9a-f]{6}$/, "").replace(/-/g, " ") || "Colleague", comfortable_languages: ["pt-BR"], target_language: "en" });
   }
 
   wordsOf(userId: string): LearningEvent[] {

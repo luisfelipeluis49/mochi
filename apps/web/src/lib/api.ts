@@ -91,7 +91,14 @@ export function createApi(opts: ApiOptions = {}): Api {
   }
 
   const anyObj = (v: unknown): v is { status: string; version?: string } => typeof v === "object" && v !== null;
-  const arrayOf = <T>(g: (v: unknown) => v is T) => (v: unknown): v is T[] => Array.isArray(v) && v.every(g);
+  // One item the client does not understand (a newer backend) must not hide the others: keep the good ones.
+  const arrayOf = <T>(g: (v: unknown) => v is T) => (v: unknown): v is T[] => {
+    if (!Array.isArray(v)) return false;
+    const good = v.filter(g);
+    v.length = 0;
+    v.push(...good);
+    return true;
+  };
 
   return {
     health: () => call("probe", "GET", "/healthz", undefined, anyObj, PROBE_TIMEOUT_MS),

@@ -30,7 +30,7 @@ function fakeSdk(fail: { join?: boolean; mic?: unknown; publish?: boolean } = {}
   return { sdk, log, handlers, remote, remoteVolume: () => remoteVolume };
 }
 
-test("joins with the uid, publishes the mic with AEC/ANS/AGC, plays Mochi and leaves", async () => {
+test("joins with the uid, publishes the mic with AEC/ANS/AGC, plays Papear and leaves", async () => {
   const f = fakeSdk();
   const link = await joinVoice(join, { volume: 80, sdk: async () => f.sdk });
   assert.deepEqual(f.log.slice(0, 3), ["join app,mochi-demo-w-00000000,tok,7", 'mic {"AEC":true,"ANS":true,"AGC":true}', "publish"]);

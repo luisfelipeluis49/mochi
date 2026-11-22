@@ -855,3 +855,30 @@ made by a second builder, in its own commits, against the same written contract.
   - The intelligence was not checked with a pt-BR focus (Kauê).
   - `asks_partner` matches names only for `ana` and `ben`.
 - **Owners:** gateway and storage (Luís); web (Tasnim's directory, rebuilt at Luís's request).
+
+## D-43: Papear for companies: barge-in, a weekly digest, a sober look (2026-11-22)
+
+**Why.** The web app (D-42) is now meant for companies, and a first round of use found four problems.
+- **Barge-in.** Web sessions inherited the Pi's `MOCHI_INTERRUPTION=append` (D-40): Papear finished its answer and
+  then answered the sentence that was meant to cut it off. `SessionConfig.for_session` now gives every non-demo
+  session Agora's default interruption (`""`), on the first and the fallback ears. The Pi's `demo` session keeps
+  `append`. Cost: the dropped-answer behaviour D-38 measured can return in a web session when someone speaks over a
+  question. Unverified: with laptop speakers (no headphones) the browser's echo cancellation must keep Papear's own
+  voice from cutting itself off; the mic track asks for it (`AEC`) but nobody has tried it on speakers.
+- **Training.** Not reproduced. A default user (pt-BR, learning English) gets words with a meaning and the right
+  owner (checked on the fake backend), and a Training round works end to end in a DOM (jsdom, typed answer, Check,
+  Next). What the code can do wrong, and now does not: Training used to refresh the words only on Digest and
+  Analytics; the word list was hidden when the sessions list failed or when one item was unknown; both are fixed.
+  Still possible and not fixed: a hint model that answers with `meaning: null` (such words are not trainable and the
+  screen says so in one small line), and words owned by the invented `guest` when the person speaks the guest's
+  language (the whose-word rule, AGENTS 7.3, is Kauê's; handing those words to the person would teach them words in
+  their own first language, so it was tried and left out). Needs the live `decision` log lines to settle.
+- **Digest is weekly.** `/digest` is a wrap-up of one calendar week (Monday to Sunday, the browser's time zone) across
+  all the person's sessions: sessions, minutes, active days, minutes per day, the change against the week before,
+  words by state, and what to practise next. It uses only data the backend already stores (D-42).
+- **Name and look.** The web product is **Papear**. The cartoon face became a sober status panel (monogram, state text,
+  audio meter); corners and shadows are flatter. The backend, the Pi and Mochi's own lines keep "Mochi": the wake phrase
+  and `asks_mochi` match only "Mochi", and the character prompt (`intelligence/`) still names itself Mochi. Whether
+  Papear should answer to its own name is a decision for Kauê and the team.
+- **Not built.** A company account (several people, an admin view, team totals) needs sign-in; today anyone who knows a
+  user id can read that person's words (D-42). The digest is per person, not per team.

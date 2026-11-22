@@ -157,7 +157,7 @@ select { min-height: 44px; padding: var(--space-1) var(--space-3); border-radius
 .session-main { display: flex; flex-direction: column; align-items: stretch; }
 .status-row { display: flex; align-items: center; justify-content: space-between; min-height: 40px; margin-bottom: var(--space-2); }
 .elapsed { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--color-text-muted); }
-.face-wrap { width: 60%; max-width: 320px; margin: 0 auto var(--space-3); }
+.face-wrap { width: 100%; max-width: 480px; margin: 0 auto var(--space-3); }
 .controls { margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
 .controls p { margin: 0; }
 .saved-card p { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin: 0; }
@@ -187,67 +187,23 @@ select { min-height: 44px; padding: var(--space-1) var(--space-3); border-radius
 .speech { margin: 0; }
 .speech:not(.is-speaking) blockquote { color: var(--color-text-muted); }
 
-/* ---------- Mochi's face (modeled on hardware/pi-setup/face.html) ---------- */
-.mochi-face { position: relative; aspect-ratio: 3 / 2; background: var(--face-bg); border-radius: var(--radius-l); overflow: hidden; }
-.mochi-face svg { width: 100%; height: 100%; display: block; }
-.mochi-face .ink { fill: var(--face-ink); }
-.mochi-face .shine { fill: var(--face-shine); }
-.mochi-face .line { fill: none; stroke: var(--face-ink); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
-.mochi-face .line.thin { stroke-width: 7; }
-.mochi-face .blush { fill: var(--face-blush); opacity: 0.35; }
-.mochi-face .fill-mouth { fill: var(--face-mouth); }
-.mochi-face .fill-tongue { fill: var(--face-tongue); }
-.mochi-face .heart { fill: var(--color-accent); }
-.mochi-face .star { fill: var(--color-accent); }
-.mochi-face .dots circle { fill: var(--face-ink); }
-.mochi-face .zzz text { fill: var(--color-text-muted); font: 800 40px var(--font-sans); }
-.mochi-face .eyes, .mochi-face .mouth, .mochi-face .dots, .mochi-face .zzz { display: none; }
-.mochi-face.mode-sleeping, .mochi-face.mode-bye { --face-ink: var(--color-text-muted); }
-
-/* the face breathes; slower asleep */
-.face-body { transform-origin: 240px 170px; animation: breathe 4s ease-in-out infinite; }
-.mode-sleeping .face-body { animation-duration: 6.5s; }
-@keyframes breathe { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.025) translateY(-3px); } }
-.mood-laughing .face-body, .mood-excited .face-body { animation: bounce 0.42s ease-in-out infinite; }
-@keyframes bounce { 50% { transform: translateY(-9px); } }
-.mood-curious .face-body { transform: rotate(-5deg); animation: none; }
-.mode-thinking .dots { display: inline; }
-.mode-thinking .dots circle { animation: dot 1s ease-in-out infinite; }
-.mode-thinking .dots circle:nth-child(2) { animation-delay: 0.15s; }
-.mode-thinking .dots circle:nth-child(3) { animation-delay: 0.3s; }
-@keyframes dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.35; } 30% { transform: translateY(-9px); opacity: 1; } }
-.mode-sleeping .zzz { display: inline; }
-.eye { transform-box: fill-box; transform-origin: center; }
-.mode-hearing .eye { transform: scale(1.12); }
-
-/* which eyes: by mode, and by mood while awake, hearing or speaking */
-.mode-sleeping .eyes-closed, .mode-bye .eyes-happy, .mode-waking .eyes-open, .mode-thinking .eyes-open { display: inline; }
-:is(.mode-awake, .mode-hearing, .mode-speaking):is(.mood-neutral, .mood-surprised, .mood-curious, .mood-oops) .eyes-open,
-:is(.mode-awake, .mode-hearing, .mode-speaking):is(.mood-happy, .mood-proud) .eyes-happy,
-:is(.mode-awake, .mode-hearing, .mode-speaking).mood-excited .eyes-star,
-:is(.mode-awake, .mode-hearing, .mode-speaking).mood-love .eyes-love,
-:is(.mode-awake, .mode-hearing, .mode-speaking).mood-laughing .eyes-laugh,
-:is(.mode-awake, .mode-hearing, .mode-speaking).mood-cool .eyes-cool,
-:is(.mode-awake, .mode-hearing, .mode-speaking).mood-sleepy .eyes-sleepy { display: inline; }
-/* which mouth: speaking always talks; thinking hums; otherwise by mode, then mood */
-.mode-speaking .mouth-talk, .mode-thinking .mouth-hmm, .mode-sleeping .mouth-rest, .mode-bye .mouth-smile, .mode-waking .mouth-o { display: inline; }
-.mode-awake.mood-neutral .mouth-smile, .mode-hearing.mood-neutral .mouth-rest,
-:is(.mode-awake, .mode-hearing).mood-happy .mouth-grin,
-:is(.mode-awake, .mode-hearing):is(.mood-excited, .mood-laughing) .mouth-laugh,
-:is(.mode-awake, .mode-hearing):is(.mood-love, .mood-proud, .mood-cool) .mouth-smile,
-:is(.mode-awake, .mode-hearing).mood-surprised .mouth-o,
-:is(.mode-awake, .mode-hearing).mood-curious .mouth-hmm,
-:is(.mode-awake, .mode-hearing).mood-oops .mouth-oops,
-:is(.mode-awake, .mode-hearing).mood-sleepy .mouth-rest { display: inline; }
-
-.face-who, .face-pop {
-  position: absolute; top: var(--space-2); z-index: 1; display: inline-flex; align-items: center; gap: var(--space-1);
-  border-radius: 999px; padding: 2px var(--space-3); font-weight: 800; font-size: var(--text-s);
-}
-.face-who { left: var(--space-2); background: var(--color-surface); border: 2px solid var(--color-accent); }
-.face-pop { right: var(--space-2); background: var(--color-accent); color: var(--color-text); }
-.face-offline { position: absolute; left: 0; right: 0; bottom: var(--space-2); display: flex; justify-content: center; align-items: center; gap: var(--space-1); font-weight: 800; color: var(--color-text); }
-.mochi-face.is-offline svg { filter: grayscale(1); opacity: 0.45; }
+/* ---------- Papear's presence panel (replaces the device's cartoon face on the web) ---------- */
+.presence { position: relative; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-m); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+.presence-head { display: flex; align-items: center; gap: var(--space-3); }
+.monogram { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-s); background: var(--color-text); color: var(--color-surface); font-weight: 800; font-size: var(--text-l); }
+.presence-state { font-weight: 700; font-size: var(--text-l); }
+.presence-pop { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-s); background: var(--color-accent); color: var(--color-text); font-weight: 700; }
+.meter { display: flex; align-items: center; justify-content: center; gap: var(--space-2); height: 72px; }
+.meter-bar { width: 10px; border-radius: 2px; background: var(--color-border); transition: height 120ms linear, background-color var(--dur-ui); }
+.mode-speaking .meter-bar { background: var(--color-primary); }
+.mode-hearing .meter-bar, .mode-awake .meter-bar, .mode-thinking .meter-bar { background: var(--color-text); }
+.mode-hearing .meter.is-live .meter-bar { animation: meter-pulse 900ms ease-in-out infinite; }
+.mode-hearing .meter-bar:nth-child(2n) { animation-delay: 150ms; }
+.mode-thinking .meter.is-live .meter-bar { animation: meter-pulse 1600ms ease-in-out infinite; }
+.presence.has-problem { border-color: var(--color-danger); }
+.presence.is-offline .meter { opacity: 0.4; }
+.presence-offline { display: flex; align-items: center; gap: var(--space-1); font-weight: 700; color: var(--color-text); }
+@keyframes meter-pulse { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.6); } }
 
 /* ---------- training ---------- */
 .training-card { text-align: center; }

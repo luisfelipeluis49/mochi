@@ -75,7 +75,18 @@ class SessionConfig:
             session_id=session_id,
             channel=f"{self.channel}-{session_id}",
             llm_url=self.llm_url.replace(demo_path, own_path, 1),
+            tuning=replace(self.tuning, interruption=""),
+            fallback_tuning=self._barge_in(self.fallback_tuning),
         )
+
+    @staticmethod
+    def _barge_in(tuning: SpeechTuning | None) -> SpeechTuning | None:
+        """The same ears with Agora's default interruption: speaking over Mochi cuts it off.
+
+        The Pi's session keeps `append` (D-40: two people in a room). A web session is one person
+        with headphones, who expects to be able to interrupt (D-43).
+        """
+        return replace(tuning, interruption="") if tuning else None
 
 
 # First words of a wake phrase that are Portuguese ("oi Mochi", "olá Mochi", "e aí Mochi").

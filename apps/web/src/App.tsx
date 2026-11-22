@@ -125,8 +125,8 @@ function Shell({ model, actions }: { model: AppModel; actions: AppActions }) {
     );
   } else if (screen === "digest") {
     body = (
-      <DigestScreen lang={lang} view={buildDigest(s.records, words, s.progress, model.now, f, model.digestRecord)}
-        onSelect={actions.selectRecord} onGoTraining={() => actions.navigate("training")} onGoSession={() => actions.navigate("session")} />
+      <DigestScreen lang={lang} view={buildDigest(s.records, words, s.progress, model.now, f, model.digestWeek)}
+        onSelect={actions.selectWeek} onGoTraining={() => actions.navigate("training")} onGoSession={() => actions.navigate("session")} />
     );
   } else if (screen === "analytics") {
     body = <AnalyticsScreen lang={lang} view={buildAnalytics(words, s.records, s.progress, model.now, f)} f={f} />;
