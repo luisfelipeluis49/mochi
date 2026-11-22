@@ -412,16 +412,19 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 
 ### 9.4 Tasnim — `apps/web`
 
-Rebuilt in November 2026 (D-42): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does
-on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
+Rebuilt in November 2026 (D-42) and renamed **Papear** for companies (D-43): one responsive app (phone, tablet, desktop)
+that does in a browser what Mochi Home does on the Pi, through the same backend. Only the web product carries the new
+name; the backend, the Pi and the wake phrase still say Mochi. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
 
 - **Screens:**
   - **Onboarding** (`/welcome`): asks for a name only and creates the user with `POST /api/users`. The id is kept in
     `localStorage`.
   - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's
-    microphone through Agora. Mochi's face, the hint card, what Mochi says and who is talking are all live.
+    microphone through Agora. A sober status panel (state, audio meter), the hint card, what Papear says and who is talking are live. Speaking over
+    Papear cuts it off (D-43).
   - **Training** (`/training`): spaced recall of the person's saved words, answered by typing or speaking.
-  - **Digest** (`/digest`): a recap of the last session.
+  - **Digest** (`/digest`): a weekly wrap-up (Monday to Sunday, with a week picker) across all of the person's
+    sessions: sessions, minutes, active days, minutes per day, new words, and what to practise next.
   - **Analytics** (`/analytics`): progress, each word's state path, and minutes per session.
 - **Microphone:** the browser asks for it on the first visit. Every way the microphone can fail has its own screen and
   message, and so does a backend that cannot be reached.
