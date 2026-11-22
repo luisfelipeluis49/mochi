@@ -17,7 +17,10 @@ from mochi_backend.gateway.agora.client_port import (
 )
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.errors import ConflictError, UpstreamError
-from mochi_backend.gateway.roster import SESSION_ID
+from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID
+from mochi_backend.gateway.session_history import SessionHistory
+from mochi_backend.gateway.user_directory import session_participants
+from mochi_backend.storage.session_record import SessionTally, build_record
 from mochi_contracts import (
     EventType,
     GameState,
@@ -25,6 +28,7 @@ from mochi_contracts import (
     SessionMode,
     SessionState,
     SessionStatus,
+    User,
 )
 
 
@@ -53,6 +57,7 @@ class SessionConfig:
     fallback_tuning: SpeechTuning | None = None  # other ears, if Agora refuses the first ones
     greeting_en: str = ""
     greeting_pt: str = ""
+    session_id: str = SESSION_ID
 
     def for_session(self, session_id: str) -> "SessionConfig":
         """This config for another session: its own channel and its own turn endpoint.
@@ -67,6 +72,7 @@ class SessionConfig:
         demo_path, own_path = f"/agora/llm/{SESSION_ID}/", f"/agora/llm/{session_id}/"
         return replace(
             self,
+            session_id=session_id,
             channel=f"{self.channel}-{session_id}",
             llm_url=self.llm_url.replace(demo_path, own_path, 1),
         )
@@ -107,8 +113,11 @@ class SessionService:
         agora: AgoraAgentClient,
         tokens: RtcTokenIssuer,
         config: SessionConfig,
+        history: SessionHistory | None = None,
     ) -> None:
         self._store = core.store
+        self._ids = core.ids
+        self._history = history  # None: this session never leaves a record (a test's)
         self._hub = core.hub
         self._intelligence = core.intelligence
         self._live_hint = core.live_hint
@@ -121,27 +130,37 @@ class SessionService:
         self._config = config
         self._start_lock = asyncio.Lock()
 
-    async def start(self, woken_by: str | None = None) -> SessionState:
+    async def start(self, woken_by: str | None = None, user: User | None = None) -> SessionState:
         """Start the agent and begin capturing. Idempotent; an Agora failure leaves no state.
 
         `woken_by`: the wake phrase the device heard. Mochi then greets in that language, and the
-        next sentence is meant for it.
+        next sentence is meant for it. `user`: the person a web session is for (D-42); its
+        participants become that user and `guest`. Raises `ConflictError` for a user on the demo
+        session, or another user than the one a running session is for.
+        Example: `await service.start("hey mochi", user)`.
         """
+        if user is not None and self._config.session_id == SESSION_ID:
+            raise ConflictError(f"session {SESSION_ID!r} is the device's; start another id")
         async with self._start_lock:
             if self._store.capturing:
-                return self._already_running(woken_by)
+                return self._already_running(woken_by, user)
             generation = self._store.generation
             agent_id = await self._start_agent(greeting_for(woken_by, self._config))
             if generation != self._store.generation:
                 self._logger.log("start_superseded", {"agent_id": agent_id})
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
-            self._begin(agent_id)
+            self._begin(agent_id, user)
             self._logger.log("agent_started", {"agent_id": agent_id})
             self._intelligence.session_started(bool(woken_by), language_of_call(woken_by))
             return await self._publish_state()
 
-    def _already_running(self, woken_by: str | None) -> SessionState:
+    def _already_running(self, woken_by: str | None, user: User | None) -> SessionState:
+        if user is not None and user.user_id != self._store.user_id:
+            raise ConflictError(
+                f"session {self._config.session_id!r} is running for another user; "
+                f"expected user_id {self._store.user_id!r} or none"
+            )
         if woken_by:  # called on the device while a session runs: Mochi listens to that person now
             self._intelligence.session_started(True, language_of_call(woken_by))
         return self._store.session_state()
@@ -149,6 +168,7 @@ class SessionService:
     async def stop(self) -> SessionState:
         """Stop capturing at once, then the agent. Idempotent; a gone agent is fine."""
         self._store.invalidate()
+        self._record()  # now: a turn still in flight is dropped by `invalidate` anyway
         agent_id = self._store.agent_id
         was_playing = self._store.activity.state is not GameState.IDLE
         self._end_locally()
@@ -174,7 +194,29 @@ class SessionService:
             token=self._issue(self._config.pi_uid),
         )
 
-    def _begin(self, agent_id: str) -> None:
+    def _record(self) -> None:
+        """Leave the session record of a session started with a user, once (D-42)."""
+        store, started = self._store, self._store.started_at
+        if store.user_id is None or started is None or self._history is None:
+            return
+        tally = SessionTally(store.user_id, started, store.hint_count, store.learning_event_ids)
+        record = build_record(
+            self._ids.new("rec"), self._config.session_id, tally, self._clock.now()
+        )
+        store.user_id, store.started_at = None, None  # a second Stop writes nothing
+        self._history.add(record)
+
+    def _claim(self, user: User | None) -> None:
+        """Whose session this is from now on: the Pi's two people, or a user and `guest`."""
+        if user is None:
+            self._store.belong_to(DEMO_PARTICIPANTS, Language.EN, None)
+        else:
+            participants = session_participants(user)
+            self._store.belong_to(participants, user.target_language, user.user_id)
+        self._store.started_at = self._clock.now()
+
+    def _begin(self, agent_id: str, user: User | None = None) -> None:
+        self._claim(user)
         expires = self._clock.now() + timedelta(seconds=self._config.token_ttl_seconds)
         self._store.agent_id = agent_id
         self._store.pi_token = self._issue(self._config.pi_uid)

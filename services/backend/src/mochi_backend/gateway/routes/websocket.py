@@ -1,4 +1,8 @@
-"""`/ws`: Mobile (?user=), Home (?device=) and Audience (?view=) connections."""
+"""`/ws`: Mobile (?user=), Home (?device=) and Audience (?view=) connections.
+
+`?user=` is any registered user (`ana`, `ben`, or one `POST /api/users` made); an unknown user or
+`guest` is accepted, then closed with 4400 (D-42).
+"""
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -10,7 +14,8 @@ BAD_QUERY_CLOSE_CODE = 4400
 GONE_CLOSE_CODE = 1011
 MAX_CLOSE_REASON_BYTES = 123  # RFC 6455: control frame payload 125 bytes, 2 taken by the code
 FALLBACK_REASON = (
-    "unknown query; expected one of user=ana|ben[&surface=ar], device=home_pi_01, view=audience"
+    "unknown query; expected one of user=ana|ben|<user_id>[&surface=ar], device=home_pi_01, "
+    "view=audience"
 )
 
 
@@ -34,7 +39,7 @@ async def websocket_endpoint(socket: WebSocket, container: ContainerDep) -> None
     # Parse first. The close still follows accept(): a server that closes before accepting answers
     # the handshake with HTTP 403, and a browser then sees code 1006 with no reason.
     try:
-        target = parse_target(dict(socket.query_params))
+        target = parse_target(dict(socket.query_params), container.users.may_connect)
     except ValueError as error:
         await socket.accept()
         await socket.close(code=BAD_QUERY_CLOSE_CODE, reason=_legal_reason(str(error)))

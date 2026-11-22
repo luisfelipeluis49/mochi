@@ -3,13 +3,14 @@
 from datetime import datetime
 
 from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, QUEUE_LIMIT, DeviceCommand
-from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID, USER_IDS
+from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID
 from mochi_contracts import (
     Activity,
     GameState,
     Hint,
     Language,
     LearningEvent,
+    Participant,
     PrivatePrompt,
     SessionContext,
     SessionMode,
@@ -56,6 +57,39 @@ class SessionStore:
         self.served_byes: set[str] = set()  # `bye` is handed to the device once, never replayed
         self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
+        self.started_at: datetime | None = None  # set by a Start that succeeded (D-42)
+        self._own_nobody()
+
+    def _own_nobody(self) -> None:
+        """Who the session is for (D-42): the Pi's two people until a Start names a web user.
+
+        `user_id` is set only for a session started with a user; `hint_count` and
+        `learning_event_ids` are what its session record counts.
+        """
+        self.participants: list[Participant] = list(DEMO_PARTICIPANTS)
+        self.focus = Language.EN
+        self.user_id: str | None = None
+        self.hint_count = 0
+        self.learning_event_ids: list[str] = []
+
+    def belong_to(
+        self, participants: list[Participant], focus: Language, user_id: str | None
+    ) -> None:
+        """Set whose session this is, and start counting for its record afresh.
+
+        Example: `store.belong_to(list(DEMO_PARTICIPANTS), Language.EN, None)` for the Pi's.
+        """
+        self.participants, self.focus, self.user_id = list(participants), focus, user_id
+        self.hint_count, self.learning_event_ids = 0, []
+
+    def count_hint(self) -> None:
+        """One more `hint.created` was published in this session (for any target)."""
+        self.hint_count += 1
+
+    def note_saved(self, events: list[LearningEvent]) -> None:
+        """Remember the ids of the session user's words saved now, first order, once each."""
+        mine = [e.learning_event_id for e in events if self.user_id and e.user_id == self.user_id]
+        self.learning_event_ids = list(dict.fromkeys([*self.learning_event_ids, *mine]))
 
     def invalidate(self) -> None:
         """Mark everything in flight (a pending start or turn) as out of date.
@@ -108,9 +142,9 @@ class SessionStore:
         return SessionState(
             status=self.status,
             mode=self.mode,
-            focus=Language.EN,
+            focus=self.focus,
             capturing=self.capturing,
-            participants=list(USER_IDS),
+            participants=[p.user_id for p in self.participants],
         )
 
     def context(self, words: dict[str, list[LearningEvent]]) -> SessionContext:
@@ -119,8 +153,8 @@ class SessionStore:
         return SessionContext(
             session_id=SESSION_ID,
             mode=self.mode,
-            focus=Language.EN,
-            participants=list(DEMO_PARTICIPANTS),
+            focus=self.focus,
+            participants=list(self.participants),
             recent_turns=self.turns[-HISTORY_LIMIT:],
             recent_hints=self.hints[-HISTORY_LIMIT:],
             activity=playing,

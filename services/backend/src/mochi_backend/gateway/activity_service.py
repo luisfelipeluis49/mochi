@@ -3,7 +3,6 @@
 from mochi_backend.gateway.agora.client_port import AgoraAgentClient, AgoraError
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.errors import ConflictError
-from mochi_backend.gateway.roster import USER_IDS
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
 from mochi_contracts import (
     Activity,
@@ -85,7 +84,7 @@ class ActivityService:
         """The secret word, plus its meaning when it came from someone's saved words."""
         meanings = [
             event.meaning
-            for user in USER_IDS
+            for user in (participant.user_id for participant in self._store.participants)
             for event in self._intelligence.words_for(user)
             if event.learning_event_id == prompt.source_learning_event_id and event.meaning
         ]

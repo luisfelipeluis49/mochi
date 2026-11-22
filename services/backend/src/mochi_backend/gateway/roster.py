@@ -19,3 +19,13 @@ DEMO_USERS: list[User] = [
     )
     for p in DEMO_PARTICIPANTS
 ]
+# The second person in a web session (D-42). Reserved: never a user anyone can be. Seeded with the
+# demo users so a guest's learning events satisfy the database's foreign key; the languages stored
+# here are irrelevant, each session's participant carries the real ones.
+GUEST_ID = "guest"
+GUEST_USER = User(
+    user_id=GUEST_ID,
+    display_name="Guest",
+    comfortable_languages=[Language.EN],
+    target_language=Language.PT_BR,
+)
