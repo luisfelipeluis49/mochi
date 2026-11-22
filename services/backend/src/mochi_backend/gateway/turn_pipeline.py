@@ -10,7 +10,12 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from mochi_backend.gateway.device_commands import DeviceCommand, Written, split_commands
+from mochi_backend.gateway.device_commands import (
+    DeviceCommand,
+    Written,
+    split_commands,
+    with_translation,
+)
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.guest_reown import hand_guest_words_to_person
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
@@ -147,11 +152,6 @@ class TurnPipeline:
             await self._transcript.settle()
         if self._one_touch is not None:
             await self._one_touch.settle()
-
-    async def say_suggestion(self, hint_id: str) -> bool:
-        """One touch: Mochi says aloud the sentence suggested after this hint (D-59). False when
-        there is none to say. Example: `await pipeline.say_suggestion("hint_017")`."""
-        return self._one_touch is not None and await self._one_touch.say(hint_id)
 
     def build_context(self) -> SessionContext:
         """The context for intelligence: history plus each person's saved words."""
@@ -433,6 +433,7 @@ class TurnPipeline:
     async def _reply(self, decision: Decision) -> str:
         """Say the words, and hand the device what was written in brackets (never spoken)."""
         text, written = split_commands(decision.speak.text) if decision.speak else ("", [])
+        written = with_translation(text, written)
         self._tell_device(decision, written)
         if decision.speak is None or not text:
             return ""

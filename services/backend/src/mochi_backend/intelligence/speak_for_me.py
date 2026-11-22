@@ -11,6 +11,7 @@ did, and spoke for that one person only): the language of the sentence says whic
 import asyncio
 import re
 from collections import deque
+from datetime import timedelta
 
 from mochi_backend.intelligence.answer_checks import language_named
 from mochi_backend.intelligence.interpret_port import (
@@ -23,6 +24,7 @@ from mochi_backend.intelligence.lexicon import Lexicon, other_language
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.tokens import folded, normalized
 from mochi_backend.intelligence.wake_phrase import has_wake_phrase, says_mochi
+from mochi_backend.platform.clock import parse_iso_z
 from mochi_contracts import (
     Decision,
     DecisionKind,
@@ -40,6 +42,19 @@ _ON = re.compile(
     r"|\bfal[ae]r?\s+por\s+(?:mim|nos|(?:a\s+)?gente)\b|\btraduz\w*\s+(?:pra|para)\s+(?:mim|nos|(?:a\s+)?gente)\b"
     r"|\bseja\s+(?:a\s+minha\s+voz|(?:o\s+)?(?:meu|nosso)\s+interprete)\b"
 )
+# "Mochi, você pode traduzir?", "Mochi, can you translate?", "Mochi, traduz, por favor": Mochi is
+# asked to translate, and nothing to translate follows. Seen live (D-70): that is how it was
+# asked, and nothing happened. Only as a request: "Mochi, como se diz traduzir?", "Mochi, that
+# was hard to translate" and "Mochi, can you translate fila?" are not.
+_ON_BARE = re.compile(
+    r"(?:\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:translate|interpret)"
+    r"|\b(?:pode|poderia|consegue|da\s+pra)\s+(?:traduzir|interpretar)"
+    r"|(?:^|[.,!?]\s*)(?:please\s+|por\s+favor[,\s]+)?(?:translate|traduz|traduza|interpreta))"
+    r"(?:[\s,]+(?:please|now|everything|the\s+(?:meeting|conversation)|por\s+favor|agora|tudo"
+    r"|a\s+(?:reuniao|conversa)))*\s*(?:[.!?]|$)"
+)
+_CALL_LASTS = timedelta(seconds=12)  # how long after "Mochi, ..." the next sentence may ask it
+_CALL_WORDS = 5  # ... and how short that sentence is: "Traduzir pra gente?", not a remark
 # Not asking: "Mochi, don't translate for us", "não precisa falar por mim", "I asked Mochi to
 # speak for me yesterday". With the words that turn it on, these mean stop, or nothing.
 _NOT_ASKING = re.compile(
@@ -154,18 +169,33 @@ class SpeakForMe:
             return _silent()  # its own voice, heard by a microphone: not a command, not a sentence
         low = folded(turn.text)
         named = says_mochi(turn.text) or has_wake_phrase(turn.text)
-        command = self._command(turn, low, named)
+        command = self._command(turn, low, named, self._follows_a_call(turn, context))
         if command is not None or not self._on or named:
             return command  # a sentence for Mochi is answered, not translated
         return await self._in_the_other_language(turn, context)
 
-    def _command(self, turn: Turn, low: str, named: bool) -> Decision | None:
+    def _command(self, turn: Turn, low: str, named: bool, called: bool) -> Decision | None:
         """What this turn does to the mode. Off is looked for first: "para de falar por mim"
-        holds the words that turn it on, and so does "don't translate for us"."""
-        asks = named and _ON.search(low) is not None
+        holds the words that turn it on, and so does "don't translate for us". `called`: the
+        sentence before this one was for Mochi ("Mochi, pode traduzir?" "Traduzir pra gente?")."""
+        asks = (named or called) and _ON.search(low) is not None
+        asks = asks or (named and _ON_BARE.search(low) is not None)
         if self._stops(low, named) or (asks and _NOT_ASKING.search(low)):
             return self._turn_off(turn) if self._on else None
+        if asks and self._on and not named:
+            return _silent()  # "Traduzir pra gente?" after it said yes: asked and answered
         return self._turn_on(turn) if asks else None
+
+    def _follows_a_call(self, turn: Turn, context: SessionContext) -> bool:
+        """True for a short sentence said right after one that called Mochi and was not itself
+        a stop ("Mochi, me ajuda?" ... "Traduzir pra gente?"). Not after "Mochi, pode parar":
+        "Viu? Ele estava traduzindo pra gente." turned it on again."""
+        if not context.recent_turns or len(turn.text.split()) > _CALL_WORDS:
+            return False
+        before = context.recent_turns[-1]
+        soon = parse_iso_z(turn.received_at) - parse_iso_z(before.received_at) <= _CALL_LASTS
+        called = says_mochi(before.text) or has_wake_phrase(before.text)
+        return soon and called and not self._stops(folded(before.text), named=True)
 
     @staticmethod
     def _stops(low: str, named: bool) -> bool:
@@ -224,4 +254,5 @@ class SpeakForMe:
             return None
         target = language_named(answer.language) or request.target
         self._last = other_language(target)
-        return self._says(sentence, target)
+        # the tag puts the sentence on Mochi's screen while it is said (`device_commands`)
+        return self._says(f"[translation {target.value}] {sentence}", target)

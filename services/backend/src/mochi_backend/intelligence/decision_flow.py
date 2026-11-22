@@ -11,9 +11,11 @@ from mochi_backend.intelligence.character_port import ReviewWord
 from mochi_backend.intelligence.clear_cases import (
     addressed_partner,
     asked_term,
+    asks_directly,
     asks_for_word,
     detect_clear,
     mochi_entry,
+    names_a_colleague,
     question_itself,
     unfinished_question,
 )
@@ -93,6 +95,9 @@ def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
     return turn.model_copy(update={"text": f"{before.text} {turn.text}"})
 
 
+_WORDS_SAID_TWICE = 3  # "cortar o cabelo" is said twice, a sentence once
+
+
 def ignore() -> Decision:
     """The silent decision."""
     return Decision(decision=DecisionKind.IGNORE, hint=None, speak=None, learning_events=[])
@@ -133,6 +138,7 @@ class DecisionFlow:
         self._cooldown = settings.hint_cooldown
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
+        self._say_asked = settings.say_asked_words
         self._speaker: str | None = None  # whose voice said the turn being decided, when known
         self._phrases = PhraseSaver(
             factory, lambda text, fallback: focus_for(text, lexicon, fallback)
@@ -196,9 +202,19 @@ class DecisionFlow:
         if line:
             return self._saying(shown, line, turn)
         hint = shown.hint
-        if hint is None or not self._may_be_heard(turn, context):
+        aloud = self._may_be_heard(turn, context) or self._asked_outright(turn, context)
+        if hint is None or not aloud:
             return shown
         return self._reading_out(shown, hint.expression, hint.target_language)
+
+    def _asked_outright(self, turn: Turn, context: SessionContext) -> bool:
+        """ "Como se diz X?", "How do I say X in Portuguese?": the answer is said as it is shown
+        (D-70). Someone who asks wants to say it next, and a screen does not tell how it sounds.
+        Not when a colleague is named in it, not for words of asking inside a statement ("you
+        need to learn how to say no"), and not while Mochi answers in its own words."""
+        if not self._say_asked or not asks_directly(turn.text):
+            return False
+        return not names_a_colleague(turn.text, context) and not self._talk.attentive
 
     def _may_be_heard(self, turn: Turn, context: SessionContext) -> bool:
         """Someone asked how a word sounds, and it is for Mochi to answer.
@@ -225,8 +241,11 @@ class DecisionFlow:
         return self._reading_out(again, word.expression, word.target_language)
 
     def _reading_out(self, decision: Decision, word: str, language: Language) -> Decision:
-        """The same decision, with Mochi saying just the word, twice: nothing else to mishear."""
-        speak = Speak(text=f"{word}. {word}.", language=language, reason=SpeakReason.ASKS_MOCHI)
+        """The same decision, with Mochi saying just the word, twice: nothing else to mishear.
+        A whole sentence is said once ("Vou terminar meu trabalho amanhã." twice was a lot)."""
+        word = word.rstrip(" .!?")  # the model ends a sentence with its full stop
+        said = f"{word}. {word}." if len(word.split()) <= _WORDS_SAID_TWICE else f"{word}."
+        speak = Speak(text=said, language=language, reason=SpeakReason.ASKS_MOCHI)
         return decision.model_copy(update={"decision": DecisionKind.SPEAK, "speak": speak})
 
     def _held_back(self, turn: Turn, context: SessionContext) -> str | None:
@@ -353,7 +372,7 @@ class DecisionFlow:
             recent_texts=history[-3:],
             focus=focus,
             candidate_reasons=list(Reason),
-            asked_about=None if aside else asked_term(sentence),
+            asked_about=None if aside else asked_term(sentence) or asked_term(text),
             noticed=[sign.value for sign in signs],
             suspect=suspect,
         )

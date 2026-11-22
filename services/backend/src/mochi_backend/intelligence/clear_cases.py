@@ -101,7 +101,54 @@ def _named_after_ask(low: str) -> str:
     term = _NAMED_LANGUAGE.sub("", rest.group(0) if rest else "")
     term = _LEAD_IN.sub("", term).strip(" \"'“”‘’,:;-")
     term = _CUT_OFF.sub("", term)  # "how do you say feijoada in" / "... In English"
-    return "" if term in _POINTING else term
+    if not term and rest is not None:
+        return _after_the_language(rest.group(0))
+    if term not in _POINTING:
+        return term
+    named = rest is not None and _NAMED_LANGUAGE.search(rest.group(0)) is not None
+    return _said_next(low[rest.end() :]) if rest is not None and named else ""
+
+
+_THE_LANGUAGE = re.compile(
+    r"\b(?:in|em)\b(?:[\s,…—-]|\b(?:uh+|um+|er+|like|tipo)\b)*"
+    r"(?:english|portuguese|ingl[eê]s|portugu[eê]s)\b"
+)
+
+
+def _after_the_language(rest: str) -> str:
+    """What is asked about when the language is named first and the words come after it.
+
+    Seen live (D-70): `how do I say in Portuguese, uh, "I will finish my work tomorrow"?` was
+    left to the model to work out, and it answered one time in two.
+    """
+    named = _THE_LANGUAGE.search(rest)
+    said = _NEXT_LEAD_IN.sub("", rest[named.end() :]) if named else ""
+    said = said.strip(" \"'“”‘’,:;-")
+    return "" if _DROPS_IT.match(said) else said
+
+
+_NEXT_LEAD_IN = re.compile(
+    r"^(?:[\s,:;.?!…\"'“”‘’-]|\b(?:ah+|uh+|um+|hum+|er+|eh+|é|like|tipo|well|so)\b)+"
+)
+_MIN_NEXT_WORDS = 4  # "Não sei.", "Do you know?" are about the question, not what it asks
+# ... and so is a sentence that drops the question
+_DROPS_IT = re.compile(
+    r"^(?:never mind|forget it|i don'?t know|do you know|anyway|thanks|thank you|ok|okay|let'?s|"
+    r"deixa|esquece|n[aã]o sei|voc[eê] sabe|enfim|obrigad[oa]|vamos|t[aá] bom)\b"
+)
+
+
+def _said_next(after: str) -> str:
+    """What "it" points at when the question names a language and the sentence follows it.
+
+    Seen live (D-70): "How do I say it in Portuguese? Ah, I'm going to be late for work today."
+    got nothing: "it" names no word. The sentence after the question is what is asked about.
+    """
+    found = _TO_SENTENCE_END.match(_NEXT_LEAD_IN.sub("", after))
+    said = found.group(0).strip(" \"'“”‘’,:;-") if found else ""
+    if len(said.split()) < _MIN_NEXT_WORDS or _DROPS_IT.match(said):
+        return ""
+    return said
 
 
 def asked_term(text: str) -> str | None:
@@ -125,14 +172,49 @@ def question_itself(text: str) -> str:
     Seen with a real model: given `...adiar our meeting. How do I say "garfo" in English?` it
     answered for "adiar". What is not sent cannot distract.
     """
-    sentences = [s.strip() for s in _SENTENCE.findall(text.replace("...", "…"))]
+    sentences: list[str] = [s.strip() for s in _SENTENCE.findall(text.replace("...", "…"))]
     asking = [s for s in sentences if asked_term(s)]
-    return asking[-1] if asking else text
+    if asking:
+        return asking[-1]
+    # "How do I say it in Portuguese? I'm going to be late.": the question points at the sentence
+    # after it. The model answered that form one time in two (D-70); said in one piece, always.
+    term, questions = asked_term(text), [s for s in sentences if asks_for_word(s)]
+    if (
+        not term
+        or not questions
+        or not _POINTING & set(_flat(questions[-1]).rstrip("?.! ").split())
+    ):
+        return text  # "Como se fala... Carteira em inglês." stays as it was said
+    return f'{questions[-1].rstrip(" ?.!")}: "{term}"?'
 
 
 def unfinished_question(text: str) -> bool:
     """True for a question that stops before naming its word. Example: "Como se fala..." -> True."""
     return asks_for_word(text) and asked_term(text) is None
+
+
+def asks_directly(text: str) -> bool:
+    """True when the turn asks for a word as a question of its own, not in passing.
+
+    "Como se diz recibo?" and "We need to, como é que fala, destravar isso" do; "You need to
+    learn how to say no to clients." and "Não sei como se fala com ele." do not: there the
+    words of asking are inside a statement.
+    """
+    low = _flat(text)
+    if _short_ask(low) is not None:
+        return True
+    for found in ASK_PATTERN.finditer(low):
+        opens = not low[: found.start()].strip() or low[: found.start()].rstrip()[-1] in ".,!?—-:;"
+        rest = _TO_SENTENCE_END.match(low, found.end())
+        if opens or (rest is not None and low[rest.end() : rest.end() + 1] == "?"):
+            return True
+    return False
+
+
+def names_a_colleague(text: str, context: SessionContext) -> bool:
+    """True when a participant's name is anywhere in the turn: "Como se diz recibo, Ben?"."""
+    names = "|".join(re.escape(p.user_id) for p in context.participants)
+    return bool(names) and re.search(rf"\b(?:{names})\b", lowered(text)) is not None
 
 
 def addressed_partner(text: str, context: SessionContext) -> bool:

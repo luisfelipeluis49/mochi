@@ -36,7 +36,12 @@ _WANTS_TO_HEAR = re.compile(
 # pronuncia", said to the partner half a minute after a hint, made Mochi say that hint aloud.
 _REPORTED = re.compile(
     r"\b(?:i|we|she|he|they) (?:just |already |explicitly )*(?:asked|said|told|wanted)\b|"
-    r"\b(?:perguntei|perguntou|perguntamos|pedi|pediu|pedimos|falei|disse)\b"
+    r"\b(?:perguntei|perguntou|perguntamos|pedi|pediu|pedimos|falei|disse)\b|"
+    # seen live (D-70): "I'm not even going to ask you to pronounce it for me" was pronounced
+    r"(?:\bnot|n't|\bnever)\s+(?:even\s+)?(?:(?:going|want|need|have)\s+to\s+|gonna\s+)?"
+    r"(?:ask|pronounce|say|hear)\b|"
+    r"\bn[aã]o (?:precisa|quero que|vou pedir)\s+(?:\w+\s+){0,2}"
+    r"(?:pronunci\w+|fal\w+|diz\w+|repet\w+)"
 )
 # Saying that one will repeat oneself is not asking Mochi to. Seen live (D-69): "I'll say it
 # again: can you send me the plan before lunch?" made Mochi say the last hint aloud, four times.

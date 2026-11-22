@@ -31,3 +31,5 @@ class IntelligenceSettings:
     suggest_phrases: bool = True
     # "Mochi, speak for me": a person's sentences are said aloud in the meeting's language (D-64).
     speak_for_me: bool = True
+    # A word someone asked for outright ("como se diz X?") is said aloud as it is shown (D-70).
+    say_asked_words: bool = False

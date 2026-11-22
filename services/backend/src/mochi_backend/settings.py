@@ -85,7 +85,8 @@ class Settings(BaseSettings):
     # After a hint, the whole sentence the speaker was reaching for is suggested; one touch and
     # Mochi says it aloud (D-59). One small model call per hint; needs MODEL_API_KEY.
     mochi_suggest_phrases: bool = True
-    mochi_suggestion_ttl_seconds: float = 20.0  # how long the touch works after the suggestion
+    mochi_suggestion_ttl_seconds: float = 20.0  # how long a suggested sentence stays on a screen
+    mochi_say_asked_words: bool = True  # "como se diz X?": the word is said as it is shown (D-70)
     # "Mochi, speak for me": a person with a registered voice talks in their own language and
     # Mochi says each sentence aloud in the meeting's (D-64). One model call per such sentence.
     mochi_speak_for_me: bool = True
