@@ -74,7 +74,7 @@ export function App({ model, actions, href = "" }: AppProps) {
     return <ProblemGate model={model} actions={actions} href={href} />;
   }
   if (s.probe.status !== "ok") {
-    const problem = s.probe.status === "failing" ? s.probe.problem : "waking";
+    const problem = s.probe.problem;
     return <Unreachable lang={lang} problem={problem} onRetry={actions.retryProbe} />;
   }
   if (!s.user) {

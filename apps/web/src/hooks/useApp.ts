@@ -121,19 +121,34 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
     return () => removeEventListener("popstate", onPop);
   }, []);
 
+  // ---- no user: the URL is /welcome; a known user never stays on /welcome ----
+  useEffect(() => {
+    if (!state.user && location.pathname !== pathOf("welcome")) {
+      history.replaceState(null, "", pathOf("welcome") + location.search);
+      setScreen("welcome");
+    } else if (state.user && state.identity === "ok" && screen === "welcome") {
+      history.replaceState(null, "", pathOf("session") + location.search);
+      setScreen("session");
+    }
+  }, [state.user, state.identity, screen]);
+
   // ---- <html lang> ----
   useEffect(() => {
     document.documentElement.lang = state.lang;
   }, [state.lang]);
 
   // ---- microphone gate (first, in parallel with the probe) ----
+  const gateRun = useRef(0);
   const runGate = useCallback(async (keepSkipped = false) => {
+    const run = ++gateRun.current;
     const before = stateRef.current.gate;
+    const current = () => run === gateRun.current;
     dispatch({ type: "gate", gate: { status: "checking" } });
     const r = await runMicGate(deps.micEnv({
-      onPrompt: () => dispatch({ type: "gate", gate: { status: "prompt" } }),
-      onSlow: () => dispatch({ type: "gate", gate: { status: "slow" } }),
+      onPrompt: () => { if (current()) dispatch({ type: "gate", gate: { status: "prompt" } }); },
+      onSlow: () => { if (current()) dispatch({ type: "gate", gate: { status: "slow" } }); },
     }));
+    if (!current()) return r; // a newer run (a tap on "Allow microphone") decides
     if (r.ok) dispatch({ type: "gate", gate: { status: "ok" } });
     else if (keepSkipped && before.status === "skipped") dispatch({ type: "gate", gate: { status: "skipped", problem: r.problem } });
     else dispatch({ type: "gate", gate: { status: "failed", problem: r.problem } });
@@ -214,6 +229,8 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
 
   // ---- WebSocket: open for the life of the app on ?user=&session= ----
   const openWaiters = useRef<(() => void)[]>([]);
+  /** POST start succeeded for the session being started (the server is capturing before the mic joins) */
+  const startPosted = useRef(false);
   useEffect(() => {
     if (state.identity !== "ok" || !userId) return;
     const c = connectSocket(socketUrl(location, userId, state.sessionId), {
@@ -250,7 +267,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   useEffect(() => {
     const onHide = () => {
       const s = stateRef.current;
-      if (s.phase === "capturing") deps.beacon(s.sessionId);
+      if (s.phase === "capturing" || (s.phase === "starting" && startPosted.current)) deps.beacon(s.sessionId);
     };
     addEventListener("pagehide", onHide);
     return () => removeEventListener("pagehide", onHide);
@@ -269,10 +286,13 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
     try {
       await api.start(id, s.user.user_id, s.lang);
       started = true;
+      startPosted.current = true;
       const join = await api.agora(id);
       await micRef.current.join(join, s.volume);
+      startPosted.current = false;
       dispatch({ type: "start_ok", now: Date.now() });
     } catch (e) {
+      startPosted.current = false;
       if (started) await api.stop(id).catch(() => null);
       await micRef.current.leave();
       forgetSession();
@@ -356,12 +376,13 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
       storeLang(l);
       dispatch({ type: "lang", lang: l });
     },
-    forget: () => {
-      if (stateRef.current.phase === "capturing") void stop();
+    forget: () => void (async () => {
+      if (stateRef.current.phase === "capturing") await stop(); // before forgetting, so its card never shows for the next person
       forgetUser();
+      forgetSession();
       dispatch({ type: "forget_user" });
       navigate("welcome");
-    },
+    })(),
     trainingResult: (id, outcome) => {
       const s = stateRef.current;
       if (!s.user) return;

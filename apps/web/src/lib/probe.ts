@@ -14,7 +14,8 @@ export function probeBackoffMs(attempt: number): number {
 }
 
 export type ProbeState =
-  | { status: "pending"; problem: "waking" }
+  /** a try is in flight; `problem` is what to keep showing meanwhile ("waking" on the first try) */
+  | { status: "pending"; problem: ProblemKind }
   | { status: "ok" }
   | { status: "failing"; problem: ProblemKind; retryInMs: number };
 
@@ -30,12 +31,13 @@ export function startProbe(api: Pick<Api, "health">, deps: { timers: Timers; now
   let timer: unknown = null;
   let stopped = false;
   let inFlight = false;
+  let shownProblem: ProblemKind = "waking";
 
   const run = async () => {
     if (stopped || inFlight) return;
     timer = null;
     inFlight = true;
-    deps.onState({ status: "pending", problem: "waking" });
+    deps.onState({ status: "pending", problem: shownProblem });
     try {
       await api.health();
       inFlight = false;
@@ -49,6 +51,7 @@ export function startProbe(api: Pick<Api, "health">, deps: { timers: Timers; now
       const wait = probeBackoffMs(attempt++);
       // a non-gateway answer (e.g. 404 from a wrong proxy) still counts as not reachable
       const shown: ProblemKind = problem === "server" ? (deps.now() - began < 90_000 ? "waking" : "unreachable") : problem;
+      shownProblem = shown;
       deps.onState({ status: "failing", problem: shown, retryInMs: wait });
       timer = deps.timers.setTimeout(run, wait);
     }

@@ -9,6 +9,7 @@ import { browserMicEnv } from "./lib/mic.ts";
 import type { SocketCtor } from "./lib/socket.ts";
 import { MockBackend, mockApi, mockJoinVoice, mockSocketClass } from "./mock/backend.ts";
 import { rememberedSession } from "./lib/sessionId.ts";
+import { readUser, writeUser } from "./lib/identity.ts";
 import "./styles/tokens.css";
 import "./styles/app.css";
 
@@ -25,6 +26,12 @@ function realDeps(): AppDeps {
 
 function mockDeps(): AppDeps {
   const b = new MockBackend();
+  // ?mock=1&as=Ana: skip onboarding with a stored mock user (handy for screenshots and demos)
+  const as = new URLSearchParams(location.search).get("as");
+  if (as && !readUser()) {
+    const pt = new URLSearchParams(location.search).get("lang")?.startsWith("pt");
+    writeUser({ user_id: `${as.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "user"}-000000`, display_name: as, comfortable_languages: [pt ? "pt-BR" : "en"], target_language: pt ? "en" : "pt-BR" });
+  }
   const api = mockApi(b);
   let current = "";
   return {

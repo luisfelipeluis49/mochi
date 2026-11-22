@@ -83,7 +83,7 @@ export async function joinVoice(join: AgoraJoin, opts: { volume: number; sdk?: (
     throw new VoiceError({ kind: "agora_sdk" }, e);
   }
   try {
-    sdk.setLogLevel?.(3); // warnings and errors only
+    sdk.setLogLevel?.(3); // Agora log level 3: errors only
   } catch {
     /* optional */
   }

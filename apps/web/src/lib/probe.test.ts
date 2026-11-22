@@ -22,11 +22,16 @@ test("waking while pending and for 90 s, then unreachable; ok when /healthz answ
     timers.tick(w);
     await flush();
   }
+  assert.deepEqual(states[states.length - 2], { status: "pending", problem: "waking" }, "the try at 89 s still reads waking");
   const at89 = states[states.length - 3]; // the failure at 89 s
   assert.equal((at89 as { problem: string }).problem, "waking");
   const last = states[states.length - 1];
   assert.equal(last.status, "failing");
   assert.equal((last as { problem: string }).problem, "unreachable"); // the failure at 104 s
+  // the next try (after 90 s) keeps showing "unreachable" while it is pending: no flicker back to waking
+  timers.tick(15000);
+  assert.deepEqual(states[states.length - 1], { status: "pending", problem: "unreachable" });
+  await flush();
   ok = true;
   timers.tick(15000);
   await flush();
