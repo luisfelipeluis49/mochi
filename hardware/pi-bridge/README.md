@@ -224,8 +224,9 @@ connection it has just lost). The recordings are in `sounds/` and settings under
 Mochi's voice comes back through the M1A's own microphone, faint but recognisable, and the speech
 recogniser then writes down sentences nobody said. While Mochi's voice is playing, and for 0.6 s
 after, the supervisor therefore sends silence instead of the microphone (`[audio]
-hear_while_speaking = false`). The cost is that talking over Mochi does not interrupt it; "tchau
-Mochi" still does, because the Pi hears that itself. See `docs/DECISIONS.md` D-35.
+hear_while_speaking = false`). Nobody upstream can then hear a person talking over Mochi, so the Pi
+notices that itself (`[barge_in]`, below); "tchau Mochi" is heard on the Pi too. See
+`docs/DECISIONS.md` D-35 and D-50.
 
 ## Mochi's face
 
@@ -251,6 +252,14 @@ A session ends on a goodbye phrase, after `inactivity_timeout_s` without a voice
 Talking over Mochi: when someone starts to speak while Mochi is speaking, its speaker is silenced at
 once, its agent is told to stop, and the microphone is sent on again (`[barge_in]` in
 `config/mochi.toml`; docs/DECISIONS.md D-50). Raise `level_ratio` if Mochi cuts itself off.
+
+Interrupting Mochi before it speaks: a sentence said while Mochi is still thinking (a correction, a
+new question) needs nothing from the Pi. The microphone is being sent, Agora hears it, drops the
+answer under way and asks the backend again with both sentences, and Mochi answers what was said
+last. That is the backend's setting for the Pi's session (`MOCHI_INTERRUPTION` empty with
+`MOCHI_CANCEL_STALE_TURNS=true`; docs/DECISIONS.md D-67), the same as a web session has. With
+`MOCHI_INTERRUPTION=append` (until D-67) Mochi said the old answer in full and then answered the
+correction.
 
 Who said what: during a session the voice tracker judges every stretch of speech between two
 pauses on its own and the Pi reports it with the next status (`heard`: who, how much speech, how

@@ -46,6 +46,10 @@ start_timeout_s = 25
 # Someone starts talking while Mochi is still speaking: Mochi stops at once and listens. Its speaker is
 # silenced here, its agent is told to stop, and the microphone is sent on again (while Mochi speaks it
 # is not, see hear_while_speaking below).
+# This is the half of interrupting Mochi that only the Pi can do. The other half, a sentence said while
+# Mochi is still thinking (a correction, a new question), is heard upstream like any sentence: since
+# D-67 the backend's session for the Pi drops the answer under way and answers what was said last,
+# as a web session does (MOCHI_INTERRUPTION empty on the backend; "append" made Mochi finish first).
 enabled = true
 # Noticed by loudness: a voice this many times louder than Mochi's own voice comes back in the
 # microphone (learned while it speaks), for need_ms of 400 ms. Raise level_ratio if Mochi cuts itself
@@ -64,8 +68,8 @@ chimes = true
 min_volume = 20
 # false: while Mochi is speaking (and 0.6 s after), silence is sent instead of the microphone. Its own
 #        voice comes back through the microphone, and the speech recogniser writes that down as a
-#        sentence someone said. The price: Mochi cannot be interrupted by talking over it ("tchau
-#        Mochi" still works: that is heard on the Pi itself).
+#        sentence someone said. Nobody upstream can then hear a person talking over Mochi: the Pi
+#        notices that itself ([barge_in] above; "tchau Mochi" is heard on the Pi too).
 # true:  everything is sent, for a microphone that really does not hear the speaker.
 hear_while_speaking = false
 

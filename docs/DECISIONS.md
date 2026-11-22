@@ -1789,3 +1789,53 @@ Found by reading the code, like D-63; none is measured yet.
   `scripts/eval-intelligence.sh` before and after, and Kauê's agreement.
 - **Not done:** indexes in `team/ledger.py` (its scans run at the end of a session or on an admin
   request, not per turn) and a pool for Postgres connections (writes are already off the loop).
+
+## D-67: Mochi can be interrupted on the Pi as on the web (2026-11-22)
+
+**Asked** (Suhuai): the web app has a fix that stops Mochi answering on when the person interrupts it, to
+correct something or to change direction; the Pi should have the same.
+
+**What the web's fix is** (D-57, `SessionConfig.for_session`): a web session gets Agora's default
+interruption whatever `MOCHI_INTERRUPTION` says. The Pi's `demo` session was left on `append` (D-38, D-40),
+and `append` is the error itself: Mochi says the answer under way in full and then answers the sentence
+that was meant to stop it.
+
+**What the Pi already had** (D-50): someone talking over Mochi's *voice* is noticed on the Pi, which
+silences its speaker, tells the backend (`/interrupt`) and sends the microphone again. Nothing upstream can
+do that part, because the Pi sends no microphone while Mochi speaks (D-35). So one case was left: a sentence
+said while Mochi is still *thinking*, when its voice has not started and the Pi has nothing to stop.
+
+**Changed:** the deployed `MOCHI_INTERRUPTION` is empty (`render.yaml`, `.env.example`, and this Pi's own
+`.env`, which also gets `MOCHI_CANCEL_STALE_TURNS=true`). No code path is new; `for_session` keeps forcing
+the default for web sessions, and the setting stays the Pi's switch back to `append`.
+
+**Why this does not bring D-38's lost answer back.** D-38 measured Agora's default without
+`MOCHI_CANCEL_STALE_TURNS` (D-37): the question Agora gave up on was still decided, answered into a closed
+connection and counted as handled, so only the second sentence was answered. With the flag (deployed since
+D-40) the abandoned turn is cancelled before it commits and its text is *not* counted as handled; Agora's
+next request repeats everything since Mochi last spoke, so the question is read again together with what
+interrupted it (`TurnPipeline._heard`). Typed, with the fake Agora, the Pi's session as deployed:
+
+| said while Mochi thinks about "Oi Mochi, what's the word for fila?" | spoken |
+|---|---|
+| "Sorry, how do you say recibo?" (a correction) | "You can say: receipt." once; "queue" never |
+| "Yeah, okay." (a colleague, not to Mochi) | "You can say: queue." once |
+
+**Tests:** `test_stale_turns.py` (the two rows above), `test_presets.py` (`render.yaml` keeps the two
+settings together). `make verify`: 1799 passed, 7 skipped.
+
+**Open:**
+- **Not tried with voices or real Agora.** The above is the gateway's logic on typed sentences. That Agora
+  hangs up on the question and sends both sentences in one message is what D-37 and `VERIFIED.md` saw live.
+- **The half second after the answer is written.** A sentence that starts between the backend's reply and
+  Mochi's first sound still loses that answer: it was committed, so it is not read again. `append` did not
+  have this; it is the price, and it is small next to the thinking time (2 to 3 s on the Pi, D-40).
+- **A correction that is not a question.** "No, I mean the word for recibo." after the question was answered
+  "queue" by the lexicon rules in the typed test: the first word asked for wins there. With a model writing
+  the line this may differ; not looked at (Kauê's rules).
+- **In a meeting, a correction said over Mochi's voice** stops it (D-50) and is then not taken as said to
+  Mochi: it waits for its name again. Unchanged here.
+- **Takes effect on the device when the deployed backend has the new value:** this Pi talks to the backend
+  on Render, whose `MOCHI_INTERRUPTION` is still `append` until `render.yaml` reaches it or the variable is
+  changed there by hand.
+- Gateway and deploy files are Luís's; needs his yes.

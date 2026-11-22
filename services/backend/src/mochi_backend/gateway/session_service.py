@@ -83,8 +83,10 @@ class SessionConfig:
     def _barge_in(tuning: SpeechTuning | None) -> SpeechTuning | None:
         """The same ears with Agora's default interruption: speaking over Mochi cuts it off.
 
-        The Pi's session keeps `append` (D-40: two people in a room). A web session is one person
-        with headphones, who expects to be able to interrupt (D-57).
+        A web session is one person with headphones, who expects to be able to interrupt (D-57),
+        whatever MOCHI_INTERRUPTION says. The Pi's session takes that setting as it is: `append`
+        from D-40 until D-67, Agora's default since (render.yaml), so Mochi can be interrupted
+        there too.
         """
         return replace(tuning, interruption="") if tuning else None
 

@@ -93,6 +93,19 @@ def test_combined_presets_are_the_sum_of_their_parts() -> None:
     assert _preset_env("stretch") == stretch
 
 
+def _deployed(key: str) -> str:
+    """The value render.yaml gives `key`, without its quotes and its comment."""
+    lines = (ROOT / "render.yaml").read_text().splitlines()
+    value = lines[lines.index(f"      - key: {key}") + 1].partition("value:")[2]
+    return value.partition(" #")[0].strip().strip('"')
+
+
+def test_the_deployed_backend_lets_mochi_be_interrupted_on_the_pi_too() -> None:
+    """D-67: no "append" for the Pi's session, and the abandoned question is read again."""
+    assert _deployed("MOCHI_INTERRUPTION") == ""
+    assert _deployed("MOCHI_CANCEL_STALE_TURNS") == "true"
+
+
 @pytest.mark.parametrize("script", SHELL_SCRIPTS)
 def test_shell_scripts_parse(script: str) -> None:
     subprocess.run(["bash", "-n", str(SCRIPTS / script)], check=True)  # noqa: S603, S607
