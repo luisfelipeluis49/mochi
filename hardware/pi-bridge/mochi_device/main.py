@@ -41,6 +41,19 @@ def hint_note(card: dict) -> str:
     return " · ".join(part for part in (language, meaning) if part)[:40]
 
 
+def hint_more(card: dict) -> str:
+    """The third line of a hint: the other words that fit, when the person named none.
+
+    Example: {"word": "umbrella", "candidates": ["raincoat", "jacket"]} -> "raincoat · jacket".
+    Anything that is not a list of words (an older backend sends no "candidates") gives "".
+    """
+    others = card.get("candidates")
+    if not isinstance(others, list):
+        return ""
+    words = [str(word)[:20] for word in others if isinstance(word, str) and word][:2]
+    return " · ".join(words)
+
+
 USED_NOTES = {"en": "★ you used it!", "pt-BR": "★ você usou!", "pt": "★ você usou!"}
 
 
@@ -102,12 +115,13 @@ class Supervisor:
         if kind == "mood" and value in MOODS:
             self.face.show_for(12, mood=value)
         elif kind == "show":
-            self.face.show_for(10, word=str(value)[:28], note="")
+            self.face.show_for(10, word=str(value)[:28], note="", more="")
         elif kind == "hint":  # a word someone needed: say which language it is in and what it means
-            self.face.show_for(10, word=str(value.get("word", ""))[:28], note=hint_note(value))
+            self.face.show_for(10, word=str(value.get("word", ""))[:28], note=hint_note(value),
+                               more=hint_more(value))
         elif kind == "used":  # they said the word they were given: cheer, without a sound
             note = USED_NOTES.get(str(value.get("language")), "★")
-            self.face.show_for(5, word=str(value.get("word", ""))[:28], note=note, mood="proud")
+            self.face.show_for(5, word=str(value.get("word", ""))[:28], note=note, more="", mood="proud")
         elif kind in ("volume", "temp"):
             self.face.pop(kind, value)
         elif kind == "enroll":  # "learn my voice": the next ~10 s of speech become their voiceprint
@@ -409,7 +423,7 @@ class Supervisor:
         self.bye_until = time.monotonic() + 3
         self.game.clear()
         self.face.keep(round=None)
-        self.face.set(level=0, word="", note="", mood="neutral", who="")
+        self.face.set(level=0, word="", note="", more="", mood="neutral", who="")
         self._chime(rising=False)
         self._tell_what_is_owed()
         log("back to offline listening (no audio leaves the Pi)")

@@ -16,6 +16,7 @@
     level  0-100, how loud Mochi's voice is right now (opens the mouth)
     word   a word to show big under the face ("" = none)
     note   a second, smaller line under the word: its language and what it means ("English · garfo")
+    more   a third line: other words that fit as well ("raincoat · jacket"), when the person named none
     pop    {what: "volume" | "temp", value, n}   a short badge; n changes for every new one
     who    name of the person Mochi recognises talking ("" = nobody)
     temp   Mochi's own temperature in degrees Celsius (null = not known): always shown while it sleeps
@@ -98,6 +99,11 @@
   /* a hint's second line: which language the word is in, and what it means */
   #word small { display: none; font: 700 21px/1.15 system-ui, sans-serif; color: #6b6480; letter-spacing: 0; padding: 2px 0 1px; }
   .has-note #word small { display: block; }
+  /* a third line: the other words that fit (someone stopped at "I forgot my") */
+  #word small.more { color: var(--ink); font-size: 23px; border-top: 2px dashed #d9d3ea; margin-top: 3px; padding-top: 4px; }
+  .has-note #word small.more { display: none; }
+  .has-more #word small.more { display: block; }
+  .has-word.has-more #face { transform: translateY(-70px) scale(.62); }
   .has-note #word span { font-size: 38px; padding-bottom: 6px; }
   .has-word #word { opacity: 1; transform: none; }
   .has-word #face { transform: translateY(-46px) scale(.8); animation: none; transition: transform .35s; }
@@ -183,7 +189,7 @@
   </g>
   <g id="floats"></g>
 </svg>
-<div id="word"><span><b></b><small></small></span></div>
+<div id="word"><span><b></b><small></small><small class="more"></small></span></div>
 <div id="badge"></div>
 <div id="who"></div>
 <div id="round"><b></b><small></small></div>
@@ -199,7 +205,7 @@
 const body = document.body, floats = document.getElementById('floats');
 const talk = document.getElementById('talk'), tongue = document.getElementById('talk-tongue');
 const wordBox = document.getElementById('word'), badge = document.getElementById('badge');
-const state = { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', pop: null, who: '', round: null, temp: null, hot: false, online: true };
+const state = { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', more: '', pop: null, who: '', round: null, temp: null, hot: false, online: true };
 const whoBox = document.getElementById('who'), roundBox = document.getElementById('round'), tempBox = document.getElementById('temp');
 let popSeen = 0, mouthNow = 0, lastMode = '';
 
@@ -233,7 +239,9 @@ function draw() {
   }
   body.classList.toggle('has-word', !!state.word);
   body.classList.toggle('has-note', !!(state.word && state.note));
+  body.classList.toggle('has-more', !!(state.word && state.more));
   if (state.word) { wordBox.querySelector('b').textContent = state.word; wordBox.querySelector('small').textContent = state.note || ''; }
+  wordBox.querySelector('small.more').textContent = state.more || '';
   whoBox.classList.toggle('on', !!state.who); if (state.who) whoBox.textContent = state.who;
   if (state.pop && state.pop.n !== popSeen) { popSeen = state.pop.n; showBadge(state.pop); }
   body.classList.toggle('offline', state.online === false);
@@ -364,7 +372,7 @@ if (q.has('demo')) {   // walk through everything, for a look without the superv
     const es = new EventSource(url);
     es.onmessage = (m) => { Object.assign(state, JSON.parse(m.data)); draw(); };
     es.onerror = () => {   // supervisor gone: sleep, and keep trying
-      es.close(); Object.assign(state, { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', who: '', round: null, temp: null, online: true }); draw(); setTimeout(connect, 2000);
+      es.close(); Object.assign(state, { mode: 'sleeping', mood: 'neutral', level: 0, word: '', note: '', more: '', who: '', round: null, temp: null, online: true }); draw(); setTimeout(connect, 2000);
     };
   };
   connect();

@@ -39,6 +39,9 @@ class FalseFriend(BaseModel):
     meaning: str
     example: str
     trigger: str
+    # The language being spoken when the slip happens: "en" is an English word a Portuguese
+    # speaker misuses ("pretend"), "pt-BR" a Portuguese one an English speaker does ("excitado").
+    language: Language = Language.EN
 
 
 class LexiconFile(BaseModel):
@@ -93,10 +96,13 @@ class Lexicon:
                 return entry
         return None
 
-    def false_friend_in(self, lowered_text: str) -> FalseFriend | None:
-        """The false friend whose trigger pattern matches the text, if any."""
+    def false_friend_in(self, lowered_text: str, language: Language) -> FalseFriend | None:
+        """The false friend of `language` whose trigger pattern matches the text, if any.
+
+        Example: `false_friend_in("i pretend to travel", Language.EN).intended` is "intend".
+        """
         for friend in self._content.false_friends:
-            if re.search(friend.trigger, lowered_text):
+            if friend.language is language and re.search(friend.trigger, lowered_text):
                 return friend
         return None
 

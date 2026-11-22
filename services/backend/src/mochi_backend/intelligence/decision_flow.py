@@ -5,16 +5,8 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from mochi_backend.intelligence.aloud import wants_to_hear, word_to_hear
-from mochi_backend.intelligence.answer_checks import (
-    in_its_language,
-    language_named,
-    made_up,
-    only_extends,
-    only_the_word,
-    open_ask,
-    right_way_round,
-    same_words,
-)
+from mochi_backend.intelligence.answer_checks import in_its_language, same_family, same_words
+from mochi_backend.intelligence.answer_screen import AnswerScreen
 from mochi_backend.intelligence.clear_cases import (
     addressed_partner,
     asked_term,
@@ -39,7 +31,7 @@ from mochi_backend.intelligence.language_guess import (
 from mochi_backend.intelligence.learning_rules import assisted_updates
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.mochi_talk import MochiTalk
-from mochi_backend.intelligence.model_port import HintModel, ModelRequest, ModelSuggestion
+from mochi_backend.intelligence.model_port import HintModel, ModelRequest, Suspect
 from mochi_backend.intelligence.quiet_rules import (
     cooldown_active,
     hint_on_screen,
@@ -49,7 +41,8 @@ from mochi_backend.intelligence.quiet_rules import (
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
-from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for
+from mochi_backend.intelligence.stuck_signs import partner_lost, searching_aside, stuck_signs
+from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for, suspect_in
 from mochi_backend.intelligence.tokens import (
     normalized,
     words_of,
@@ -64,7 +57,6 @@ from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
     Decision,
     DecisionKind,
-    HintCandidate,
     Language,
     Reason,
     SessionContext,
@@ -75,30 +67,6 @@ from mochi_contracts import (
 
 _SAME_THOUGHT = timedelta(seconds=20)  # a question and its second half are no further apart
 _ANSWER_LINES = {Language.EN: "You can say: {w}.", Language.PT_BR: "Você pode dizer: {w}."}
-# PROPOSAL (docs/DECISIONS.md): reasons with no single known word, where several plausible
-# completions help (AGENTS 7.1 cases 5-6). Every other reason has one right answer.
-_OPEN_SEARCH_REASONS = frozenset({Reason.TRAILS_OFF, Reason.RESTARTS, Reason.TALKS_AROUND})
-_MAX_CANDIDATES = 3  # the primary word plus at most two more (glasses: MAX_CANDIDATES)
-
-
-def _extra_candidates(answer: ModelSuggestion) -> tuple[HintCandidate, ...]:
-    """The model's extra completions, deduplicated against the primary and each other.
-
-    Example: primary "although", candidates ["although", "unfortunately", "although"] (a
-    repeat) -> `(although, unfortunately)`. The primary is always first.
-    """
-    primary = HintCandidate(expression=answer.expression or "", meaning=answer.meaning)
-    seen = [primary.expression]
-    extra = [primary]
-    for candidate in answer.candidates:
-        word = (candidate.expression or "").strip()
-        if not word or any(same_words(word, kept) for kept in seen):
-            continue
-        seen.append(word)
-        extra.append(HintCandidate(expression=word, meaning=candidate.meaning))
-        if len(extra) == _MAX_CANDIDATES:
-            break
-    return tuple(extra)
 
 
 def _with_its_question(turn: Turn, context: SessionContext) -> Turn:
@@ -151,7 +119,7 @@ class DecisionFlow:
         self._model_timeout = settings.model_timeout_seconds
         self._judge_everything = settings.judge_every_sentence
         self._min_words = settings.min_words_to_judge
-        self._min_confidence = settings.hint_min_confidence
+        self._screen = AnswerScreen(settings.hint_min_confidence, lexicon)
         self._cooldown = settings.hint_cooldown
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
@@ -283,9 +251,15 @@ class DecisionFlow:
 
     def _by_rules(self, text: str, context: SessionContext) -> CaseMatch | None:
         history = [t.text for t in context.recent_turns]
-        return detect_clear(text, context, self._lexicon) or detect_subtle(
+        found = detect_clear(text, context, self._lexicon) or detect_subtle(
             text, history, context, self._lexicon
         )
+        if found and found.reason is Reason.LOOK_ALIKE and self._talk.attentive:
+            # Someone woke Mochi to talk WITH it: its own reply puts the word right, in its
+            # answer. A silent hint would race that reply, and when it wins Mochi says nothing
+            # (D-40). Between two people it is judged as before, also just after Mochi spoke.
+            return None
+        return found
 
     def _needs_model(self, found: CaseMatch | None, text: str, context: SessionContext) -> bool:
         if found is not None:
@@ -311,9 +285,13 @@ class DecisionFlow:
         AGENTS 7.1 has a model judge case 8 in context, and 7.2 says quiet by default, so with no
         model (or a model that disagrees or is slow) the answer is IGNORE.
         """
-        answer = await self._ask_model(text, history, context, by_rule=True)
-        agrees = answer is not None and answer.expression.lower() == candidate.expression.lower()
-        return candidate if agrees else None
+        # The model is told what the rule suspects (D-41): asked without it, it had to come up
+        # with the same word unprompted, and "I pretend to travel in July." went unanswered.
+        suspect = suspect_in(text, self._lexicon, context.focus)
+        answer = await self._ask_model(text, history, context, suspect)
+        if answer is None or not same_family(answer.expression, candidate.expression):
+            return None
+        return replace(candidate, example=answer.example or candidate.example)
 
     def _worth_asking_model(self, text: str, context: SessionContext) -> bool:
         if asks_for_word(text) or marker_for(text) is not None:
@@ -321,89 +299,50 @@ class DecisionFlow:
         if self._judge_everything and not self._talk.listening():
             # Two people talk and Mochi only watches: every real sentence gets a look. (While
             # someone talks WITH Mochi it answers itself, and a second model call would slow it.)
-            return len(words_of(text)) >= self._min_words
+            return len(words_of(text)) >= self._min_words or self._partner_lost(text, context)
         return has_foreign_word(text, self._lexicon, context.focus) and is_mostly(
             text, self._lexicon, context.focus
         )
 
-    async def _ask_model(
-        self, text: str, history: list[str], context: SessionContext, by_rule: bool = False
-    ) -> CaseMatch | None:
+    def _partner_lost(self, text: str, context: SessionContext) -> bool:
+        """ "A what?" is two words, and still says that the sentence before it did not land."""
+        before = context.recent_turns[-1].text if context.recent_turns else None
+        return before is not None and partner_lost(text, before)
+
+    def _judge_request(
+        self, text: str, history: list[str], focus: Language, suspect: Suspect | None
+    ) -> ModelRequest:
+        """What the hint model is shown: the sentence, what came before, and what was noticed."""
         sentence = question_itself(text)
-        request = ModelRequest(
+        signs = stuck_signs(sentence, history[-1] if history else None, focus)
+        aside = searching_aside(sentence, focus)  # then what follows it is not what was asked
+        return ModelRequest(
             text=sentence,
             recent_texts=history[-3:],
-            focus=context.focus,
+            focus=focus,
             candidate_reasons=list(Reason),
-            asked_about=asked_term(sentence),
+            asked_about=None if aside else asked_term(sentence),
+            noticed=[sign.value for sign in signs],
+            suspect=suspect,
         )
+
+    async def _ask_model(
+        self,
+        text: str,
+        history: list[str],
+        context: SessionContext,
+        suspect: Suspect | None = None,
+    ) -> CaseMatch | None:
+        request = self._judge_request(text, history, context.focus, suspect)
         # AGENTS 7.2: no answer within the limit means IGNORE. A slow first request is asked again.
         suggestion = await first_answer(
             lambda: self._model.suggest(request), self._hedge_after, self._model_timeout
         )
-        match = self._accepted(text, suggestion, context, by_rule)
+        match = self._screen.accepted(text, suggestion, context, by_rule=suspect is not None)
         if match and match.reason is Reason.ASKS_PARTNER and not addressed_partner(text, context):
             # nobody was named, so nobody in particular was asked: the label must not vary
             match = replace(match, reason=Reason.SAYS_UNKNOWN)
         return match
-
-    def _accepted(
-        self,
-        text: str,
-        suggestion: ModelSuggestion | None,
-        context: SessionContext,
-        by_rule: bool,
-    ) -> CaseMatch | None:
-        """The model's answer as a hint, or None: no hint, incomplete, unsure or off the rules."""
-        if suggestion is None or suggestion.decision != "SHOW_HINT":
-            return None
-        answer = right_way_round(text, suggestion)
-        if answer is None or not answer.reason or self._rejected(text, answer, context, by_rule):
-            return None
-        language = language_named(answer.expression_language) if open_ask(text) else None
-        candidates, open_context = None, None
-        if answer.reason in _OPEN_SEARCH_REASONS:
-            candidates, open_context = _extra_candidates(answer), text.strip()
-        return CaseMatch(
-            answer.reason,
-            answer.expression or "",
-            answer.meaning,
-            answer.example,
-            language,
-            candidates,
-            open_context,
-        )
-
-    def _rejected(
-        self, text: str, answer: ModelSuggestion, context: SessionContext, by_rule: bool
-    ) -> bool:
-        """The checks that keep a wrong or unwanted hint off the screen (DECISIONS D-29)."""
-        word, said = answer.expression or "", answer.meaning
-        if self._doubtful(answer, context.focus, open_ask(text), by_rule) or made_up(text, answer):
-            return True
-        if only_the_word(text, answer, context):
-            return True  # "Molho para salada?": trying out a word they were just given
-        return not asks_for_word(text) and only_extends(word, said)
-
-    def _doubtful(
-        self, answer: ModelSuggestion, focus: Language, open_ask: bool, by_rule: bool
-    ) -> bool:
-        """The model is not sure itself, or its word is not in the language being practised.
-
-        Seen with real sentences: "maybe a ranch?" (English) got the hint "fazenda". Quiet first.
-        A question that names no language ("Como se diz abacaxi?") is asked in one language for
-        a word of the other, so there the model's own label decides and is not held against it.
-        """
-        # No stated confidence is no certainty: quiet first (AGENTS 7.2). Only a word the lexicon
-        # rules already found (a false-friend candidate the model is confirming) may go without.
-        unsure = (answer.confidence is None and not by_rule) or (
-            answer.confidence is not None and answer.confidence < self._min_confidence
-        )
-        hint_in = language_named(answer.expression_language)
-        said_in = language_named(answer.meaning_language)
-        wrong_side = not open_ask and hint_in is not None and hint_in is not focus
-        same_side = said_in is focus and answer.reason is Reason.CODE_SWITCH
-        return unsure or wrong_side or same_side  # same_side: a synonym, not a translation
 
     def _show(self, match: CaseMatch, context: SessionContext) -> Decision:
         hint = self._factory.hint_for(match, context)

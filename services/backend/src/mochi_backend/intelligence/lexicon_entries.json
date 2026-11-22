@@ -14,7 +14,11 @@
   "false_friends": [
     {"used": "pretend", "intended": "intend", "meaning": "pretender", "example": "I intend to travel in July.", "trigger": "\\bpretend to (?:travel|go|buy|study|visit|learn|move|start|stay|work|leave|come)\\b"},
     {"used": "actually", "intended": "currently", "meaning": "atualmente", "example": "I am currently working on a new project.", "trigger": "\\bactually (?:working|living|studying|reading|learning|building)\\b"},
-    {"used": "library", "intended": "bookstore", "meaning": "livraria", "example": "I bought a book at the bookstore.", "trigger": "\\b(?:bought|buy|buying)\\b.*\\blibrary\\b"}
+    {"used": "library", "intended": "bookstore", "meaning": "livraria", "example": "I bought a book at the bookstore.", "trigger": "\\b(?:bought|buy|buying)\\b.*\\blibrary\\b|\\blibrary\\b.*\\b(?:buy|bought|buying)\\b.*\\bbooks?\\b"},
+    {"used": "assist", "intended": "watch", "meaning": "assistir", "example": "I watched a very good movie yesterday.", "trigger": "\\bassist(?:ed|ing)?\\b(?: \\w+){0,5} (?:movie|film|show|series|game|match|concert|video|episode|play)s?\\b"},
+    {"used": "sensible", "intended": "sensitive", "meaning": "sensível", "example": "She is very sensitive, she cries at every movie.", "trigger": "\\bsensible\\b.{0,40}\\b(?:cr(?:y|ies|ied|ying)|emotional|feelings?|hurt|offended|upset|tears|skin)\\b|\\b(?:cr(?:y|ies|ied|ying)|emotional|feelings?|hurt|offended|upset|tears|skin)\\b.{0,40}\\bsensible\\b"},
+    {"used": "fabric", "intended": "factory", "meaning": "fábrica", "example": "He works in a car factory.", "trigger": "\\b(?:in|at) (?:a|the|that|this|my) (?:\\w+ )?fabric\\b|\\bfabric of\\b"},
+    {"used": "excitado", "intended": "animado", "meaning": "excited", "language": "pt-BR", "example": "Estou muito animado com a viagem.", "trigger": "\\bexcitad[oa]s?\\b"}
   ],
   "deliberate": ["feijoada", "brigadeiro", "caipirinha", "pão de queijo", "brasil", "brazil"]
 }

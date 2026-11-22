@@ -69,9 +69,10 @@ def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
 
 
 def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
+    http = HttpxClient()
     return (
         OpenAiHintModel(
-            HttpxClient(),
+            http,
             settings.mochi_model_base_url,
             settings.mochi_model_name,
             settings.model_api_key,
@@ -79,6 +80,7 @@ def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
         )
         .thinking(settings.mochi_model_reasoning_effort)
         .logging(logger)
+        .warming(http)  # the connection is opened when a session starts (D-41)
     )
 
 
@@ -130,7 +132,7 @@ def _brain_for(
 
 def _openai_character(settings: Settings, logger: EventLogger) -> OpenAiCharacterModel:
     http = HttpxClient()
-    model = OpenAiCharacterModel(http, _character_model(settings), logger)
+    model = OpenAiCharacterModel(http, _character_model(settings), logger).warming(http)
     return model.streaming(http) if settings.streams_reply else model
 
 

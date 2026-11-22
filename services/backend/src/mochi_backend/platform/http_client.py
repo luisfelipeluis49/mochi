@@ -59,7 +59,11 @@ class HttpTransportError(Exception):
     """Connection failure or timeout. The message names the URL and the cause."""
 
 
-KEEP_ALIVE_SECONDS = 30.0  # sentences in a conversation come a few seconds apart
+# Sentences in a conversation come a few seconds apart, but a game round, a hint on the screen or
+# a lull are longer than 30 s, and the sentence after them paid for a new handshake (0.15-0.5 s).
+# Measured against the model API: a connection idle for 120 s was still reused (DECISIONS D-41);
+# 90 leaves a margin for a network that forgets an idle connection sooner.
+KEEP_ALIVE_SECONDS = 90.0
 
 
 class HttpxClient:

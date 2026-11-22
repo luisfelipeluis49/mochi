@@ -7,6 +7,18 @@ from pydantic import BaseModel
 from mochi_contracts import Language, Reason
 
 
+class Suspect(BaseModel):
+    """A word the lexicon's rules think was used with the meaning of its look-alike.
+
+    Example: "I pretend to travel" -> `Suspect(used="pretend", meant="intend",
+    look_alike="pretender")`. Only a suspicion: the model confirms it in the sentence or not.
+    """
+
+    used: str
+    meant: str
+    look_alike: str
+
+
 class ModelRequest(BaseModel):
     """What the model is asked to judge."""
 
@@ -15,6 +27,9 @@ class ModelRequest(BaseModel):
     focus: Language
     candidate_reasons: list[Reason]
     asked_about: str | None = None  # what a "how do you say ...?" in the sentence names
+    # What `stuck_signs` saw in the sentence ("stops_short", "describes", ...): clues, not verdicts.
+    noticed: list[str] = []
+    suspect: Suspect | None = None  # a false friend a rule found, for the model to confirm
 
 
 class CandidateSuggestion(BaseModel):

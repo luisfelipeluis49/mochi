@@ -53,13 +53,19 @@ def hint_card(hint: Hint) -> str:
     """What the device shows for a hint, as JSON: a word alone tells too little.
 
     Example: `{"word": "fork", "language": "en", "meaning": "garfo", "example": null}`.
+    When the speaker named no word and others fit as well (`Hint.candidates`), those go along as
+    "candidates": someone who stopped at "I forgot my" may need umbrella, raincoat or jacket,
+    and Mochi's own screen showed only the first (PROPOSAL, DECISIONS D-41).
     """
-    card = {
+    card: dict[str, str | None | list[str]] = {
         "word": hint.expression,
         "language": hint.target_language.value,
         "meaning": hint.meaning,
         "example": hint.example,
     }
+    others = [c.expression for c in hint.candidates or [] if c.expression != hint.expression]
+    if others:
+        card["candidates"] = others
     return json.dumps(card, ensure_ascii=False)
 
 

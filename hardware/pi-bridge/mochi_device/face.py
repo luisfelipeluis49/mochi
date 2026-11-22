@@ -8,6 +8,7 @@ reconnects by itself, and with no page open this costs nothing.
     level  0-100, loudness of Mochi's own voice right now
     word   a word shown big under the face
     note   a smaller line under the word: its language and what it means ("English · garfo")
+    more   a third line: other words that fit as well, for a hint where the person named none
     pop    {"what": "volume" | "temp", "value": n, "n": counter}: a badge shown for a few seconds
     who    the name of the person Mochi recognises talking ("" = nobody)
     temp   Mochi's own temperature in whole degrees Celsius (None = not known): always shown while it sleeps
@@ -31,7 +32,7 @@ class Face:
         cfg = cfg or {}
         self.enabled = cfg.get("enabled", True)
         self.host, self.port = cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8765))
-        self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "pop": None,
+        self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "more": "", "pop": None,
                             "who": "", "round": None, "temp": None, "hot": False,
                             "online": True}
         self.on_tap = None  # on_tap(kind): the screen was touched ("tap") or held ("long")
@@ -62,7 +63,7 @@ class Face:
 
     def show_for(self, seconds: float, **changes) -> None:
         """Like set(), and puts each key back to its resting value after a while."""
-        rest = {"mood": "neutral", "word": "", "note": "", "pop": None, "who": "", "round": None}
+        rest = {"mood": "neutral", "word": "", "note": "", "more": "", "pop": None, "who": "", "round": None}
         self.set(**changes)
         for key in changes:
             if key in self._timers:

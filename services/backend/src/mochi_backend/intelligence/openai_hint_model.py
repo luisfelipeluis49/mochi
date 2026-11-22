@@ -7,7 +7,14 @@ from pydantic import BaseModel, ValidationError
 
 from mochi_backend.intelligence.model_port import ModelRequest, ModelSuggestion
 from mochi_backend.intelligence.model_usage import ModelUsage, log_usage
-from mochi_backend.platform.http_client import HTTP_OK, HttpClient, HttpTransportError, JsonValue
+from mochi_backend.intelligence.warm_start import open_connections
+from mochi_backend.platform.http_client import (
+    HTTP_OK,
+    HttpClient,
+    HttpGetter,
+    HttpTransportError,
+    JsonValue,
+)
 from mochi_backend.platform.json_logging import EventLogger
 from mochi_contracts import Reason
 
@@ -15,11 +22,32 @@ SYSTEM_PROMPT = """You are the silent helper inside a language-practice device. 
 practise by talking to each other: one is at home in Brazilian Portuguese and practising English, \
 the other is at home in English and practising Brazilian Portuguese. You read ONE sentence at a \
 time, a machine transcript of speech, and decide whether the speaker is stuck on a word or short \
-expression and would be helped by seeing it on a screen. Most sentences need nothing. When in \
-doubt, IGNORE: an unneeded or wrong hint is worse than none.
+expression and would be helped by seeing it on a screen. Most sentences need nothing, and an \
+unneeded or wrong hint is worse than none. But most people who are stuck never ask: they stop, \
+start again, or describe the thing. Help them without being asked, whenever the sentence shows \
+it and the word is clear.
 
 `focus` is the language the speaker is trying to speak in this sentence. `recent` holds the \
 sentences just before it. `asked_about`, when present, is what the speaker asked how to say.
+You judge `sentence` only. `recent` is there to understand it: every sentence in `recent` was \
+judged when it was said, so never give a hint for a word or a mistake that is only in `recent` \
+(the one exception is not_understood, below).
+
+How a turn ends: the device closes a turn when the speaker has been silent for about half a \
+second. So a sentence that simply stops ("I forgot my", "Do you have a.") was not cut by \
+accident: the speaker stopped talking right there, usually because the next word would not come. \
+"..." or "um" at the end mean the same.
+
+`noticed`, when present, lists what a simple pattern detector saw in the sentence. It cannot \
+understand the sentence, so these are clues, never verdicts; you decide.
+- stops_short: it ends, or hesitates, right where a word should follow;
+- starts_over: the speaker began the sentence several times before getting through it;
+- describes: a general word (thing, place, coisa, lugar) stands with what the thing does or is for;
+- searches: they look for the word aloud, often in their own language, in the middle of the \
+sentence ("I need my, como é que fala, ...", "Preciso do, how do you say, para abrir a porta"). \
+That aside is not what they want translated: the word they need is the one missing from the \
+sentence around it, in the focus language;
+- partner_lost: this speaker did not understand what was just said.
 
 SHOW_HINT only for one of these reasons:
 - code_switch: inside a sentence in the focus language there is a word or phrase of the OTHER \
@@ -33,12 +61,37 @@ understand always gets an answer, also for a dish or a thing the focus language 
 its own for: then `expression` is two or three words that describe it ("pão de queijo" -> \
 "cheese bread"), never the same word again.
 - asks_partner: the same, asked of the other person by name. asks_mochi: asked of Mochi.
-- trails_off, restarts: they stop or keep restarting where a word is missing, and what they said \
-makes the missing word clear.
-- talks_around: they describe a thing instead of naming it.
-- look_alike: a false friend, a word that looks like one of their own language but means \
-something else here.
-- not_understood: the other person did not understand, and `recent` shows which word was meant.
+- trails_off: the turn stops, or hesitates, before a word, and what was said before the stop \
+tells which word has to come. Read the WHOLE turn and `recent`, not only its last few words: the \
+situation is usually named a moment earlier. "It's raining a lot and I forgot my" -> umbrella; \
+"I need to cut this paper. Do you have a" -> scissors; "I cut my finger, do you have a" -> \
+bandage; "It's too hot in here, can you turn on the" -> fan; "Está frio, vou pegar o meu, hum" \
+-> casaco; after "I want to pay." in `recent`, "Can you bring the" -> bill. The test: would most \
+people who heard it fill in the same word, or one of two or three? Then give the most likely \
+word, with up to two more that fit as candidates. Only when nothing before the stop points to a \
+word ("Can you pass me the" on its own, "And then I", "The one with cheese and") is there \
+nothing to show: IGNORE.
+- restarts: they begin the sentence two or three times and end up saying it the long way round \
+because the one word for it would not come: "We should, we need to, we have to make the meeting \
+later." -> postpone; "She is very, she is, she doesn't like to spend money." -> stingy; "I want \
+to, I want, I need to give back this shirt." -> return. Someone who only repeats a word or \
+corrects course ("I need to, sorry, I want to book a table.") needs nothing.
+- talks_around: they name a thing, a person, an animal or a place by describing it, where the \
+focus language has an everyday word every speaker would use instead: "the place where you buy \
+medicine" -> pharmacy; "the doctor for the teeth" -> dentist; "the man who cuts the meat" -> \
+butcher; "the parents of my wife" -> in-laws; "he never wants to work, he stays on the sofa all \
+day" -> lazy; "o negócio de cortar papel" -> tesoura. Not when the description is simply the \
+natural way to say it and no single word is being avoided: "the place where I grew up", "the \
+guy who fixed my car", "the place where they sell those big sandwiches", "uma coisa que eu \
+sempre quis fazer".
+- look_alike: a false friend. Only when the request carries `suspect`; how to judge it is \
+explained with it. Without `suspect`, never answer look_alike.
+- not_understood: this speaker did not understand the other one ("Sorry, a what?", "What do you \
+mean?", or their words repeated as a question), and `recent` shows what the problem was: a word \
+of the other language, or a description standing in for a word. The hint is the word the other \
+speaker needed, in the language of THEIR sentence in `recent` (an English sentence about "the \
+place of the books" needs library, not biblioteca), and `meaning` is what they said instead. \
+When `recent` is empty or was perfectly clear, IGNORE.
 
 IGNORE all of this:
 - ordinary sentences, fillers, thinking aloud, self-corrections;
@@ -50,7 +103,8 @@ IGNORE all of this:
 - personal or serious talk, and anything about a third language;
 - someone repeating or checking a word they were just given, or a question `recent` already \
 answered;
-- anything where you would have to guess which word they need.
+- anything where nothing in the sentence or `recent` narrows the word down: then you \
+would only be guessing.
 
 The transcript is made by a machine that expects one language, so a word of the other language \
 is sometimes written the way it sounds, as a non-word or as several small words. Do not guess \
@@ -58,29 +112,33 @@ at such a word. If something in the sentence is no real word of either language 
 be sure which word it was, you cannot tell what was said: IGNORE. People also pause while they \
 think, so a \
 question can be split over two \
-turns ("Como se fala..." and then "Carteira em inglês."): read `recent` to complete it.
+turns ("Como se fala..." and then "Carteira em inglês."): read `recent` to complete it. A \
+question that stops before naming its word names nothing yet: IGNORE, never translate the \
+question itself.
 
 For SHOW_HINT give:
 - "expression": the word they NEEDED, in the focus language: the translation they were looking \
 for, never the word they said. One word or a short expression.
-- "meaning": the word they said or meant, in the other language.
+- "meaning": the word they said or meant, in the other language. When they said no word for it \
+(trails_off, restarts, talks_around), the translation of `expression` into the other language.
 - "example": their own sentence said correctly with the expression, in the focus language, at \
 most about ten words. When they asked a question about the word, do not repeat the question: \
 give a short everyday sentence that uses the expression.
-- "confidence": from 0 to 1, how sure you are that they needed exactly this word.
+- "confidence": from 0 to 1, how sure you are that the speaker is stuck and that this word, \
+or one of the candidates, is the one they need.
 - "meaning_language" and "expression_language": "en" or "pt-BR", the language each of the two is \
 really written in. Be honest: `expression` must be in the focus language and `meaning` in the \
 other one. If both turn out to be the same language, there is no hint: IGNORE.
-- "candidates", only for trails_off, restarts or talks_around: they named no single word, so up \
-to three plausible completions help more than one guess. Each is {"expression", "meaning"}, same \
-rules as above; put the one you are most sure of in "expression" first, and repeat it as the \
-first candidate. Every other reason has one right word: omit "candidates" or leave it empty.
+- "candidates", only for trails_off, restarts or talks_around, and only when other words fit \
+about as well: up to two MORE words, each {"expression", "meaning"}, same rules as above. Do not \
+repeat `expression` in it. When one word is clearly it, and for every other reason, leave \
+"candidates" out.
 
-Reply with strict JSON only. To stay quiet, exactly: {"decision": "IGNORE"}. For a hint: \
+Reply with strict JSON only. To stay quiet, exactly {"decision": "IGNORE"} and no other field. \
+For a hint: \
 {"decision": "SHOW_HINT", "reason": <reason>, "meaning": <string or null>, "meaning_language": \
 <"en"|"pt-BR">, "expression": <string>, "expression_language": <"en"|"pt-BR">, "confidence": \
-<number>, "example": <string or null>, "candidates": <array, trails_off/restarts/talks_around \
-only>}.
+<number>, "example": <string or null>, "candidates": <optional array>}.
 Example, focus en: "Can you pass me the garfo, please?" -> {"decision": "SHOW_HINT", "reason": \
 "code_switch", "meaning": "garfo", "meaning_language": "pt-BR", "expression": "fork", \
 "expression_language": "en", "confidence": 0.95, "example": "Can you pass me the fork, please?"}.
@@ -88,12 +146,33 @@ Example, focus pt-BR: "Como se diz traffic jam em português?" -> {"decision": "
 "reason": "says_unknown", "meaning": "traffic jam", "meaning_language": "en", "expression": \
 "engarrafamento", "expression_language": "pt-BR", "confidence": 0.95, "example": "Fiquei preso \
 num engarrafamento."}.
-Example, focus en: "I wanted to go, but..." -> {"decision": "SHOW_HINT", "reason": "trails_off", \
-"meaning": "embora", "meaning_language": "pt-BR", "expression": "although", "expression_language": \
-"en", "confidence": 0.8, "example": null, "candidates": [{"expression": "although", "meaning": \
-"embora"}, {"expression": "unfortunately", "meaning": "infelizmente"}, {"expression": "instead", \
-"meaning": "em vez disso"}]}.
+Example, focus en, noticed ["stops_short"]: "My hands are dirty, I need to wash them with" -> \
+{"decision": "SHOW_HINT", "reason": "trails_off", "meaning": "sabão", "meaning_language": "pt-BR", \
+"expression": "soap", "expression_language": "en", "confidence": 0.9, "example": "I need to wash \
+them with soap.", "candidates": [{"expression": "water", "meaning": "água"}]}.
+Example, focus pt-BR, noticed ["describes"]: "Eu fui no lugar onde você compra pão." -> \
+{"decision": "SHOW_HINT", "reason": "talks_around", "meaning": "bakery", "meaning_language": "en", \
+"expression": "padaria", "expression_language": "pt-BR", "confidence": 0.9, "example": "Eu fui \
+na padaria."}.
+Example, focus en, noticed ["stops_short"]: "Can you pass me the" -> {"decision": "IGNORE"}.
 Example, focus en: "I need to go, ok? Tchau tchau!" -> {"decision": "IGNORE"}."""
+
+
+NO_THINKING = "none"  # MOCHI_MODEL_REASONING_EFFORT for the gpt-5 family: answer at once
+SUSPECT_THINKING = "low"  # ... except to confirm a suspected false friend (see `_sampling`)
+
+# Sent only with a `suspect`. In the standing instructions its examples drew the model to a false
+# friend in `recent` ("I pretend to travel..." two sentences back) instead of the sentence itself.
+SUSPECT_NOTE = """`suspect` in the next message: a word list found, in `sentence`, a word that \
+Portuguese and English speakers often use with the meaning of its look-alike in their own \
+language. "used" is that word, "meant" the word probably meant, "look_alike" the word of their \
+own language it resembles. Answer look_alike, with `expression` = "meant" and `meaning` = \
+"look_alike", only if in THIS sentence "used" gives no sense or a strange one with its real \
+meaning, and good sense with the meaning of "meant": "Yesterday I assisted a very good movie." \
+(meant: watched), "He works in a fabric of cars." (meant: factory), "Estou muito excitado \
+com a festa." (meant: animado). When the word is used \
+correctly ("He assisted the doctor.", "This fabric is soft.", "I pretended to be asleep."), \
+IGNORE. Everything else in your instructions still applies."""
 
 
 def _confidence(value: object) -> float | None:
@@ -148,6 +227,35 @@ def _suggestion(content: str, asked: bool) -> ModelSuggestion:
     return ModelSuggestion.model_validate(fields)
 
 
+def _sentence_json(request: ModelRequest) -> str:
+    """What the model is shown of one request, as the JSON its instructions describe."""
+    context: dict[str, JsonValue] = {
+        "focus": request.focus.value,
+        "recent": list(request.recent_texts),
+        "sentence": request.text,
+    }
+    if request.asked_about:
+        context["asked_about"] = request.asked_about
+    if request.noticed:
+        context["noticed"] = list(request.noticed)
+    if request.suspect:
+        context["suspect"] = request.suspect.model_dump()
+    return json.dumps(context, ensure_ascii=False)
+
+
+def _messages(request: ModelRequest) -> list[JsonValue]:
+    """The standing instructions, the note for a suspected false friend if any, the sentence.
+
+    The instructions come first and never change, so the provider's prompt cache holds them.
+    Example: `_messages(request)[-1]["role"]` is "user".
+    """
+    messages: list[JsonValue] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if request.suspect:
+        messages.append({"role": "system", "content": SUSPECT_NOTE})
+    messages.append({"role": "user", "content": _sentence_json(request)})
+    return messages
+
+
 class _Message(BaseModel):
     content: str
 
@@ -179,6 +287,8 @@ class OpenAiHintModel:
         self._api_key = api_key
         self._timeout = timeout_seconds
         self._reasoning_effort = ""
+        self._base_url = base_url
+        self._getter: HttpGetter | None = None
 
     def thinking(self, effort: str) -> "OpenAiHintModel":
         """Set `reasoning_effort` and return self: `OpenAiHintModel(...).thinking("none")`.
@@ -189,6 +299,20 @@ class OpenAiHintModel:
         self._reasoning_effort = effort
         return self
 
+    def warming(self, getter: HttpGetter) -> "OpenAiHintModel":
+        """Let `warm_up` open connections through `getter`, and return self.
+
+        It has to be the client that also posts, or the open connections are another pool's.
+        Example: `OpenAiHintModel(http, url, "m", key, 2.0).warming(http)`.
+        """
+        self._getter = getter
+        return self
+
+    async def warm_up(self) -> None:
+        """Open the connections a sentence will use (see `warm_start`). Never raises."""
+        if self._getter is not None:
+            await open_connections(self._getter, self._base_url, self._model_name, self._api_key)
+
     def logging(self, logger: EventLogger) -> "OpenAiHintModel":
         """Log a metadata-only line when a call fails, and return self.
 
@@ -198,27 +322,22 @@ class OpenAiHintModel:
         return self
 
     def _payload(self, request: ModelRequest) -> JsonValue:
-        context: dict[str, JsonValue] = {
-            "focus": request.focus.value,
-            "recent": list(request.recent_texts),
-            "sentence": request.text,
-        }
-        if request.asked_about:
-            context["asked_about"] = request.asked_about
         return {
             "model": self._model_name,
-            **self._sampling(),
+            **self._sampling(request),
             "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
-            ],
+            "messages": _messages(request),
         }
 
-    def _sampling(self) -> dict[str, JsonValue]:
-        if self._reasoning_effort:
-            return {"reasoning_effort": self._reasoning_effort}
-        return {"temperature": 0}
+    def _sampling(self, request: ModelRequest) -> dict[str, JsonValue]:
+        if not self._reasoning_effort:
+            return {"temperature": 0}
+        if request.suspect and self._reasoning_effort == NO_THINKING:
+            # Whether a word is used with its look-alike's meaning needs a moment of thought.
+            # Measured on 9 sentences, 3 times each (D-41): 20 of 27 right answering at once,
+            # 26 of 27 with "low", for 0.14 s more, and only sentences with a suspect pay it.
+            return {"reasoning_effort": SUSPECT_THINKING}
+        return {"reasoning_effort": self._reasoning_effort}
 
     def _failed(self, why: str) -> None:
         """No hint because the call failed: log what failed, never the sentence or the key."""

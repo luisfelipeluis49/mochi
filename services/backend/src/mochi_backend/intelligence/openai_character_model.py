@@ -15,9 +15,11 @@ from mochi_backend.intelligence.character_port import (
 from mochi_backend.intelligence.hedged import first_answer
 from mochi_backend.intelligence.model_usage import ModelUsage, log_usage
 from mochi_backend.intelligence.openai_character_stream import chunk_of, is_done
+from mochi_backend.intelligence.warm_start import open_connections
 from mochi_backend.platform.http_client import (
     HTTP_OK,
     HttpClient,
+    HttpGetter,
     HttpLineStreamer,
     HttpTransportError,
     JsonValue,
@@ -155,6 +157,21 @@ class OpenAiCharacterModel:
         self._url = f"{config.base_url.rstrip('/')}/chat/completions"
         self._template = CHARACTER_FILE.read_text(encoding="utf-8")
         self._lines: HttpLineStreamer | None = None
+        self._getter: HttpGetter | None = None
+
+    def warming(self, getter: HttpGetter) -> "OpenAiCharacterModel":
+        """Let `warm_up` open connections through `getter` (the client that posts); return self.
+
+        Example: `OpenAiCharacterModel(http, config, logger).warming(http)`.
+        """
+        self._getter = getter
+        return self
+
+    async def warm_up(self) -> None:
+        """Open the connections Mochi's first reply will use (see `warm_start`). Never raises."""
+        if self._getter is not None:
+            config = self._config
+            await open_connections(self._getter, config.base_url, config.model_name, config.api_key)
 
     def streaming(self, lines: HttpLineStreamer) -> "OpenAiCharacterModel":
         """Let `stream_reply` read the reply as it is written, and return self (D-37).

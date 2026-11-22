@@ -8,7 +8,10 @@ from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.client_port import AgentStartRequest, SpeechTuning
 from mochi_backend.gateway.agora.rest_client import join_body
 from mochi_backend.gateway.device_commands import split_commands
+from mochi_backend.gateway.turn_pipeline import hint_card
 from mochi_backend.settings import DEV_DEVICE_KEY, load_settings
+from mochi_contracts import HintCandidate
+from tests.factories import make_hint
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.harness import HOME, Harness, make_harness
 
@@ -74,6 +77,15 @@ async def test_a_hint_reaches_the_device_as_a_card_with_its_language_and_meaning
         "meaning": "adiar",
         "example": "I need to postpone my meeting.",
     }
+
+
+def test_a_hint_with_other_words_that_fit_carries_them_to_the_device() -> None:
+    """Someone who stopped at "I forgot my" named no word: Mochi's own screen showed only the
+    first guess, the glasses all of them (D-41). A hint with one word is the card it always was."""
+    words = [HintCandidate(expression=word, meaning=None) for word in ("umbrella", "raincoat")]
+    open_search = make_hint(0).model_copy(update={"expression": "umbrella", "candidates": words})
+    assert json.loads(hint_card(open_search))["candidates"] == ["raincoat"]  # not the word again
+    assert "candidates" not in json.loads(hint_card(make_hint(0)))
 
 
 async def test_saying_the_word_they_were_given_makes_the_face_cheer() -> None:

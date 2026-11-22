@@ -759,3 +759,106 @@ woken session; "first sound" = end of the speech to Mochi's first audio arriving
   hint model and Mochi's line (`_model_before_line`); when the hint wins Mochi shows the word and says
   nothing (typed, 12 each: `main` 7 silent, the branch 2). Not fixed here.
 
+
+## D-41: stuck without asking: hints before anyone says "how do you say" (2026-11-21)
+
+Asked for by Suhuai ("we only get a hint when we explicitly ask; detect the difficulty in advance, and make
+the analysis faster"). It changes `intelligence/` and `packages/fixtures` (Kauê's), one constant in
+`platform/` and two lines of `composition.py` (Luís's): **for the owners to accept or change**, as D-27 and
+D-29 were. No contract changes: `ModelRequest` is internal to `intelligence/`.
+
+**Yardstick** (`~/.cache/mochi-wake-eval/hint_bench/implicit.json` on the Pi, 145 sentences written the way
+the recogniser writes them, real gpt-5.4-mini, Mochi only watching): 63 where someone is stuck and does not
+ask (stops before the word with no "…", describes the thing, starts the sentence over, looks for the word
+aloud, uses a false friend, or the listener did not understand), 82 that must stay silent (ordinary
+sentences that look the same: "It's the place where I grew up.", "Can you pass me the", "Who are you going
+with?"). 37 of the 145 were never used for tuning. The same sentence can flip between runs, so every number
+is from two or three runs (the third "now" run with the real 2 s limit, the others with 6 s so that a
+slow network on the Pi is not counted as a wrong answer).
+
+| | before | now |
+|---|---|---|
+| stuck, right word shown (63) | 12 and 21 | 54, 55 and 55 |
+| of those, never tuned on (19) | 5 and 8 | 16, 15 and 16 |
+| ordinary, stayed silent (82) | 81 | 82, 82 and 82 |
+| D-29's set of 72 (as heard, explicit asks, code switches) | 67 and 69 | 68, 68 and 69 |
+| `scripts/eval_intelligence.py` | 141/146 | 174/178 (142 of the same 146; 32 rows added) |
+| one judge call, first token / IGNORE / whole hint | 0.56 / 0.61 / 0.76 s | 0.60 / 0.65 / 0.79 s (inside the run-to-run spread) |
+
+While someone talks WITH Mochi nothing changes: its own spoken reply already names or hints at the word in
+most of these sentences (same set, `--woken`), so the silent judge is still not asked there.
+
+What changed, all in `intelligence/`:
+- **The instructions** (`openai_hint_model.SYSTEM_PROMPT`) did most of it. They now say that most stuck
+  people never ask; that a turn ends when the speaker pauses, so a sentence that simply stops was stopped
+  there; and they spell out trails_off, restarts, talks_around and not_understood with examples on both
+  sides, with one test for a stopped sentence: would most listeners fill in the same word, or one of two or
+  three? ("I need to cut this paper. Do you have a" yes; "Can you pass me the" no.) The model judges
+  `sentence` only, never something in `recent`. IGNORE is still the answer for everything else.
+- **Signs** (`stuck_signs.py`, no model): `stops_short`, `starts_over`, `describes`, `searches`,
+  `partner_lost`. They are sent with the sentence as `noticed`, as clues (without them 105 of the first 117
+  were right, with them 109; the gain is the mid-sentence "como é que fala"), and they are a check on the
+  answer (`answer_screen.unseen`): a "trails_off" needs a sentence that stops short, a "restarts" one that
+  starts over, a "not_understood" a listener who says so. "A what?" is two words and still goes to the
+  model when a sentence came before it.
+- **False friends** were found by the lexicon and then lost: the confirming call was not told what was
+  suspected and had to name the same word unprompted ("I pretend to travel in July." got nothing). The
+  suspicion now goes with the request (`ModelRequest.suspect`, instructions in `SUSPECT_NOTE`, sent only
+  then), and the model's word must still be the rule's (`same_family`). Whether a word is used with its
+  look-alike's meaning needs a moment of thought: answering at once the model was right 20 times in 27
+  (it confirmed "sensible" for someone who never cries, and let "I pretend to travel" pass), with
+  `reasoning_effort: low` 26 in 27, for 0.14 s more. Only a request with a suspect is asked that way.
+  Four more entries (assist/watch, sensible/sensitive, fabric/factory, excitado/animado), each triggered
+  by a collocation, not the bare word: with a bare "sensible" the model confirmed "He's a sensible guy, I
+  trust him." four times in six. "pretender que" and "realizei que" were tried and taken out: the model
+  did not confirm them. A false friend the rules did not suspect is still dropped (D-29). Suspects are not
+  followed up while someone who woke Mochi talks with it (`attentive`): its reply puts the word right,
+  and a silent hint there races that reply (D-40). The false-friend instructions are not in the standing
+  prompt: there, their example sentence made the model answer about a "pretend" two sentences back.
+- **Smaller fixes found on the way:** a hint after "A what?" is in the language of the sentence that was
+  not understood, whatever language the listener answered in, and never a word that sentence already had
+  ("...go to the beach tomorrow?", "Sorry, what?" had got "beach"); "the, how do you say, ..." in the middle of
+  a sentence is a search for the missing word, not a question about what follows; a hint the model repeats
+  as its own "meaning" is kept without a meaning; the question itself is never the word ("Como se fala..."
+  got "How do you say"); the lexicon's describing rule no longer shows "receipt" for a sentence that says
+  receipt. The checks on the answer moved to `answer_screen.py` (`decision_flow.py` was at its size limit).
+- **Changed on purpose:** "I wanted to go, but..." (fixture `trails_off-67`, D-31) is now IGNORE with the
+  real model: nothing before the stop points to a word. The unit fixture with the scripted model still
+  passes. **For Kauê and the glasses:** if candidates after a bare "but..." are wanted, say so.
+
+**Speed.** One judge call takes 0.55 to 0.65 s to its first token from this Pi whatever the instructions'
+length (a one-line prompt: 0.64 s in the same minute; the instructions grew from 1.5 k to 2.6 k tokens at no cost), and OpenAI's priority
+tier gave nothing. So the call itself is at its floor from here; what was slow around it:
+- **The first sentence of a session** paid for a new connection, twice when the hedge fired (1.6 s on the
+  deployed backend against 0.8 s later). `Intelligence.session_started` now opens two connections for each
+  model in the background (`warm_start.py`: a GET for the model's name, no tokens).
+- **After a lull** the same: connections were dropped after 30 s idle. Measured against the API, one idle
+  for 120 s was still reused; `KEEP_ALIVE_SECONDS` is 90, with a margin (it holds for every `HttpxClient`).
+- IGNORE is answered as `{"decision": "IGNORE"}` and nothing else, and a candidate list no longer repeats
+  the first word.
+- **Not done, with reasons:** releasing a hint before the model has finished writing it would save about
+  0.2 s and lose the example sentence; skipping the model for sentences with no sign would be instant and
+  free but loses every description without a general word ("He is the doctor for the teeth.").
+- **Where the rest of the time is** (not touched): the 600 ms pause that ends a turn and the recogniser
+  (0.65 s with ARES).
+- **From the decision to Mochi's own screen** (`hardware/`): the Pi opened a new connection for every
+  read of its state, which to the hosted backend is a TLS handshake each time. `MochiBackend._state` now
+  keeps one open (measured from this Pi to Render: 0.24 s a read instead of 0.38 s; if the kept one fails
+  the read is made the old way), and this Pi reads every 0.15 s again instead of 0.3 s (its untracked
+  `mochi.local.toml`). A hint is on the screen about 0.3 s sooner on average.
+
+**Limits, for the team:**
+- **A pause is not always a problem.** Someone who stops for half a second and then finds the word alone
+  still gets the hint a moment later, and with it a card; saying the word then counts as "Used with help"
+  (7.4). A wrong guess is a card too, and from M4 a card can be drawn as a round's secret word. The newer
+  sentence only cancels the older one's judging while that is still running (D-37). How often this
+  happens in real talk is **not measured**: the yardstick has single sentences, and two typed pairs.
+- **No speaker in a turn** (6.5): Ben trailing off in his own English gets a hint that is filed as Ana's.
+  The Pi knows who is talking (D-34); it is not passed to `decide()`.
+- **Mochi's own screen showed one word**, the glasses all of them. **Proposal (owners: Matheus for the
+  shape, Luís for the gateway):** the device's `hint` card gains `candidates`, the other words that fit,
+  only when there are any (`gateway/turn_pipeline.hint_card`, AGENTS 6.6); the face draws up to two of
+  them as a third line under the word (`face.html`, `mochi_device.main.hint_more`). An older backend
+  sends none and an older device ignores the field.
+- The yardstick is typed text. How ARES writes a sentence that trails off was seen in two real
+  transcripts ("...não entendi..."), not measured. `hint_cooldown` and every setting are unchanged.

@@ -1873,5 +1873,532 @@
    "decision": "IGNORE"
   },
   "eval": false
+ },
+ {
+  "id": "trails_off-240",
+  "case": "trails_off",
+  "text": "It's raining a lot and I forgot my",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "umbrella",
+   "reason": "trails_off",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "trails_off",
+   "expression": "umbrella",
+   "meaning": "guarda-chuva",
+   "confidence": 0.9,
+   "expression_language": "en",
+   "candidates": [
+    {
+     "expression": "raincoat",
+     "meaning": "capa de chuva"
+    }
+   ]
+  }
+ },
+ {
+  "id": "trails_off-241",
+  "case": "trails_off",
+  "text": "I need to cut this paper. Do you have a",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "scissors",
+   "reason": "trails_off",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "trails_off",
+   "expression": "scissors",
+   "meaning": "tesoura",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "trails_off-242",
+  "case": "trails_off",
+  "text": "Está chovendo muito e eu esqueci o meu",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "guarda-chuva",
+   "reason": "trails_off",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "trails_off",
+   "expression": "guarda-chuva",
+   "meaning": "umbrella",
+   "confidence": 0.9,
+   "expression_language": "pt-BR"
+  }
+ },
+ {
+  "id": "trails_off-243",
+  "case": "trails_off",
+  "text": "Can you pass me the",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "trails_off-244",
+  "case": "trails_off",
+  "text": "I forgot my keys again.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "trails_off-245",
+  "case": "trails_off",
+  "text": "I think it is going to rain later today.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "trails_off",
+   "expression": "umbrella",
+   "meaning": "guarda-chuva",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "talks_around-246",
+  "case": "talks_around",
+  "text": "I went to the place where you buy medicine.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "pharmacy",
+   "reason": "talks_around",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "talks_around",
+   "expression": "pharmacy",
+   "meaning": "farmácia",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "talks_around-247",
+  "case": "talks_around",
+  "text": "He is the doctor for the teeth.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "dentist",
+   "reason": "talks_around",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "talks_around",
+   "expression": "dentist",
+   "meaning": "dentista",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "talks_around-248",
+  "case": "talks_around",
+  "text": "Eu fui no lugar onde você compra remédio.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "farmácia",
+   "reason": "talks_around",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "talks_around",
+   "expression": "farmácia",
+   "meaning": "pharmacy",
+   "confidence": 0.9,
+   "expression_language": "pt-BR"
+  }
+ },
+ {
+  "id": "talks_around-249",
+  "case": "talks_around",
+  "text": "It's the place where I grew up.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "talks_around-250",
+  "case": "talks_around",
+  "text": "The guy who fixed my car was really nice.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "talks_around-251",
+  "case": "talks_around",
+  "text": "Do you know the place where they sell those big sandwiches?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-252",
+  "case": "restarts",
+  "text": "We should, we need to, we have to make the meeting later.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "postpone",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "restarts",
+   "expression": "postpone",
+   "meaning": "adiar",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "restarts-253",
+  "case": "restarts",
+  "text": "She is very, she is, she doesn't like to spend money.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "stingy",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "restarts",
+   "expression": "stingy",
+   "meaning": "pão-duro",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "restarts-254",
+  "case": "restarts",
+  "text": "I want to, I want, I need to give back this shirt to the store.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "return",
+   "reason": "restarts",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "restarts",
+   "expression": "return",
+   "meaning": "devolver",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "restarts-255",
+  "case": "restarts",
+  "text": "We went to Rio, we went to Bahia, we went to Recife.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-256",
+  "case": "restarts",
+  "text": "I need to, sorry, I want to book a table for two.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "restarts-257",
+  "case": "restarts",
+  "text": "We have to make the meeting later.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "restarts",
+   "expression": "postpone",
+   "meaning": "adiar",
+   "confidence": 0.9,
+   "expression_language": "en"
+  },
+  "eval": false
+ },
+ {
+  "id": "not_understood-258",
+  "case": "not_understood",
+  "text": "Your what?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "stapler",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "Can you lend me your grampeador?"
+  ],
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "not_understood",
+   "expression": "stapler",
+   "meaning": "grampeador",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "not_understood-259",
+  "case": "not_understood",
+  "text": "The place of the books?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "library",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "Yesterday I went to the place of the books to study."
+  ],
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "not_understood",
+   "expression": "library",
+   "meaning": "biblioteca",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "not_understood-260",
+  "case": "not_understood",
+  "text": "Sorry, a what?",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "outlet",
+   "reason": "not_understood",
+   "target_user_id": "ana"
+  },
+  "history": [
+   "I need to buy a new tomada for my room."
+  ],
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "not_understood",
+   "expression": "outlet",
+   "meaning": "tomada",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "not_understood-261",
+  "case": "not_understood",
+  "text": "Sorry, what?",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "Do you want to go to the beach tomorrow?"
+  ],
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "not_understood-262",
+  "case": "not_understood",
+  "text": "Your what?",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "not_understood-263",
+  "case": "not_understood",
+  "text": "I like that place a lot.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "history": [
+   "Yesterday I went to the place of the books to study."
+  ],
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "not_understood",
+   "expression": "library",
+   "meaning": "biblioteca",
+   "confidence": 0.9,
+   "expression_language": "en"
+  },
+  "eval": false
+ },
+ {
+  "id": "look_alike-264",
+  "case": "look_alike",
+  "text": "Yesterday I assisted a very good movie.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "watch",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "watched",
+   "meaning": "assistir",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "look_alike-265",
+  "case": "look_alike",
+  "text": "She is very sensible, she cries with every movie.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "sensitive",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "sensitive",
+   "meaning": "sensível",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "look_alike-266",
+  "case": "look_alike",
+  "text": "He works in a fabric of cars.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "factory",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "factory",
+   "meaning": "fábrica",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "look_alike-267",
+  "case": "look_alike",
+  "text": "I need to go to the library to buy a new book.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "bookstore",
+   "reason": "look_alike",
+   "target_user_id": "ana"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "bookstore",
+   "meaning": "livraria",
+   "confidence": 0.9,
+   "expression_language": "en"
+  }
+ },
+ {
+  "id": "look_alike-268",
+  "case": "look_alike",
+  "text": "Eu estou muito excitado com a viagem.",
+  "expect": {
+   "decision": "SHOW_HINT",
+   "expression": "animado",
+   "reason": "look_alike",
+   "target_user_id": "ben"
+  },
+  "model": {
+   "decision": "SHOW_HINT",
+   "reason": "look_alike",
+   "expression": "animado",
+   "meaning": "excited",
+   "confidence": 0.9,
+   "expression_language": "pt-BR"
+  }
+ },
+ {
+  "id": "look_alike-271",
+  "case": "look_alike",
+  "text": "He assisted the doctor during the surgery.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-272",
+  "case": "look_alike",
+  "text": "She's very sensible, she always plans ahead.",
+  "expect": {
+   "decision": "IGNORE"
+  },
+  "model": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-273",
+  "case": "look_alike",
+  "text": "This fabric is very soft.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-274",
+  "case": "look_alike",
+  "text": "I went to the library to study for my exam.",
+  "expect": {
+   "decision": "IGNORE"
+  }
+ },
+ {
+  "id": "look_alike-275",
+  "case": "look_alike",
+  "text": "Eu pretendo viajar em julho.",
+  "expect": {
+   "decision": "IGNORE"
+  }
  }
 ]

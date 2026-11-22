@@ -1,5 +1,7 @@
 """The intelligence object the gateway uses through its port: decide, handle, apply, words_for."""
 
+import asyncio
+
 from mochi_backend.intelligence.character_port import (
     CharacterModel,
     DeviceStatus,
@@ -13,6 +15,7 @@ from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel
 from mochi_backend.intelligence.round_engine import RoundEngine
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.warm_start import WarmsUp
 from mochi_backend.platform.clock import Clock
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.text_sink import TextSink
@@ -43,6 +46,8 @@ class Intelligence:
         tuning = settings or IntelligenceSettings()
         factory = HintFactory(clock, ids, tuning.hint_ttl_seconds)
         self._memory = MemoryStore()
+        self._thinkers: list[HintModel | CharacterModel] = [model]
+        self._warming: set[asyncio.Task[None]] = set()  # kept, or a running task may be collected
         self._rounds = RoundEngine(clock, ids, book)
         self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
         self._flow = DecisionFlow(
@@ -91,6 +96,7 @@ class Intelligence:
         Example: `brain.speak_as(OpenAiCharacterModel(http, url, "gpt-4.1-mini", key, 6.0))`.
         """
         self._talk.use(character)
+        self._thinkers = [self._thinkers[0], character]
 
     def session_started(self, woken: bool, language: Language | None = None) -> None:
         """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
@@ -101,6 +107,19 @@ class Intelligence:
         Example: `session_started(True, Language.PT_BR)`.
         """
         self._talk.begin(woken, language)
+        self._warm_up()
+
+    def _warm_up(self) -> None:
+        """Open the models' connections now: the first sentence should not wait for them (D-41)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # called outside a loop (a script, a plain test): nothing to hurry
+            return
+        for thinker in self._thinkers:
+            if isinstance(thinker, WarmsUp):
+                task = loop.create_task(thinker.warm_up())
+                self._warming.add(task)
+                task.add_done_callback(self._warming.discard)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None

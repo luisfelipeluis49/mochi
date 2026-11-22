@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from mochi_device.backends import TAG, Body, JoinInfo, MochiBackend, TestAgentBackend, WithFallback
 from mochi_device.game import RoundScreen
-from mochi_device.main import Supervisor, hint_note
+from mochi_device.main import Supervisor, hint_more, hint_note
 
 JOIN = {"app_id": "app", "channel": "mochi-demo", "uid": 1001, "token": "tok"}
 
@@ -515,9 +515,81 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.face = MagicMock()
         sup.on_agent_event("hint", {"word": "fork", "language": "en", "meaning": "garfo"})
-        sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo")
+        sup.face.show_for.assert_called_once_with(10, word="fork", note="English · garfo", more="")
         sup.on_agent_event("show", "queue")           # a bare word clears an older note
-        sup.face.show_for.assert_called_with(10, word="queue", note="")
+        sup.face.show_for.assert_called_with(10, word="queue", note="", more="")
+
+    def test_other_words_that_fit_are_a_third_line(self):
+        """Someone who stopped at "I forgot my" may need more than the first guess (D-41)."""
+        card = {"word": "umbrella", "language": "en", "meaning": "guarda-chuva", "candidates": ["raincoat", "jacket", "hat"]}
+        self.assertEqual(hint_more(card), "raincoat · jacket")  # two: the screen is small
+        self.assertEqual(hint_more({"word": "fork"}), "")       # an older backend sends none
+        self.assertEqual(hint_more({"word": "fork", "candidates": "raincoat"}), "")
+        self.assertEqual(hint_more({"word": "fork", "candidates": [None, 3, "spoon"]}), "spoon")
+        sup = Supervisor.__new__(Supervisor)
+        sup.face = MagicMock()
+        sup.on_agent_event("hint", card)
+        sup.face.show_for.assert_called_once_with(10, word="umbrella", note="English · guarda-chuva",
+                                                  more="raincoat · jacket")
+
+
+class KeptConnectionTest(unittest.TestCase):
+    """The device state is read over one connection that stays open: a hint is on the screen only
+    once the next read is back, and a new TLS handshake for every read cost 0.3 to 0.65 s."""
+
+    def setUp(self):
+        self.connections = 0
+        self.fail_next = False
+        test = self
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"  # keeps the connection open, as a real backend does
+
+            def setup(self):
+                test.connections += 1
+                super().setup()
+
+            def do_GET(self):
+                if test.fail_next:
+                    test.fail_next = False
+                    self.close_connection = True
+                    return self.wfile.close()  # the far end hangs up without answering
+                data = json.dumps({"capturing": False, "agora": None, "commands": []}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.backend = MochiBackend(f"http://127.0.0.1:{self.server.server_port}", "home_pi_01")
+
+    def tearDown(self):
+        self.backend._drop_line()
+        self.server.shutdown()
+        self.server.server_close()
+
+    def test_three_reads_use_one_connection(self):
+        for _ in range(3):
+            self.assertEqual(self.backend._state(3)["capturing"], False)
+        self.assertEqual(self.connections, 1)
+
+    def test_a_connection_the_far_end_closed_does_not_cost_the_read(self):
+        self.backend._state(3)
+        self.fail_next = True
+        self.assertEqual(self.backend._state(3)["capturing"], False)  # read again, the old way
+        self.assertEqual(self.backend._state(3)["capturing"], False)  # and on a new kept one after
+        self.assertEqual(self.connections, 3)  # the kept one, the fresh one, a new kept one
+        self.assertIsNotNone(self.backend._line)
+
+    def test_a_stop_closes_it(self):
+        self.backend._state(3)
+        self.assertIsNotNone(self.backend._line)
+        asyncio.run(self.backend.stop())
+        self.assertIsNone(self.backend._line)
 
 
 class RestoredVoicesTest(unittest.TestCase):
@@ -556,9 +628,9 @@ class UsedWordTest(unittest.IsolatedAsyncioTestCase):
         sup = Supervisor.__new__(Supervisor)
         sup.face = MagicMock()
         sup.on_agent_event("used", {"word": "fork", "language": "en"})
-        sup.face.show_for.assert_called_once_with(5, word="fork", note="★ you used it!", mood="proud")
+        sup.face.show_for.assert_called_once_with(5, word="fork", note="★ you used it!", more="", mood="proud")
         sup.on_agent_event("used", {"word": "carteira", "language": "pt-BR"})
-        sup.face.show_for.assert_called_with(5, word="carteira", note="★ você usou!", mood="proud")
+        sup.face.show_for.assert_called_with(5, word="carteira", note="★ você usou!", more="", mood="proud")
 
 
 class GoodbyeTest(unittest.IsolatedAsyncioTestCase):

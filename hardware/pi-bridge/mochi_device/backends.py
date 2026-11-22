@@ -16,9 +16,12 @@ The supervisor only needs `await start(wake_phrase) -> JoinInfo` and `await stop
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import http.client
 import json
 import os
 import re
+import threading
 import urllib.parse
 import urllib.request
 import warnings
@@ -140,7 +143,8 @@ class Body:
     def __init__(self, device: Device, on_event=None):
         """on_event(kind, value): kind is "mood" | "show" | "volume" | "temp" |
         "enroll" (value: (name, "pt" | "en")) | "forget" | "bye" (Mochi said goodbye: end the session) |
-        "hint" (value: {"word", "language", "meaning", "example"}: a word someone needed) |
+        "hint" (value: {"word", "language", "meaning", "example"}, and "candidates" when other
+        words fit as well: a word someone needed) |
         "used" (value: {"word", "language"}: someone went on to say a word they were given) |
         "round" (value: the round card, see services/backend gateway/device_service.py)."""
         self.device = device
@@ -412,6 +416,8 @@ class MochiBackend:
         self._status_failing = False
         self._local_voices = None
         self._sync_task: asyncio.Task | None = None
+        self._line: http.client.HTTPConnection | None = None  # kept open between two state reads
+        self._line_lock = threading.Lock()
 
     def __repr__(self) -> str:
         return f"MochiBackend({self.base!r}, {self.device_id!r})"  # no device key
@@ -428,8 +434,45 @@ class MochiBackend:
             return json.loads(reply) if reply else {}
 
     def _state(self, timeout: float = 10) -> dict:
+        """The device state, read over a connection that stays open between two reads.
+
+        A hint is on the screen only once the next read comes back, and every read used to open a
+        new connection: to a hosted backend that is a TLS handshake each time (measured from this
+        Pi to Render: 0.3 to 0.65 s per read, against about 0.1 s on an open connection). If the
+        open one fails for any reason (the far end closed it, a timeout), it is dropped and this
+        read is made the old way, so errors reach the caller exactly as they did before."""
         # with the device key: only then does a round come with its secret word
-        return self._req("GET", f"/api/devices/{self.device_id}/state", timeout, auth=True)
+        path = f"/api/devices/{self.device_id}/state"
+        try:
+            return self._kept_get(path, timeout)
+        except Exception:
+            self._drop_line()
+            return self._req("GET", path, timeout, auth=True)
+
+    def _kept_get(self, path: str, timeout: float) -> dict:
+        with self._line_lock:
+            url = urllib.parse.urlsplit(self.base)
+            if self._line is None:
+                secure = url.scheme == "https"
+                make = http.client.HTTPSConnection if secure else http.client.HTTPConnection
+                self._line = make(url.netloc, timeout=timeout)
+            line = self._line
+            if line.sock is not None:
+                line.sock.settimeout(timeout)
+            headers = {"Authorization": f"Bearer {self.device_key}"} if self.device_key else {}
+            line.request("GET", url.path + path, headers=headers)
+            reply = line.getresponse()
+            data = reply.read()
+            if reply.status != 200:
+                raise RuntimeError(f"state read answered HTTP {reply.status}")
+            return json.loads(data) if data else {}
+
+    def _drop_line(self) -> None:
+        with self._line_lock:
+            line, self._line = self._line, None
+        if line is not None:
+            with contextlib.suppress(Exception):
+                line.close()
 
     async def ping(self) -> bool:
         """Touch the backend so a hosted one does not go to sleep (a free Render service stops after
@@ -640,6 +683,7 @@ class MochiBackend:
             except BaseException:
                 pass
             self._poller = None
+        await asyncio.to_thread(self._drop_line)  # in a thread: a read may still hold it for a moment
         try:
             await self._mute(False)  # never leave the speaker silent after a session
         except Exception as e:  # a mixer that does not answer must not skip the stop below
