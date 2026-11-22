@@ -2,7 +2,7 @@
 // people.ts  —  LANGUAGE: TypeScript
 // -----------------------------------------------------------------------------
 // Each phone belongs to ONE person. The first time a phone opens its owner's link
-// (/me?user=tasnim), the phone remembers "this is Tasnim's phone". After that, opening
+// (/m?user=tasnim), the phone remembers "this is Tasnim's phone". After that, opening
 // the app's start address (/) on that phone goes straight to Tasnim's page.
 // Nobody picks a person from a list: Tasnim's phone shows Tasnim, Matheus's shows Matheus.
 // =============================================================================

@@ -13,8 +13,9 @@ index.html  ──loads──▶  main.tsx  ──"which page?"──▶  who.ts
                            │                         │
                            │       every event ──▶ store.ts (remembers it)
                            ▼
-              HomeView / MobileView / AudienceView  (draw it; texts from i18n.ts, colors from styles.css)
-                  │                 └── MobileView asks analytics.ts for the progress numbers
+              HomeView / PhoneApp (SessionView + AnalyticsView) / AudienceView  (draw it; texts from i18n.ts, colors from styles.css)
+                  │                 ├── SessionView asks sessionStage.ts (= home.ts) what to show live
+                  │                 └── AnalyticsView asks analytics.ts for the progress numbers
                   │
                   └── HomeView asks home.ts "which screen, and what does a tap do?"
 ```
@@ -28,9 +29,11 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 | `src/main.tsx` | Starting point. Reads the URL, picks the screen, draws it |
 | `src/views/StartPage.tsx` | The page at `/`: goes straight to this phone's owner's page; first time, explains how to open your link |
 | `src/views/HomeView.tsx` | Mochi's 3.5-inch screen: face, the mode question, hints, what Mochi says, the game. Turns touches into tap / long press |
-| `src/views/MobileView.tsx` | The phone ("Mochi Mobile"), the analytics page: Start/Stop, progress numbers, last session, sessions bars, "My words" cards |
+| `src/views/PhoneApp.tsx` | A person's phone: the two tabs (Session, Analytics), switched without reloading; keeps the phone's mic on across tabs |
+| `src/views/SessionView.tsx` | The Session tab: Start session / Stop session, and the live stage that behaves like Mochi's screen (face, hint, what Mochi says, who is talking) |
+| `src/views/AnalyticsView.tsx` | The Analytics tab: progress numbers, last session, sessions bars, "Words to learn" cards |
+| `src/views/TabBar.tsx` | The Session / Analytics buttons at the bottom of the phone |
 | `src/views/AudienceView.tsx` | The projector. Never shows the secret word during a round |
-| `src/views/InsightsView.tsx` | "My conversations" (`/me?user=`): Record/Stop, the history (one entry per recording), one conversation with only your sentences, and the analytics |
 | `src/views/DebugPanel.tsx` | The `?debug=1` list of the last 10 events |
 
 ## 2. TypeScript (`.ts`): the logic, with no screen
@@ -39,7 +42,9 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 |---|---|
 | `src/lib/store.ts` | The page's memory: applies each event from the backend |
 | `src/lib/analytics.ts` | Counts the numbers for the phone: words by step, minutes, sessions in order, bar sizes |
-| `src/lib/insights.ts` | Counts and groups the conversation reports: totals, mistakes per 10 min, improvement, top mistakes, words needed |
+| `src/lib/sessionStage.ts` | What the Session tab shows live: the same choice as Mochi's screen (home.ts), without the game |
+| `src/lib/tabs.ts` | The two phone tabs and their addresses (`/m`, `/m/analytics`) |
+| `src/lib/usePhoneMic.ts` / `phoneMic.ts` / `phoneSession.ts` | The phone as Mochi's microphone: ask for the mic, join the phone's own Agora session, leave on Stop |
 | `src/lib/home.ts` | The rules of Mochi's screen and the game (which screen, what a tap does) |
 | `src/lib/backend.ts` | The **only** file that talks to the backend (WebSocket + POST requests) |
 | `src/lib/useMochi.ts` | React hook: connects once, keeps the data, ticks the clock |
@@ -56,7 +61,8 @@ JSX is the HTML-looking code inside TypeScript, like `<p className="big">{word}<
 |---|---|
 | `src/lib/store.test.ts` | duplicates ignored, hints expire, word order, debug list |
 | `src/lib/analytics.test.ts` | the progress numbers, session order, bar sizes |
-| `src/lib/insights.test.ts` | the "My conversations" numbers |
+| `src/lib/sessionStage.test.ts` | the Session tab: idle, listening, hint with meaning and example, Mochi speaking, no game on the phone |
+| `src/lib/tabs.test.ts` | the tab of each address; switching keeps the person and options |
 | `src/lib/contract.test.ts` | the app against the OFFICIAL contract in `packages/contracts`: every example event, every field the screens read, the learning states |
 | `src/lib/home.test.ts` | the mode question, hint options, Mochi speaking, every game step, text size |
 | `src/mock/demoScript.test.ts` | the secret word only reaches Mochi's screen; words and summaries only reach their owner; the story runs in order |
