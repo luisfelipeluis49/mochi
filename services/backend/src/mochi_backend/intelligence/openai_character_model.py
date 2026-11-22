@@ -58,15 +58,27 @@ LANGUAGE_NOTES = {
         "entirely in English; otherwise use no English at all."
     ),
 }
-# Two people talking to each other: Mochi stays out unless the sentence is clearly for it.
+# A review: no example sentences here, the model would repeat them (see LANGUAGE_NOTES).
+REVIEW_NOTE = (
+    "This session is a review with one person, on their phone. These are words they needed in "
+    "their meetings and have not yet shown they remember (the word, then what it means in their "
+    "own language): {words}. Bring them back one at a time, as described under 'A review'. "
+    "Never say one of these words before they have tried to."
+)
+EMPTY_REVIEW_NOTE = (
+    "This session is a review with one person, on their phone, and they have no saved words to "
+    "go over yet."
+)
+MEETING_NOTE = "This session is a meeting: people at work are talking to each other."
+# People talking to each other: Mochi stays out unless the sentence is clearly for it.
 OVERHEARD_NOTE = (
     "Nobody clearly called you with the next sentence. If it is meant for the other person, or "
     "they are only talking about you, or it is a filler or an unfinished start, reply with "
     "exactly [quiet]."
 )
-# The person woke Mochi to talk to it: what they say next is for Mochi unless it clearly is not.
+# The person is talking WITH Mochi (a review): what they say next is for it unless clearly not.
 IN_TALK_NOTE = (
-    "Nobody said your name in the next sentence, but this person called you to talk with you, so "
+    "Nobody said your name in the next sentence, but this person is here to talk with you, so "
     "it is most likely for you: answer it. Reply with exactly [quiet] only when it is clearly "
     "said to another person, or it is just a filler or an unfinished start."
 )
@@ -111,15 +123,30 @@ def system_prompt(status: DeviceStatus, template: str | None = None) -> str:
     return text
 
 
+def session_note(request: CharacterRequest) -> str:
+    """Which kind of session this is, and in a review the words to bring back.
+
+    Example: `session_note(CharacterRequest(text="Oi", history=[], status=DeviceStatus()))`
+    is the meeting note.
+    """
+    if not request.reviewing:
+        return MEETING_NOTE
+    if not request.review:
+        return EMPTY_REVIEW_NOTE
+    words = "; ".join(f"{w.expression} ({w.meaning or 'no translation'})" for w in request.review)
+    return REVIEW_NOTE.format(words=words)
+
+
 def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:
     """The chat: who Mochi is, the recent talk, notes for this sentence, then the sentence."""
     messages: list[JsonValue] = [{"role": "system", "content": prompt}]
+    messages.append({"role": "system", "content": session_note(request)})
     messages += [{"role": e.role, "content": e.text} for e in request.history]
     if request.word:
         note = WORD_NOTE.format(word=request.word, meaning=request.meaning or "unknown")
         messages.append({"role": "system", "content": note})
     if not request.named:
-        note = IN_TALK_NOTE if request.woken else OVERHEARD_NOTE
+        note = IN_TALK_NOTE if request.conversing else OVERHEARD_NOTE
         messages.append({"role": "system", "content": note})
     messages.append({"role": "system", "content": LANGUAGE_NOTES[request.language]})
     if request.given and not request.word:  # last, next to the sentence: it was ignored higher up

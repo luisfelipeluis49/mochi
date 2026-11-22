@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "description": "A stretch of speech between two pauses, as the device heard it: who, how long, how long ago.\n\nSent with the device status (DECISIONS D-46). `speaker` is the name the voice was registered\nunder, None when it was nobody the device knows or it could not tell. `ago_ms`: how long\nbefore the report the stretch ended.",
+  "properties": {
+    "ago_ms": {
+      "title": "Ago Ms",
+      "type": "integer"
+    },
+    "seconds": {
+      "title": "Seconds",
+      "type": "number"
+    },
+    "speaker": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Speaker"
+    }
+  },
+  "required": [
+    "speaker",
+    "seconds",
+    "ago_ms"
+  ],
+  "title": "HeardPhrase",
+  "type": "object"
+}

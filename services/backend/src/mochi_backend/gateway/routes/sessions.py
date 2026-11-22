@@ -3,19 +3,25 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from mochi_backend.gateway.errors import UpstreamError
+from mochi_backend.gateway.errors import InvalidRequestError, UpstreamError
 from mochi_backend.gateway.routes.dependencies import ContainerDep, SessionIdPath
 from mochi_backend.gateway.session_service import AgoraJoin
 from mochi_backend.gateway.session_store import SessionStore
-from mochi_contracts import SessionState
+from mochi_contracts import SessionMode, SessionState
 
 router = APIRouter()
 
 
 class StartBody(BaseModel):
-    """Optional. `{"woken_by": "oi mochi"}`: the device heard its wake phrase and starts."""
+    """Optional. `{"woken_by": "oi mochi"}`: the device heard its wake phrase and starts.
+
+    `{"mode": "review", "user_id": "ana"}`: Ana goes over her saved words (her phone's session).
+    Without `mode` it is a meeting.
+    """
 
     woken_by: str | None = None
+    mode: SessionMode = SessionMode.MEETING
+    user_id: str | None = None
 
 
 @router.post("/api/sessions/{session_id}/start")
@@ -25,14 +31,16 @@ async def start_session(
     """Start the Agora agent; capturing becomes true.
 
     `demo` is the Pi's session. Any other id opens a session of its own (a phone's): its own
-    channel, agent, hints and game, apart from every other session (DECISIONS D-41).
-    When the device was woken by its wake phrase, Mochi greets in that language and the next
-    sentence is meant for it.
+    channel, agent and hints, apart from every other session (DECISIONS D-41).
+    A meeting by default; `mode: "review"` with a `user_id` is that person's review (422 when
+    the person is not known). When the device was woken by its wake phrase, Mochi greets in
+    that language.
     """
+    asked = body or StartBody()
     runtime = await container.registry.open(session_id)
     try:
-        return await runtime.sessions.start(woken_by=body.woken_by if body else None)
-    except UpstreamError:
+        return await runtime.sessions.start(asked.woken_by, asked.mode, asked.user_id)
+    except (InvalidRequestError, UpstreamError):
         if not runtime.core.store.capturing:
             container.registry.close(session_id)  # a start that failed leaves nothing behind
         raise
@@ -43,10 +51,29 @@ async def stop_session(session_id: SessionIdPath, container: ContainerDep) -> Se
     """Stop the session's Agora agent; capturing becomes false. Another session is not touched."""
     runtime = container.registry.peek(session_id)
     if runtime is None:
-        return SessionStore().session_state()  # stopping what is not running is fine
+        return SessionStore(container.roster).session_state()  # stopping nothing is fine
     state = await runtime.sessions.stop()
     container.registry.close(session_id)
     return state
+
+
+class Interrupted(BaseModel):
+    """`{"interrupted": true}` when a running agent was told to stop talking."""
+
+    interrupted: bool
+
+
+@router.post("/api/sessions/{session_id}/interrupt")
+async def interrupt_session(session_id: SessionIdPath, container: ContainerDep) -> Interrupted:
+    """Someone is talking over Mochi: it stops at once and goes back to just listening.
+
+    Sent by the device (or a phone) when it hears a person while Mochi speaks. A session that is
+    not running answers `{"interrupted": false}`: there is nothing to stop.
+    """
+    runtime = container.registry.peek(session_id)
+    if runtime is None:
+        return Interrupted(interrupted=False)
+    return Interrupted(interrupted=await runtime.sessions.interrupt())
 
 
 @router.get("/api/sessions/{session_id}/agora")
@@ -57,6 +84,6 @@ async def session_agora(session_id: SessionIdPath, container: ContainerDep) -> A
 
 @router.post("/api/demo/reset")
 async def reset_demo(container: ContainerDep) -> SessionState:
-    """Clear saved words and any game; capturing is left as it is."""
+    """Clear saved words and the learning history; capturing is left as it is."""
     await container.demo_reset.run()
     return container.core.store.session_state()

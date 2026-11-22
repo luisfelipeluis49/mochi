@@ -640,15 +640,6 @@
   "hint_turns_ago": 2
  },
  {
-  "id": "quiet_rules-58",
-  "case": "quiet_rules",
-  "text": "I need to adiar my meeting.",
-  "expect": {
-   "decision": "IGNORE"
-  },
-  "round_active": true
- },
- {
   "id": "quiet_rules-59",
   "case": "quiet_rules",
   "text": "My father died and I need to adiar the funeral.",
@@ -680,19 +671,6 @@
    "Yes, very."
   ],
   "hint_turns_ago": 3
- },
- {
-  "id": "quiet_rules-wake-in-round",
-  "case": "quiet_rules",
-  "text": "Oi Mochi, what's the word for fila?",
-  "round_active": true,
-  "expect": {
-   "decision": "SPEAK",
-   "expression": "queue",
-   "reason": "asks_mochi",
-   "target_user_id": "ana",
-   "speak_text": "You can say: queue."
-  }
  },
  {
   "id": "quiet_rules-63",
@@ -1625,24 +1603,6 @@
   "expect": {
    "decision": "IGNORE"
   }
- },
- {
-  "id": "asks_mochi-237",
-  "case": "asks_mochi",
-  "text": "Thanks Mochi, what's the word for fila?",
-  "expect": {
-   "decision": "IGNORE"
-  },
-  "round_active": true
- },
- {
-  "id": "asks_mochi-238",
-  "case": "asks_mochi",
-  "text": "Valeu Mochi, what's the word for fila?",
-  "expect": {
-   "decision": "IGNORE"
-  },
-  "round_active": true
  },
  {
   "id": "asks_mochi-239",

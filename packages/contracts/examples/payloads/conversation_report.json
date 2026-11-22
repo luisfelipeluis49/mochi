@@ -1,0 +1,51 @@
+{
+  "report_id": "rep_001",
+  "company_id": "demo",
+  "record_id": "rec_001",
+  "user_id": "ana",
+  "target_language": "en",
+  "mode": "meeting",
+  "started_at": "2026-11-19T16:00:00.000Z",
+  "ended_at": "2026-11-19T16:30:00.000Z",
+  "speaking_minutes": 6.5,
+  "my_sentences": [
+    {
+      "utterance_id": "seg_009",
+      "at": "2026-11-19T16:00:04.500Z",
+      "text": "I need to adiar my meeting tomorrow",
+      "better": null,
+      "topic": null
+    },
+    {
+      "utterance_id": "seg_014",
+      "at": "2026-11-19T16:04:10.000Z",
+      "text": "I finish the slides yesterday.",
+      "better": "I finished the slides yesterday.",
+      "topic": "verb_tense"
+    }
+  ],
+  "mistakes": [
+    {
+      "kind": "grammar",
+      "topic": "verb_tense",
+      "said": "I finish the slides yesterday.",
+      "better": "I finished the slides yesterday.",
+      "explanation": "Com \"yesterday\" o verbo vai para o passado: finished.",
+      "count": 1
+    }
+  ],
+  "unknown_words": [
+    {
+      "expression": "postpone",
+      "meaning": "adiar",
+      "said_instead": "I need to adiar my meeting tomorrow",
+      "times": 1
+    }
+  ],
+  "strengths": [
+    "Você explica bem o seu trabalho."
+  ],
+  "focus_next": [
+    "Passado dos verbos regulares: finished, sent, received."
+  ]
+}

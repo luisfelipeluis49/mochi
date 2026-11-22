@@ -22,3 +22,8 @@ class IntelligenceSettings:
     # "two_turns": no unasked hint for two turns after one (AGENTS 7.2). "while_shown": only until
     # the earlier hint has left the screen, and never the same word twice in a row (DECISIONS D-29).
     hint_cooldown: Literal["two_turns", "while_shown"] = "two_turns"
+    # Idioms and technical terms are explained to the people listening (DECISIONS D-53).
+    explain_terms: bool = True
+    explain_min_words: int = 5  # a shorter sentence rarely holds an idiom worth a model call
+    explain_min_confidence: float = 0.75  # an explanation the model doubts is not shown
+    explain_gap_seconds: float = 20.0  # at least this long between two explanations

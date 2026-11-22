@@ -69,6 +69,10 @@ class AgoraAgentClient(Protocol):
         """Make a running agent say `text` without a user turn."""
         ...
 
+    async def interrupt(self, agent_id: str) -> None:
+        """Make a running agent stop talking and thinking at once."""
+        ...
+
 
 class RtcTokenIssuer(Protocol):
     """Builds RTC tokens for the Pi bridge and the agent."""

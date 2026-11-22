@@ -10,10 +10,10 @@
       "type": "string"
     },
     "SessionMode": {
-      "description": "Whether people talk freely or play a game.",
+      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
       "enum": [
-        "together",
-        "activity"
+        "meeting",
+        "review"
       ],
       "title": "SessionMode",
       "type": "string"

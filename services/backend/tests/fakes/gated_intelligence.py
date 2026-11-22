@@ -4,13 +4,15 @@ import asyncio
 
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_contracts import (
-    ActivityCommand,
-    ActivityResult,
+    ConversationReport,
     Decision,
     Language,
     LearningEvent,
+    Participant,
     SessionContext,
+    TranscriptMark,
     Turn,
+    Utterance,
 )
 
 
@@ -28,10 +30,6 @@ class GatedIntelligence:
         await self.gate.wait()
         return await self._inner.decide(turn, context)
 
-    def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
-        """Delegate."""
-        return self._inner.handle(command, context)
-
     def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
         """Delegate."""
         return self._inner.apply(proposals)
@@ -44,12 +42,32 @@ class GatedIntelligence:
         """Delegate."""
         self._inner.reset()
 
-    def session_started(self, woken: bool, language: Language | None = None) -> None:
+    def session_started(self, conversing: bool, language: Language | None = None) -> None:
         """Delegate."""
-        self._inner.session_started(woken, language)
+        self._inner.session_started(conversing, language)
+
+    def interrupted(self) -> None:
+        """Delegate."""
+        self._inner.interrupted()
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None
     ) -> None:
         """Delegate."""
         self._inner.device_status(volume, temperature, voices, speaker)
+
+    async def explain(self, turn: Turn, context: SessionContext) -> TranscriptMark | None:
+        """Delegate."""
+        return await self._inner.explain(turn, context)
+
+    async def coach(
+        self, draft: ConversationReport, person: Participant
+    ) -> ConversationReport | None:
+        """Delegate."""
+        return await self._inner.coach(draft, person)
+
+    def used_alone(
+        self, said: list[Utterance], shown: list[str], began: str
+    ) -> list[LearningEvent]:
+        """Delegate."""
+        return self._inner.used_alone(said, shown, began)

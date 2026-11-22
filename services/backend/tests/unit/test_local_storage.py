@@ -7,7 +7,7 @@ import pytest
 
 from mochi_backend.gateway.roster import DEMO_USERS
 from mochi_backend.settings import SettingsError, load_settings
-from mochi_backend.storage.factory import Opener, storage_for
+from mochi_backend.storage.factory import Opener, Seed, storage_for
 from mochi_backend.storage.local_file import LocalFileStorage
 from tests.fakes.fake_postgres import ReadFailsPostgres
 from tests.fakes.fake_sender import FakeEventLogger
@@ -50,18 +50,20 @@ def test_a_row_that_no_longer_fits_is_skipped_not_fatal(tmp_path: Path) -> None:
 def test_an_unreadable_file_means_memory_not_a_crash(tmp_path: Path) -> None:
     path = tmp_path / "mochi.json"
     path.write_text("{not json")
-    start = storage_for("", FakeEventLogger(), DEMO_USERS, str(path))
+    start = storage_for("", FakeEventLogger(), Seed(DEMO_USERS), str(path))
     assert start.name == "memory"
 
 
 def test_a_local_file_start_seeds_users_and_names_itself(tmp_path: Path) -> None:
-    start = storage_for("", FakeEventLogger(), DEMO_USERS, str(tmp_path / "m.json"))
+    start = storage_for("", FakeEventLogger(), Seed(DEMO_USERS), str(tmp_path / "m.json"))
     assert start.name == "local_file" and [u.user_id for u in start.users] == ["ana", "ben"]
 
 
 def test_the_database_wins_over_the_file(tmp_path: Path) -> None:
     opener = Opener(ReadFailsPostgres, attempts=1)
-    start = storage_for("postgresql://x", FakeEventLogger(), [], str(tmp_path / "m.json"), opener)
+    start = storage_for(
+        "postgresql://x", FakeEventLogger(), Seed(), str(tmp_path / "m.json"), opener
+    )
     assert start.name == "memory"  # it tried Postgres, not the file
     assert not (tmp_path / "m.json").exists()
 

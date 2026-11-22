@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "MarkKind": {
+      "description": "What Mochi noticed in a sentence of the live transcript (PROPOSAL, D-51 to D-53).\n\n`code_switch`: a word of the other language (the speaker also gets a hint for it).\n`idiom` and `technical_term`: something the people listening may not understand.",
+      "enum": [
+        "code_switch",
+        "idiom",
+        "technical_term"
+      ],
+      "title": "MarkKind",
+      "type": "string"
+    },
+    "TranscriptMark": {
+      "additionalProperties": false,
+      "description": "Something Mochi noticed in a sentence, shown with it in the live transcript.\n\n`text` is the part of the sentence it is about. `gloss` is what to read next to it: for a\ncode switch the word in the language being spoken (\"adiar\" -> \"postpone\"), for an idiom or a\ntechnical term what it means in the other language (\"circle back\" -> \"voltar ao assunto\").\n`plain`, for an idiom or a term, says the same in everyday words of the language spoken.",
+      "properties": {
+        "gloss": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gloss"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkKind"
+        },
+        "plain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plain"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "gloss"
+      ],
+      "title": "TranscriptMark",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One finished sentence of a session and who said it. PROPOSAL (v0.7, DECISIONS D-46).\n\n`user_id` is the person whose registered voice said it; None when no known voice did, or\nwhen it could not be told. It goes to that person's own page only, never to the team view.",
+  "properties": {
+    "at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "At",
+      "type": "string"
+    },
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "marks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TranscriptMark"
+      },
+      "title": "Marks",
+      "type": "array"
+    },
+    "record_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Record Id"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "user_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "User Id"
+    },
+    "utterance_id": {
+      "title": "Utterance Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "utterance_id",
+    "company_id",
+    "record_id",
+    "user_id",
+    "text",
+    "at"
+  ],
+  "title": "Utterance",
+  "type": "object"
+}

@@ -3,14 +3,12 @@
 from datetime import datetime
 
 from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, QUEUE_LIMIT, DeviceCommand
-from mochi_backend.gateway.roster import DEMO_PARTICIPANTS, SESSION_ID, USER_IDS
+from mochi_backend.gateway.roster import SESSION_ID, Roster
 from mochi_contracts import (
-    Activity,
-    GameState,
     Hint,
     Language,
     LearningEvent,
-    PrivatePrompt,
+    Participant,
     SessionContext,
     SessionMode,
     SessionState,
@@ -21,38 +19,26 @@ from mochi_contracts import (
 HISTORY_LIMIT = 5
 
 
-def idle_activity() -> Activity:
-    """The IDLE game state (round fields null; see DECISIONS D-03)."""
-    return Activity(
-        activity_id="describe_and_guess",
-        round_id=None,
-        state=GameState.IDLE,
-        describer_user_id=None,
-        guesser_user_id=None,
-        public_instruction=None,
-        result=None,
-        revealed_word=None,
-        word_source=None,
-    )
-
-
 class SessionStore:
-    """Status, mode, agent id, game state and the last few turns and hints."""
+    """Status, mode, agent id and the last few turns and hints.
 
-    def __init__(self) -> None:
+    `roster`: the people a meeting may hold. Example: `SessionStore().session_state().mode`
+    is `SessionMode.MEETING`.
+    """
+
+    def __init__(self, roster: Roster | None = None) -> None:
+        self.roster = roster or Roster()
         self.status = SessionStatus.CREATED
-        self.mode = SessionMode.TOGETHER
+        self.mode = SessionMode.MEETING
+        self.reviewer: str | None = None  # in a review: whose words are gone over
+        self.speaker: str | None = None  # the user whose voice the device hears now, if known
         self.capturing = False
         self.agent_id: str | None = None
         self.pi_token: str | None = None
         self.pi_token_expires_at: datetime | None = None
-        self.activity: Activity = idle_activity()
         self.turns: list[Turn] = []
         self.hints: list[Hint] = []
         self.commands: list[DeviceCommand] = []  # for the device, newest last (this session's)
-        self.round_secrets: tuple[str, ...] = ()  # the word (and its meaning) of the live round
-        self.private_prompt: PrivatePrompt | None = None  # re-sent to a Home that reconnects
-        self.round_ended_at: datetime | None = None  # when the last round got its result
         self.served_byes: set[str] = set()  # `bye` is handed to the device once, never replayed
         self.last_heard: tuple[int, str] = (-1, "")  # Agora's last user message (`new_speech`)
         self.generation = 0
@@ -95,35 +81,43 @@ class SessionStore:
             return heard[len(earlier) :].strip()
         return heard
 
-    def end_game(self) -> None:
-        """Back to IDLE and `together` without touching history (used by Stop)."""
-        self.activity = idle_activity()
-        self.round_secrets = ()
-        self.private_prompt = None
-        self.round_ended_at = None
-        self.mode = SessionMode.TOGETHER
+    def back_to_meeting(self) -> None:
+        """A review is over: the next session is a meeting unless its Start says otherwise."""
+        self.mode, self.reviewer, self.speaker = SessionMode.MEETING, None, None
+
+    def people(self) -> list[Participant]:
+        """Who is in the session: everyone the roster knows, or in a review that one person."""
+        everyone = self.roster.participants()
+        if self.mode is not SessionMode.REVIEW:
+            return everyone
+        return [person for person in everyone if person.user_id == self.reviewer]
+
+    def focus(self) -> Language:
+        """The language practised: English in a meeting, the reviewer's own target in a review."""
+        people = self.people()
+        if self.mode is SessionMode.REVIEW and people:
+            return people[0].target_language
+        return Language.EN
 
     def session_state(self) -> SessionState:
         """The `session.state.changed` payload."""
         return SessionState(
             status=self.status,
             mode=self.mode,
-            focus=Language.EN,
+            focus=self.focus(),
             capturing=self.capturing,
-            participants=list(USER_IDS),
+            participants=[person.user_id for person in self.people()],
         )
 
     def context(self, words: dict[str, list[LearningEvent]]) -> SessionContext:
-        """What intelligence may look at: last 5 turns and hints, the game, saved words."""
-        playing = self.activity if self.activity.state is not GameState.IDLE else None
+        """What intelligence may look at: last 5 turns and hints, and saved words."""
         return SessionContext(
             session_id=SESSION_ID,
             mode=self.mode,
-            focus=Language.EN,
-            participants=list(DEMO_PARTICIPANTS),
+            focus=self.focus(),
+            participants=self.people(),
             recent_turns=self.turns[-HISTORY_LIMIT:],
             recent_hints=self.hints[-HISTORY_LIMIT:],
-            activity=playing,
             learning_events=words,
         )
 
@@ -134,6 +128,5 @@ class SessionStore:
             self.hints = [*self.hints, hint][-HISTORY_LIMIT:]
 
     def clear_history(self) -> None:
-        """Forget turns, hints and the game (keeps capturing as it is)."""
+        """Forget turns and hints (keeps capturing and the mode as they are)."""
         self.turns, self.hints = [], []
-        self.end_game()

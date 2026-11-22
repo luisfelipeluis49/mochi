@@ -22,5 +22,5 @@ USER mochi
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
   CMD ["/app/services/backend/.venv/bin/python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8000'), timeout=2)"]
-# ONE worker: all state (session, saved words, game) lives in this process's memory.
+# ONE worker: all state (session, saved words, learning history) lives in this process's memory.
 CMD ["sh", "-c", "exec /app/services/backend/.venv/bin/uvicorn mochi_backend.app:app_from_env --factory --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --proxy-headers --forwarded-allow-ips='*'"]

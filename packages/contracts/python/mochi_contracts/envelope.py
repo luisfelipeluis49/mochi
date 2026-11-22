@@ -6,30 +6,32 @@ from pydantic import model_validator
 
 from mochi_contracts.enums import EventType
 from mochi_contracts.models import (
-    Activity,
     ContractModel,
+    ConversationReport,
     Hint,
     HintCleared,
     IsoTimestamp,
     LearningEvent,
-    PrivatePrompt,
     SessionState,
     Speak,
+    TranscriptLine,
 )
 
-SCHEMA_VERSION = "0.4"
+SCHEMA_VERSION = "0.7"
 
-EventPayload = SessionState | Hint | HintCleared | Activity | PrivatePrompt | LearningEvent | Speak
+EventPayload = (
+    SessionState | Hint | HintCleared | LearningEvent | Speak | TranscriptLine | ConversationReport
+)
 
 PAYLOAD_TYPE_FOR_EVENT: dict[EventType, type[ContractModel]] = {
     EventType.SESSION_STATE_CHANGED: SessionState,
     EventType.HINT_CREATED: Hint,
     EventType.HINT_CLEARED: HintCleared,
-    EventType.ACTIVITY_STATE_CHANGED: Activity,
-    EventType.ACTIVITY_PRIVATE_PROMPT: PrivatePrompt,
     EventType.LEARNING_EVENT_CREATED: LearningEvent,
     EventType.LEARNING_EVENT_UPDATED: LearningEvent,
     EventType.AGENT_SPEAK_REQUESTED: Speak,
+    EventType.TRANSCRIPT_LINE: TranscriptLine,
+    EventType.CONVERSATION_REPORT_CREATED: ConversationReport,
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.4",
+  "schema_version": "0.7",
   "event_id": "evt_002",
   "type": "hint.created",
   "session_id": "demo",

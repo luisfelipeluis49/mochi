@@ -1,7 +1,7 @@
 [project]
 name = "mochi-contracts"
-version = "0.4.0"
-description = "Mochi shared contracts (AGENTS.md section 6, draft v0.4)"
+version = "0.7.0"
+description = "Mochi shared contracts (AGENTS.md section 6, draft v0.7, Papear)"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.8,<3"]
 

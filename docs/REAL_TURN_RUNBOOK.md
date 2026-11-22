@@ -65,13 +65,16 @@ Voice (one line each, to check the text-to-speech):
 The walkthrough in AGENTS section 2 is English only. For two languages, a proposal:
 1. Observe: Ana and Ben talk (Ana English, Ben Portuguese), Mochi stays quiet.
 2. Help: Ana says sentences 1 and 2; Ben says sentences 4 and 5. Each hint is saved for the person who needed it.
-3. Play, round 1: Ben describes `umbrella` in Portuguese or English, Ana guesses it in English.
-4. Play, round 2 (new): roles swap. Ana describes `adiar`/`postpone`, Ben guesses it in Portuguese.
-5. Remember: Ana's phone shows `umbrella - Recalled in a game`, `postpone - Used with help`; Ben's shows
-   `guarda-chuva` and `adiar` the same way.
+3. Remember: Ana's phone shows `umbrella - Hint shown`, `postpone - Used with help` (she said it right
+   after the hint); Ben's shows `guarda-chuva` and `adiar` the same way.
+4. Review (Papear, D-44; replaces the two Play rounds, which were removed with the game, D-43): Ana starts
+   a review on her phone. Mochi asks for `umbrella` through its meaning, she says it, and the card reads
+   `Recalled in a review`.
+5. The company sees (D-45): `GET /api/companies/demo/insights?viewer=ana` lists `postpone` and `umbrella`
+   among the expressions the team needed, with no name next to them.
 
-Questions for the team: are these the right sentences? Is round 2 in scope (it needs the round language to
-alternate, which the backend does not do yet)? Who says what in the real demo?
+Questions for the team: are these the right sentences? Who says what in the real demo? Nobody has done a
+review by voice yet (AGENTS 12.5).
 
 ## Database (Postgres on Render)
 

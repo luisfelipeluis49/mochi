@@ -1,10 +1,17 @@
 # Mochi device supervisor settings. Wake and goodbye phrases are matched OFFLINE on the Pi, by sound,
-# so English and Brazilian Portuguese work alike: write each phrase the normal way, ending in the name.
+# so English and Brazilian Portuguese work alike: write each phrase the normal way. A phrase is found
+# by its last word (or by the name, when it has the name in it) with the words before it in front.
 # No cloud service sees any audio until a wake phrase is heard.
 # To see what the Pi hears when you speak:  scripts/wake-test.sh
 
 [wake]
-phrases = ["oi mochi", "olá mochi", "hi mochi", "hey mochi", "hello mochi"]
+# What starts a session (a meeting). Since 2026-11-22: "vamos papear" and its English, "let's chat";
+# "let's papear" for someone who uses the product's name in English. On the test clips "vamos papear"
+# is heard about as often as "oi mochi" was (8 in 10, also in a noisy room) and nothing else woke it in
+# 2.3 hours of other speech; "let's chat" is heard 8 in 10 in quiet and 5 in 10 in noise, and
+# look-alikes such as "let's shut the door" can start a session. The greetings used until then still
+# work when they are put back: "oi mochi", "olá mochi", "hi mochi", "hey mochi", "hello mochi".
+phrases = ["vamos papear", "let's chat", "let's papear"]
 
 [goodbye]
 # Heard locally while a session is active; ends the session.
@@ -29,11 +36,26 @@ ignore = ["mochila"]
 # End the session after this many seconds without hearing a voice (voice detection, not loudness:
 # a fan or music without singing does not keep a session open).
 inactivity_timeout_s = 30
-# Hard limit for one session, in seconds (protects Agora credits).
-max_session_s = 600
+# Hard limit for one session, in seconds (protects Agora credits). One hour: a work meeting.
+# The Agora tokens must live longer than this (the backend's MOCHI_TOKEN_TTL_SECONDS, 2 hours).
+max_session_s = 3600
 # Giving up on a wake-up that has not produced a session after this many seconds (backend or Agora
 # not answering): whatever was half-started is stopped and Mochi listens for the wake phrase again.
 start_timeout_s = 25
+
+[barge_in]
+# Someone starts talking while Mochi is still speaking: Mochi stops at once and listens. Its speaker is
+# silenced here, its agent is told to stop, and the microphone is sent on again (while Mochi speaks it
+# is not, see hear_while_speaking below).
+enabled = true
+# Noticed by loudness: a voice this many times louder than Mochi's own voice comes back in the
+# microphone (learned while it speaks), for need_ms of 400 ms. Raise level_ratio if Mochi cuts itself
+# off with nobody talking; lower it (2.5) if it does not stop when talked over.
+level_ratio = 3.5
+level_floor = 300
+need_ms = 240
+# Also noticed by voice: a registered person recognised while Mochi speaks (about a second of speech).
+by_voice = true
 
 [audio]
 device = "plughw:CARD=M1A,DEV=0"
@@ -100,10 +122,12 @@ greeting_pt = "Oi! Pode falar."
 llm_model = "gpt-4.1-mini"
 # Who Mochi is and how it helps. What it can do with its body (face, volume, temperature) is added by
 # the program (mochi_device/backends.py).
-instructions = """You are Mochi, a tiny round creature living in a little box on a table, helping people practise
-English and Brazilian Portuguese. Often two friends sit with you who are learning each other's
-language: one at home in Portuguese and learning English, one at home in English and learning
-Portuguese. Sometimes there is just one person. Someone who talks to you in English and asks about
+instructions = """You are Mochi, a tiny round creature living in a little box on a table, helping people with
+English and Brazilian Portuguese. You keep people company at work, in meetings held in a language
+some of them are still learning: you help with a word when someone is stuck or asks, and you can
+learn people's voices in advance so you know who is talking. Often two colleagues sit with you who
+are learning each other's language: one at home in Portuguese and learning English, one at home in
+English and learning Portuguese. Sometimes there is just one person. Someone who talks to you in English and asks about
 Portuguese is learning Portuguese; someone who talks to you in Portuguese and asks about English is
 learning English.
 
@@ -202,3 +226,6 @@ every_s = 120       # the same thing is not said again within this many seconds
 # Mochi's face on its own screen (hardware/pi-setup/face.html) listens here for what Mochi is doing.
 enabled = true
 port = 8765
+# The live transcript: each sentence of a meeting is shown small at the bottom of the screen for a
+# few seconds as the backend hears it (its `caption` command). false: the face shows no sentences.
+captions = true

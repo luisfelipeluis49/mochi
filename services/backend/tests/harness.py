@@ -8,6 +8,8 @@ from mochi_backend.gateway.delivery_rules import ConnectionTarget
 from mochi_backend.gateway.intelligence_port import IntelligencePort
 from mochi_backend.gateway.turn_pipeline import TurnOutcome
 from mochi_backend.intelligence.character_port import CharacterModel
+from mochi_backend.intelligence.coach_port import CoachModel
+from mochi_backend.intelligence.explain_port import ExplainModel
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.intelligence.settings import IntelligenceSettings
@@ -85,12 +87,18 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     character: CharacterModel | None = None,
     gated: bool = False,
     storage: Storage | None = None,
+    explains: ExplainModel | None = None,
+    coach: CoachModel | None = None,
 ) -> Harness:
     """Fake-Agora backend. `env` overrides settings (e.g. MOCHI_SILENCE_STRATEGY).
 
     `character`: Mochi's scripted own lines (without one it keeps its fixed lines).
+    `explains` and `coach`: the scripted models that explain an idiom and write a report.
     """
-    settings = load_settings({"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", **(env or {})})
+    # The live transcript is off here unless a test asks for it: with it every sentence adds an
+    # event and a device caption, and most tests count exactly what one feature publishes.
+    quiet = {"MOCHI_AGORA_MODE": "fake", "MOCHI_TURN_KEY": "k", "MOCHI_LIVE_TRANSCRIPT": "false"}
+    settings = load_settings({**quiet, **(env or {})})
     clock, ids, logger = FakeClock(), SequentialIdGenerator(), FakeEventLogger()
     kept = storage or NullStorage()
     ttl = settings.mochi_hint_ttl_seconds
@@ -98,6 +106,8 @@ def make_harness(  # noqa: PLR0913 - one switch per fake; see DECISIONS D-32
     brain = intelligence or _brain(clock, ids, model, character, ttl)
     if isinstance(brain, Intelligence):
         brain.keep_words_in(MemoryStore(start.events, StorageEventSink(kept)))
+        _ = explains and brain.explain_with(explains)  # type: ignore[func-returns-value]
+        _ = coach and brain.coach_with(coach)  # type: ignore[func-returns-value]
     gate = GatedIntelligence(brain) if gated else None
     brain = gate or brain
     scheduler, agora, tokens = FakeScheduler(clock), FakeAgoraClient(), FakeTokenIssuer()

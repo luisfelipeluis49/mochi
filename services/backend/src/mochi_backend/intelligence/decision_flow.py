@@ -7,6 +7,7 @@ from datetime import timedelta
 from mochi_backend.intelligence.aloud import wants_to_hear, word_to_hear
 from mochi_backend.intelligence.answer_checks import in_its_language, same_family, same_words
 from mochi_backend.intelligence.answer_screen import AnswerScreen
+from mochi_backend.intelligence.character_port import ReviewWord
 from mochi_backend.intelligence.clear_cases import (
     addressed_partner,
     asked_term,
@@ -28,7 +29,11 @@ from mochi_backend.intelligence.language_guess import (
     is_mostly,
     spoken_language,
 )
-from mochi_backend.intelligence.learning_rules import assisted_updates
+from mochi_backend.intelligence.learning_rules import (
+    assisted_updates,
+    recalled_updates,
+    words_to_review,
+)
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel, ModelRequest, Suspect
@@ -37,7 +42,6 @@ from mochi_backend.intelligence.quiet_rules import (
     hint_on_screen,
     hints_of_last_turns,
     lasting_quiet_reason,
-    round_is_active,
 )
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
@@ -60,6 +64,7 @@ from mochi_contracts import (
     Language,
     Reason,
     SessionContext,
+    SessionMode,
     Speak,
     SpeakReason,
     Turn,
@@ -123,19 +128,19 @@ class DecisionFlow:
         self._cooldown = settings.hint_cooldown
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
+        self._speaker: str | None = None  # whose voice said the turn being decided, when known
 
     async def run(
         self, turn: Turn, context: SessionContext, sink: TextSink | None = None
     ) -> Decision:
-        """Decide for `turn`; ASSISTED upgrades ride along whatever the decision is.
+        """Decide for `turn`; ASSISTED and REINFORCED upgrades ride along whatever the decision.
 
         `sink`: Mochi's free-chat line may be passed on while it is written (D-37).
         """
-        assisted = assisted_updates(turn, context, self._clock, self._ttl)
+        used = assisted_updates(turn, context, self._clock, self._ttl)
+        used += recalled_updates(turn, context, self._clock)
         decision = await self._decide(turn, context, sink)
-        return decision.model_copy(
-            update={"learning_events": [*decision.learning_events, *assisted]}
-        )
+        return decision.model_copy(update={"learning_events": [*decision.learning_events, *used]})
 
     async def _decide(
         self, heard: Turn, session_context: SessionContext, sink: TextSink | None
@@ -144,16 +149,21 @@ class DecisionFlow:
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)
         context = session_context.model_copy(update={"focus": spoken})
-        # The round's word is the newest one Mochi taught: it is not reminded of it now (D-38).
-        self._talk.playing = round_is_active(context)
-        # The wake phrase beats every quiet rule (AGENTS 7.2); a thank-you does not in a round.
-        if has_wake_phrase(turn.text, round_is_active(context)):
+        self._speaker = heard.speaker_user_id
+        # A review: Mochi is told which of this person's words to bring back (AGENTS 7.4).
+        self._talk.reviewing = session_context.mode is SessionMode.REVIEW
+        self._talk.review = [
+            ReviewWord(expression=e.expression, meaning=e.meaning)
+            for e in words_to_review(session_context)
+        ]
+        # The wake phrase beats every quiet rule (AGENTS 7.2).
+        if has_wake_phrase(turn.text):
             return await self._answer_mochi(turn, context, sink)
         return self._said_aloud(turn, context) or await self._watching(turn, context)
 
     async def _watching(self, turn: Turn, context: SessionContext) -> Decision:
-        """Two people talk and nobody called Mochi: a hint when one is needed, else nothing."""
-        # A round, a serious talk, thinking aloud or a name keep Mochi quiet whatever came before.
+        """People talk and nobody called Mochi: a hint when one is needed, else nothing."""
+        # A serious talk, thinking aloud or a name keep Mochi quiet whatever came before.
         quiet = lasting_quiet_reason(turn.text, context, self._lexicon) or self._held_back(
             turn, context
         )
@@ -171,11 +181,11 @@ class DecisionFlow:
     def _may_be_heard(self, turn: Turn, context: SessionContext) -> bool:
         """Someone asked how a word sounds, and it is for Mochi to answer.
 
-        Not when the partner was asked by name, not during a round (only the wake phrase speaks
-        there), and not while Mochi is part of the talk: then it answers in its own words.
+        Not when the partner was asked by name, and not while Mochi is part of the talk: then
+        it answers in its own words.
         """
         asked = wants_to_hear(turn.text) and not addressed_partner(turn.text, context)
-        return asked and not round_is_active(context) and not self._talk.attentive
+        return asked and not self._talk.attentive
 
     def _said_aloud(self, turn: Turn, context: SessionContext) -> Decision | None:
         """ "Can you pronounce it?" about a word just shown: Mochi says it, and shows it again.
@@ -255,7 +265,7 @@ class DecisionFlow:
             text, history, context, self._lexicon
         )
         if found and found.reason is Reason.LOOK_ALIKE and self._talk.attentive:
-            # Someone woke Mochi to talk WITH it: its own reply puts the word right, in its
+            # Someone is talking WITH Mochi: its own reply puts the word right, in its
             # answer. A silent hint would race that reply, and when it wins Mochi says nothing
             # (D-40). Between two people it is judged as before, also just after Mochi spoke.
             return None
@@ -345,7 +355,7 @@ class DecisionFlow:
         return match
 
     def _show(self, match: CaseMatch, context: SessionContext) -> Decision:
-        hint = self._factory.hint_for(match, context)
+        hint = self._factory.hint_for(match, context, self._speaker)
         saved = [] if already_saved(hint, context) else [self._factory.event_for(hint)]
         return Decision(
             decision=DecisionKind.SHOW_HINT, hint=hint, speak=None, learning_events=saved
@@ -361,8 +371,8 @@ class DecisionFlow:
         A word the rules found is shown either way, and Mochi is told to teach that one.
         """
         maybe_for_mochi = self._talk.listening() or says_mochi(turn.text)
-        if round_is_active(context) or not maybe_for_mochi:
-            return None  # during a round only the wake phrase makes Mochi speak
+        if not maybe_for_mochi:
+            return None
         return await self._line(turn, match, named=False)
 
     def _language_of(self, text: str) -> Language:
@@ -380,11 +390,9 @@ class DecisionFlow:
             turn.text, named=named, language=language, word=word, meaning=meaning
         )
 
-    def _chat_sink(
-        self, match: CaseMatch | None, context: SessionContext, sink: TextSink | None
-    ) -> TextSink | None:
-        """Only a free chat streams: no word to teach, and no round whose word must stay secret."""
-        return sink if match is None and not round_is_active(context) else None
+    def _chat_sink(self, match: CaseMatch | None, sink: TextSink | None) -> TextSink | None:
+        """Only a free chat streams: no word to teach."""
+        return sink if match is None else None
 
     async def _answer_mochi(
         self, turn: Turn, context: SessionContext, sink: TextSink | None = None
@@ -394,7 +402,7 @@ class DecisionFlow:
             self._talk.called()  # just "Oi Mochi": nothing was asked yet, the next sentence is
         entry = mochi_entry(rest, context, self._lexicon)
         match = match_from_entry(entry, Reason.ASKS_MOCHI, context) if entry else None
-        chat = self._chat_sink(match, context, sink)
+        chat = self._chat_sink(match, sink)
         if match is None and asks_for_word(rest):  # a word outside the lexicon: ask both at once
             match, line = await asyncio.gather(
                 self._ask_model(rest, [], context), self._line(turn, None, named=True)

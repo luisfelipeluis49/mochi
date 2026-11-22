@@ -13,7 +13,7 @@ from mochi_backend.intelligence.model_port import HintModel, ModelSuggestion
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_contracts import Decision, DecisionKind, Hint, SessionContext, Turn
-from tests.factories import ANA, BEN, active_round, make_context, make_hint, make_turn
+from tests.factories import ANA, BEN, make_context, make_hint, make_turn
 from tests.fakes.fake_clock import START, FakeClock
 
 FIXTURES_FILE = Path(__file__).resolve().parents[3] / "packages" / "fixtures" / "decisions.json"
@@ -42,7 +42,6 @@ class DecisionFixture(BaseModel):
     expect: Expectation
     history: list[str] = []
     hint_turns_ago: int | None = None
-    round_active: bool = False
     participants: str | None = None
     model: ModelSuggestion | None = None
     eval: bool = True  # False: a no-model unit test that a real-model eval must not score
@@ -62,8 +61,7 @@ def build_case(fixture: DecisionFixture) -> tuple[SessionContext, Turn]:
     people = [ANA, BEN]
     if fixture.participants == "both_learning_en":
         people = [ANA, BEN.model_copy(update={"target_language": ANA.target_language})]
-    activity = active_round() if fixture.round_active else None
-    context = make_context(participants=people, turns=turns, hints=hints, activity=activity)
+    context = make_context(participants=people, turns=turns, hints=hints)
     return context, make_turn(fixture.text, float(len(turns)))
 
 

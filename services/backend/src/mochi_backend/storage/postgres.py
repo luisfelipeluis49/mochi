@@ -1,33 +1,13 @@
 """Postgres through psycopg 3. One short connection per call: writes are rare and run off-loop."""
 
-from collections.abc import Callable
-
-import psycopg
-from pydantic import ValidationError
-
-from mochi_backend.platform.json_logging import EventLogger
 from mochi_backend.storage import schema
 from mochi_backend.storage.port import voice_key
+from mochi_backend.storage.postgres_team import PostgresTeamTables
 from mochi_contracts import Language, LearningEvent, User, VoiceProfile
 
-CONNECT_TIMEOUT_SECONDS = 5
-STATEMENT_TIMEOUT_MS = 10_000  # a database that accepts the connection and then hangs
 
-
-class PostgresStorage:
+class PostgresStorage(PostgresTeamTables):
     """Implements `Storage`. Example: `PostgresStorage(url).prepare()` then `load_events()`."""
-
-    def __init__(self, url: str, logger: EventLogger) -> None:
-        self._url = url
-        self._logger = logger
-
-    def _connect(self) -> psycopg.Connection:
-        return psycopg.connect(
-            self._url,
-            connect_timeout=CONNECT_TIMEOUT_SECONDS,
-            autocommit=True,
-            options=f"-c statement_timeout={STATEMENT_TIMEOUT_MS}",
-        )
 
     def prepare(self) -> None:
         """Create the tables that are missing. Raises `psycopg.Error` when unreachable."""
@@ -77,23 +57,6 @@ class PostgresStorage:
         with self._connect() as connection:
             rows = connection.execute(schema.SELECT_VOICES).fetchall()
         return self._parsed("voices", rows, _voice)
-
-    def _parsed[T](
-        self, table: str, rows: list[tuple[object, ...]], parse: Callable[[tuple[object, ...]], T]
-    ) -> list[T]:
-        """Parse each row on its own: a stored row that no longer fits the contract is skipped.
-
-        Contract models refuse unknown fields, so after a contract change an old row can fail to
-        load; that must cost one word, not the whole startup. Logs the table and the row's key only.
-        """
-        kept: list[T] = []
-        for row in rows:
-            try:
-                kept.append(parse(row))
-            except (ValidationError, ValueError):
-                key = "" if table == "voices" else str(row[0])[:60]  # a voice name is personal
-                self._logger.log("storage_row_skipped", {"table": table, "key": key})
-        return kept
 
     def save_voice(self, voice: VoiceProfile) -> None:
         """Insert or replace one voice by name."""

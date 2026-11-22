@@ -9,15 +9,16 @@ reconnects by itself, and with no page open this costs nothing.
     word   a word shown big under the face
     note   a smaller line under the word: its language and what it means ("English · garfo")
     more   a third line: other words that fit as well, for a hint where the person named none
+    flag   how the word is drawn: "" | "switch" (a code switch: it should catch the eye) |
+           "explain" (an idiom or a technical term that was just said, with what it means)
+    caption  the sentence that was just said (the live transcript), small at the bottom; "" = none
     pop    {"what": "volume" | "temp", "value": n, "n": counter}: a badge shown for a few seconds
     who    the name of the person Mochi recognises talking ("" = nobody)
     temp   Mochi's own temperature in whole degrees Celsius (None = not known): always shown while it sleeps
     hot    True while that is too warm ([alerts].hot_at): the temperature is then shown whatever Mochi does
     online False while Mochi has no connection to the internet: the face says so
-    round  a Describe & Guess round in front of the face, or None:
-           {"tone": "ask" | "secret" | "result", "big": the large line, "small": the line under it}
 
-The other way, the page reports touches: GET /tap?kind=tap | long (a long press), passed to on_tap.
+The page takes no input: a touch only makes the face react, on the page itself.
 """
 from __future__ import annotations
 
@@ -33,9 +34,9 @@ class Face:
         self.enabled = cfg.get("enabled", True)
         self.host, self.port = cfg.get("host", "127.0.0.1"), int(cfg.get("port", 8765))
         self.state: dict = {"mode": "sleeping", "mood": "neutral", "level": 0, "word": "", "note": "", "more": "", "pop": None,
-                            "who": "", "round": None, "temp": None, "hot": False,
+                            "flag": "", "caption": "",
+                            "who": "", "temp": None, "hot": False,
                             "online": True}
-        self.on_tap = None  # on_tap(kind): the screen was touched ("tap") or held ("long")
         self._changed: set[asyncio.Event] = set()  # one per connected page
         self._server: asyncio.AbstractServer | None = None
         self._timers: dict[str, asyncio.TimerHandle] = {}
@@ -63,19 +64,13 @@ class Face:
 
     def show_for(self, seconds: float, **changes) -> None:
         """Like set(), and puts each key back to its resting value after a while."""
-        rest = {"mood": "neutral", "word": "", "note": "", "more": "", "pop": None, "who": "", "round": None}
+        rest = {"mood": "neutral", "word": "", "note": "", "more": "", "pop": None, "who": "", "flag": "",
+                "caption": ""}
         self.set(**changes)
         for key in changes:
             if key in self._timers:
                 self._timers[key].cancel()
             self._timers[key] = asyncio.get_running_loop().call_later(seconds, lambda k=key: self.set(**{k: rest[k]}))
-
-    def keep(self, **changes) -> None:
-        """Like set(), and it stays: a show_for() still counting down for these keys no longer applies."""
-        for key in changes:
-            if key in self._timers:
-                self._timers.pop(key).cancel()
-        self.set(**changes)
 
     def pop(self, what: str, value: float) -> None:
         self._pops += 1
@@ -87,12 +82,6 @@ class Face:
             request = await asyncio.wait_for(reader.readline(), timeout=5)
             while (await asyncio.wait_for(reader.readline(), timeout=5)).strip():
                 pass  # headers
-            if request.startswith(b"GET /tap"):  # the page is a local file, so any origin may call (reachable locally only)
-                if self.on_tap:
-                    self.on_tap("long" if b"kind=long" in request else "tap")
-                writer.write(b"HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n")
-                await writer.drain()
-                return
             if b" /events" not in request:
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 await writer.drain()

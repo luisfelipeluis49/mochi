@@ -21,10 +21,10 @@ from dotenv import load_dotenv
 from . import config as config_mod
 from .audio import Mic, chime, say
 from .backends import make_backend
+from .bargein import LevelWatch
 from .bridge import BridgeProcess
 from .device import LOOK_AT, cpu_temperature, reachable
 from .face import MOODS, Face
-from .game import RoundScreen
 from .wakeword import KeywordSpotter
 
 
@@ -35,10 +35,36 @@ def hint_note(card: dict) -> str:
     """The small line under a hint: the word's language, and the word it stands for.
 
     Example: {"word": "fork", "language": "en", "meaning": "garfo"} -> "English · garfo".
+    A code switch ("why": "code_switch") reads as what happened, so that the others at the table
+    see which word was said and what it is in the language of the meeting: "garfo → English".
     """
     language = LANGUAGE_NAMES.get(str(card.get("language")), "")
     meaning = str(card.get("meaning") or "")
+    if card.get("why") == "code_switch" and meaning and language:
+        return f"{meaning} → {language}"[:40]
     return " · ".join(part for part in (language, meaning) if part)[:40]
+
+
+def hint_flag(card: dict) -> str:
+    """How the card is drawn: "switch" for a code switch (it should catch everyone's eye), else ""."""
+    return "switch" if card.get("why") == "code_switch" and card.get("meaning") else ""
+
+
+CAPTION_CHARS = 84  # what fits in two small lines on the 3.5-inch screen
+
+
+def caption_line(card: dict) -> str:
+    """One sentence of the live transcript, with who said it when the voice was recognised.
+
+    Example: {"who": "Ana", "text": "I need to adiar my meeting"} -> "Ana: I need to adiar my meeting".
+    A long sentence keeps its end: the last words are the ones just said.
+    """
+    text = " ".join(str(card.get("text") or "").split())
+    who = str(card.get("who") or "")
+    room = CAPTION_CHARS - (len(who) + 2 if who else 0)
+    if len(text) > room:
+        text = "…" + text[-(room - 1):]
+    return f"{who}: {text}" if who else text
 
 
 def hint_more(card: dict) -> str:
@@ -62,13 +88,17 @@ def log(msg: str) -> None:
 
 
 class Supervisor:
+    # someone talking over Mochi (see __init__ and _watch_for_talking_over); off until configured
+    barge_in = barge_by_voice = was_talking = False
+    barged_at: float | None = None
+    level_watch: LevelWatch | None = None
+
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.dev = cfg["audio"]["device"]
         self.kws = KeywordSpotter(cfg)
         self.face = Face(cfg.get("face"))
-        self.face.on_tap = self.on_tap
-        self.game = RoundScreen()  # a Describe & Guess round on the screen (game.py)
+        self.captions = bool((cfg.get("face") or {}).get("captions", True))  # the live transcript
         self.net = cfg.get("network", {})  # how the connection is watched (see _look_after_itself)
         self.online = True
         # what Mochi says by itself, from recordings (no connection needed): see _tell
@@ -93,6 +123,15 @@ class Supervisor:
         self.start_timeout_s = float(cfg.get("session", {}).get("start_timeout_s", 25))
         self.session_started = self.last_speech = 0.0
         self.agent_voice_at = self.heard_at = self.bye_until = 0.0
+        # [barge_in]: someone talking over Mochi stops it (bargein.py); barged = it was just stopped
+        # and its voice has not run out yet (the speaker is silent, the microphone is sent on again)
+        over = cfg.get("barge_in", {})
+        self.barge_in = bool(over.get("enabled", True))
+        self.barge_by_voice = bool(over.get("by_voice", True))
+        self.level_watch = LevelWatch(float(over.get("level_ratio", 3.5)), float(over.get("level_floor", 300)),
+                                      int(over.get("need_ms", 240)))
+        self.barged_at: float | None = None
+        self.was_talking = False
         self.enrol_lang = "en"
         self.backend_end: str | None = None  # set when the backend ended the session itself
         self.bye_asked: float | None = None  # when Mochi said goodbye ([bye]): the session ends after it
@@ -115,13 +154,19 @@ class Supervisor:
         if kind == "mood" and value in MOODS:
             self.face.show_for(12, mood=value)
         elif kind == "show":
-            self.face.show_for(10, word=str(value)[:28], note="", more="")
+            self.face.show_for(10, word=str(value)[:28], note="", more="", flag="")
         elif kind == "hint":  # a word someone needed: say which language it is in and what it means
             self.face.show_for(10, word=str(value.get("word", ""))[:28], note=hint_note(value),
-                               more=hint_more(value))
+                               more=hint_more(value), flag=hint_flag(value))
         elif kind == "used":  # they said the word they were given: cheer, without a sound
             note = USED_NOTES.get(str(value.get("language")), "★")
-            self.face.show_for(5, word=str(value.get("word", ""))[:28], note=note, more="", mood="proud")
+            self.face.show_for(5, word=str(value.get("word", ""))[:28], note=note, more="", flag="", mood="proud")
+        elif kind == "explain":  # an idiom or a term that was just said: what it means, for those listening
+            self.face.show_for(10, word=str(value.get("word", ""))[:28], note=str(value.get("meaning") or "")[:40],
+                               more=str(value.get("plain") or "")[:40], flag="explain")
+        elif kind == "caption":  # the live transcript: the sentence that was just said
+            if getattr(self, "captions", True):
+                self.face.show_for(8, caption=caption_line(value))
         elif kind in ("volume", "temp"):
             self.face.pop(kind, value)
         elif kind == "enroll":  # "learn my voice": the next ~10 s of speech become their voiceprint
@@ -138,44 +183,10 @@ class Supervisor:
             if hasattr(self.backend, "set_voices"):  # at once: nothing else would say so for a while
                 left = [v for v in self.kws.known_voices if v.lower() != str(value).lower()]
                 self.backend.set_voices(left, None)
-        elif kind == "round":  # a round of Describe & Guess began or ended (never log the card: it has the word)
-            log(f"round: {value.get('state')}" + ("" if value.get("state") != "ACTIVE_ROUND" or value.get("secret_word")
-                                                 else " without its word: is MOCHI_DEVICE_KEY set here as on the backend?"))
-            self.game.show(value, time.monotonic())
-            self._draw_round()
         elif kind == "stopped":  # the session was ended elsewhere: on_frame leaves the channel
             self.backend_end = str(value)
         elif kind == "bye":  # Mochi is saying goodbye: on_frame ends the session once it has
             self.bye_asked = time.monotonic()
-
-    # --- Describe & Guess on the screen ------------------------------------------------------
-    def _draw_round(self) -> None:
-        view = self.game.view()
-        if self.game.stage == "result":  # shown for a few seconds, then the face is back
-            self.face.show_for(self.game.RESULT_S, round=view)
-        else:
-            self.face.keep(round=view)
-
-    def on_tap(self, kind: str) -> None:
-        """The screen was touched ("tap") or held ("long"): it only means something during a round."""
-        now = time.monotonic()
-        if self.state != "ACTIVE" or self.game.stage is None:
-            return
-        if self.game.over(now):
-            self.game.clear()
-            return
-        self.last_speech = now  # people playing are there, even while they think in silence
-        action = self.game.touched(kind, now)
-        if action:
-            asyncio.create_task(self._tell_round(action))
-        self._draw_round()
-
-    async def _tell_round(self, action: str) -> None:
-        log(f"round: touch -> {action}")
-        send = self.backend.next_round() if action == "next" else self.backend.round_result(action)
-        if not await send:
-            self.game.refused(time.monotonic())
-            self._draw_round()
 
     def _goodbye_said(self, now: float) -> bool:
         """Mochi wrote [bye]: leave once its goodbye has been heard out, or after 8 s at the latest."""
@@ -186,13 +197,21 @@ class Supervisor:
 
     def on_voice_event(self, event: tuple) -> None:
         """What the voice tracker noticed (speakers.py)."""
-        kind, name, amount = event
+        kind, name, amount = event[:3]
+        if kind == "over":  # a known person is talking while Mochi is: it stops and listens
+            if self.barge_by_voice:
+                self._barge_in(f"{name} is talking (score {amount:.2f})")
+            return
         tell = getattr(self.backend, "set_voices", lambda known, speaker: None)
         if kind == "speaker":  # a known person, or (None) a stranger; until the next one it stays so
             log(f"voice: {name or 'nobody I know'} (score {amount:.2f})")
             if name:
                 self.face.show_for(5, who=name)
             tell(self.kws.known_voices, name)
+        elif kind == "said":  # a stretch of speech and who said it: the backend names sentences with these
+            heard = getattr(self.backend, "heard", None)
+            if heard:
+                heard(name, amount, event[3])
         elif kind == "unsure":  # for the log only: the scores tell whether [voices] min_score fits
             log(f"voice: not sure yet (score {amount:.2f})")
         elif kind == "enrolled":
@@ -211,7 +230,7 @@ class Supervisor:
             return "bye" if now < self.bye_until else "sleeping"
         if self.state != "ACTIVE":
             return "waking"
-        if now - self.agent_voice_at < 0.4:
+        if now - self.agent_voice_at < 0.4 and self.barged_at is None:
             return "speaking"
         if now - self.kws.last_voice < 0.5:
             self.heard_at = now
@@ -330,7 +349,7 @@ class Supervisor:
                 # whose voice said it, when the Pi knows it (reported just before the hit itself)
                 caller = next((e[1] for e in reversed(self.kws.voice_events()) if e[0] == "speaker" and e[1]), None)
                 log(f"wake phrase heard: {hit[1]!r}{f' from {caller}' if caller else ''} -> starting session")
-                self.language = "pt" if hit[1].lower().split()[0] in ("oi", "olá", "ola") else "en"
+                self.language = "pt" if hit[1].lower().split()[0] in ("oi", "olá", "ola", "vamos", "vamo") else "en"
                 self.state = "STARTING"
                 self._chime(rising=True)
                 self.session_started = self.last_speech = now
@@ -344,12 +363,14 @@ class Supervisor:
         if self.state == "ACTIVE":
             # who is talking? (not while Mochi itself is: its own voice is not a person)
             mochi_talking = now - self.agent_voice_at < 0.6
+            self._watch_for_talking_over(frame, now, mochi_talking)
             # Mochi's voice comes back through the microphone, and the recogniser writes it down as
             # something a person said (seen live: the greeting arrived as "Where is my chave?", and
-            # Mochi answered it). While Mochi speaks, what is sent on is silence.
-            deaf = mochi_talking and not self.cfg["audio"].get("hear_while_speaking", False)
+            # Mochi answered it). While Mochi speaks, what is sent on is silence. Not once someone
+            # has talked over it: the speaker is silent then, and that person must be heard.
+            deaf = mochi_talking and self.barged_at is None and not self.cfg["audio"].get("hear_while_speaking", False)
             self.bridge.send(bytes(len(frame)) if deaf else frame)
-            self.kws.track_voices(True, hold=mochi_talking)
+            self.kws.track_voices(True, hold=mochi_talking and self.barged_at is None)
             for event in self.kws.voice_events():
                 self.on_voice_event(event)
             reason = None
@@ -367,6 +388,44 @@ class Supervisor:
                 reason = "bridge exited"
             if reason:
                 await self.end_session(reason)
+
+    # --- someone talks over Mochi: it stops at once and listens ------------------------------------
+    BARGE_GIVE_UP_S = 4.0  # Mochi's voice still coming this long after it was told to stop: let it be heard again
+
+    def _watch_for_talking_over(self, frame: bytes, now: float, mochi_talking: bool) -> None:
+        """Every frame of a session: notice a person over Mochi's voice, and end the hush once its voice has stopped."""
+        if self.barged_at is not None:
+            if not mochi_talking or now - self.barged_at > self.BARGE_GIVE_UP_S:
+                self.barged_at = None
+                asyncio.create_task(self._hush(False))
+        elif mochi_talking and self.barge_in and self.level_watch:
+            if not self.was_talking:
+                self.level_watch.begin()
+            if self.level_watch.heard(frame, voiced=now - self.kws.last_voice < 0.4):
+                self._barge_in("a voice louder than Mochi's own")
+        self.was_talking = mochi_talking
+
+    def _barge_in(self, why: str) -> None:
+        """Stop Mochi now: its speaker goes silent here at once, its agent is told to stop, and the
+        microphone is sent on again so the person is heard."""
+        now = time.monotonic()
+        if not self.barge_in or self.state != "ACTIVE" or self.barged_at is not None or now - self.agent_voice_at >= 0.6:
+            return
+        log(f"talked over: {why} -> Mochi stops and listens")
+        self.barged_at = now
+        self.heard_at = now
+        asyncio.create_task(self._hush(True))
+        interrupt = getattr(self.backend, "interrupt", None)
+        if interrupt:
+            asyncio.create_task(interrupt())
+
+    async def _hush(self, quiet: bool) -> None:
+        hush = getattr(self.backend, "hush_speaker", None)
+        if hush:
+            try:
+                await hush(quiet)
+            except Exception as e:  # a mixer that does not answer: Mochi's sentence then runs out by itself
+                log(f"speaker {'hush' if quiet else 'back'} failed: {e!r}")
 
     async def start_session(self, wake_phrase: str, caller: str | None = None) -> None:
         """caller: whose voice said the wake phrase, when the Pi recognised it."""
@@ -392,8 +451,6 @@ class Supervisor:
             self.state = "IDLE"
             self.kws.reset()
             self.kws.voice_events()
-            self.game.clear()  # the backend may have had a round on: not on a sleeping face
-            self.face.keep(round=None)
             if isinstance(e, ConnectionError):  # called while there is no connection: say so, in words
                 self.told.pop("offline", None)
                 self._tell("offline")
@@ -414,6 +471,9 @@ class Supervisor:
             await self._start_task  # let a half-started session finish so it can be stopped cleanly
         self.state = "STOPPING"
         log(f"ending session: {reason}")
+        if self.barged_at is not None:  # never leave the speaker silent after a session
+            self.barged_at = None
+            await self._hush(False)
         await self.bridge.stop()
         await self.backend.stop()
         self.kws.reset()
@@ -421,9 +481,7 @@ class Supervisor:
         self.kws.track_voices(False)
         self.kws.voice_events()  # whoever spoke last in this session is not the next one's caller
         self.bye_until = time.monotonic() + 3
-        self.game.clear()
-        self.face.keep(round=None)
-        self.face.set(level=0, word="", note="", more="", mood="neutral", who="")
+        self.face.set(level=0, word="", note="", more="", flag="", caption="", mood="neutral", who="")
         self._chime(rising=False)
         self._tell_what_is_owed()
         log("back to offline listening (no audio leaves the Pi)")

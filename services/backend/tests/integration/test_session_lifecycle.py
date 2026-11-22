@@ -4,18 +4,13 @@ import asyncio
 
 import pytest
 
-from mochi_backend.gateway.errors import ConflictError
-from mochi_contracts import DecisionKind, GameState, RoundResult, SessionMode
+from mochi_backend.gateway.errors import InvalidRequestError
+from mochi_contracts import DecisionKind, SessionMode
 from tests.fakes.fake_sender import FakeSender
 from tests.fakes.held_sender import HeldSender
 from tests.harness import ANA, AUDIENCE, HOME, Harness, make_harness
 
 ADIAR = "I need to adiar my meeting tomorrow."
-
-
-async def _running_round(harness: Harness) -> None:
-    await harness.container.sessions.start()
-    await harness.container.activity.start()
 
 
 async def test_two_simultaneous_starts_create_one_agent() -> None:
@@ -79,37 +74,30 @@ async def test_a_decision_in_flight_is_dropped_when_the_session_changes(operatio
     assert harness.container.core.intelligence.words_for("ana") == []
 
 
-async def test_stop_during_a_round_returns_the_game_to_idle_and_start_hears_again() -> None:
+async def test_a_review_is_one_persons_and_the_next_session_is_a_meeting_again() -> None:
     harness = make_harness()
-    await _running_round(harness)
-    store = harness.container.core.store
-    assert store.activity.state is GameState.ACTIVE_ROUND
-    await harness.container.sessions.stop()
-    after_stop: GameState = store.activity.state  # re-read: mypy narrowed the assert above
-    assert after_stop is GameState.IDLE and store.mode is SessionMode.TOGETHER
+    state = await harness.container.sessions.start(mode=SessionMode.REVIEW, user_id="ben")
+    assert (state.mode, state.participants) == (SessionMode.REVIEW, ["ben"])
+    assert state.focus.value == "pt-BR"  # Ben's own target language
+    context = harness.container.pipeline.build_context()
+    assert [p.user_id for p in context.participants] == ["ben"]
+    stopped = await harness.container.sessions.stop()
+    assert (stopped.mode, stopped.participants) == (SessionMode.MEETING, ["ana", "ben"])
     await harness.container.sessions.start()
     outcome = await harness.say(ADIAR)
     assert outcome.decision.decision is DecisionKind.SHOW_HINT
 
 
-async def test_stop_during_a_round_publishes_idle_and_forgets_the_secret() -> None:
+async def test_a_review_needs_a_person_the_roster_knows() -> None:
     harness = make_harness()
-    await _running_round(harness)
-    audience = await harness.connect(AUDIENCE)
-    await harness.container.sessions.stop()
-    last_activity = [e for e in audience.events if e.type.value == "activity.state.changed"][-1]
-    assert last_activity.payload.model_dump()["state"] == "IDLE"
-
-
-async def test_a_second_round_cannot_start_while_one_is_active() -> None:
-    harness = make_harness()
-    await _running_round(harness)
-    with pytest.raises(ConflictError, match="skipped"):
-        await harness.container.activity.start()
+    with pytest.raises(InvalidRequestError, match="known user_id"):
+        await harness.container.sessions.start(mode=SessionMode.REVIEW, user_id="zed")
+    with pytest.raises(InvalidRequestError, match="known user_id"):
+        await harness.container.sessions.start(mode=SessionMode.REVIEW)
+    assert harness.agora.started == [] and not harness.container.core.store.capturing
 
 
 GUARDA_CHUVA = "I forgot my guarda-chuva at the office."
-SESSION_THEN_ACTIVITY = ["session.state.changed", "activity.state.changed"]
 DEADLINE_SECONDS = 1.0  # a deadlock must fail the test, not hang the suite
 
 
@@ -142,53 +130,7 @@ async def test_stop_and_reset_wait_for_a_commit_in_flight_and_nothing_follows_th
     await asyncio.sleep(0)
     held.release.set()
     await asyncio.wait_for(asyncio.gather(turn, changing), DEADLINE_SECONDS)
-    last_event = {"stop": "session.state.changed", "reset": "activity.state.changed"}[operation]
-    assert observer.types()[-1] == last_event  # nothing from the turn arrives after it
+    assert observer.types()[-1] == "session.state.changed"  # nothing from the turn follows it
     assert observer.types().count("hint.created") == observer.types().count("hint.cleared")
     cards = harness.container.core.intelligence.words_for("ana")
     assert cards == [] if operation == "reset" else len(cards) == 1
-
-
-async def test_finish_cannot_bring_a_card_back_after_reset() -> None:
-    harness = make_harness()
-    await harness.container.sessions.start()
-    for text in (ADIAR, "Nice weather.", "Lovely day.", GUARDA_CHUVA):
-        await harness.say(text)
-    await harness.container.activity.start()
-    held, observer = HeldSender(), FakeSender()
-    harness.container.core.hub.register(HOME, held)
-    harness.container.core.hub.register(ANA, observer)
-    finishing = asyncio.create_task(harness.container.activity.finish(RoundResult.GUESSED))
-    await asyncio.wait_for(held.entered.wait(), DEADLINE_SECONDS)
-    resetting = asyncio.create_task(harness.container.demo_reset.run())
-    await asyncio.sleep(0)
-    held.release.set()
-    await asyncio.wait_for(asyncio.gather(finishing, resetting), DEADLINE_SECONDS)
-    assert harness.container.core.intelligence.words_for("ana") == []
-    assert observer.types()[-2:] == SESSION_THEN_ACTIVITY
-
-
-async def test_a_round_that_starts_while_a_turn_is_deciding_keeps_its_screen() -> None:
-    harness = make_harness(gated=True)
-    assert harness.gate is not None
-    await harness.container.sessions.start()
-    home = await harness.connect(HOME)
-    turn = asyncio.create_task(harness.say(ADIAR))
-    await asyncio.wait_for(harness.gate.entered.wait(), DEADLINE_SECONDS)
-    await asyncio.wait_for(harness.container.activity.start(), DEADLINE_SECONDS)
-    harness.gate.gate.set()
-    outcome = await asyncio.wait_for(turn, DEADLINE_SECONDS)
-    assert outcome.decision.decision is DecisionKind.IGNORE
-    assert "hint.created" not in home.types()
-
-
-async def test_activity_start_publishes_the_session_state_before_the_spoken_line() -> None:
-    harness = make_harness()
-    await harness.container.sessions.start()
-    home = await harness.connect(HOME)
-    harness.agora.speak_gate = asyncio.Event()
-    starting = asyncio.create_task(harness.container.activity.start())
-    await asyncio.sleep(0.01)
-    assert "session.state.changed" in home.types()[2:]  # visible while /speak is still pending
-    harness.agora.speak_gate.set()
-    await asyncio.wait_for(starting, DEADLINE_SECONDS)

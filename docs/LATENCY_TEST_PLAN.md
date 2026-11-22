@@ -40,7 +40,7 @@ Nothing here changes the Render service.
 | `MOCHI_PUBLIC_URL` | the tunnel URL (https, not onrender.com) | Agora calls this laptop |
 | `DATABASE_URL`, `MOCHI_LOCAL_DATA` | empty | **memory only**. Real mode refuses the local JSON file (`settings.py`), and the production database is never touched. Saved words are lost at exit. |
 | `MOCHI_TURN_KEY` | fresh random per run, never printed | Agora gets it in the start request |
-| `MOCHI_DEVICE_KEY` | `$MOCHI_TEST_DEVICE_KEY`, else `.local/test-device-key` (git-ignored, 0600, created once) | the Pi needs the same key to get the game's secret word |
+| `MOCHI_DEVICE_KEY` | `$MOCHI_TEST_DEVICE_KEY`, else `.local/test-device-key` (git-ignored, 0600, created once) | the Pi sends the same key on its status and voice routes (the game's secret word, the first reason, is gone: D-43) |
 | `MOCHI_ENABLE_DEV_ROUTES` | `true` | `scripts/say.sh` against the test backend |
 
 The log is kept in `.local/latency/<preset>-<UTC time>.log`. It has the `agent_started` line (the agent
@@ -155,8 +155,7 @@ Agora's `POST .../agents/<agent id>/speak`, only on the test agent you started:
 Mochi must also never go silent (a wrong voice id fails with no error).
 
 **STREAM**:
-- The round's secret word is never spoken during a game round. Start one with `let's play`, then ask
-  `Oi Mochi, what's the word?`.
+- (Removed with the game, D-43: the check that a round's secret word is never spoken.)
 - `[quiet]` and other bracket tags are never spoken.
 - With the flag off, the output is identical to PROD (the unit tests cover this; listen once anyway).
 

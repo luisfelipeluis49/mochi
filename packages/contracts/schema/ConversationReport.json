@@ -1,0 +1,288 @@
+{
+  "$defs": {
+    "Language": {
+      "description": "The two MVP languages.",
+      "enum": [
+        "en",
+        "pt-BR"
+      ],
+      "title": "Language",
+      "type": "string"
+    },
+    "Mistake": {
+      "additionalProperties": false,
+      "description": "A mistake a person made in a session: one real example, and how often its kind came up.\n\n`explanation` is one short sentence in the language the person is at home in.",
+      "properties": {
+        "better": {
+          "title": "Better",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Explanation"
+        },
+        "kind": {
+          "$ref": "#/$defs/MistakeKind"
+        },
+        "said": {
+          "title": "Said",
+          "type": "string"
+        },
+        "topic": {
+          "$ref": "#/$defs/MistakeTopic"
+        }
+      },
+      "required": [
+        "kind",
+        "topic",
+        "said",
+        "better",
+        "explanation",
+        "count"
+      ],
+      "title": "Mistake",
+      "type": "object"
+    },
+    "MistakeKind": {
+      "description": "What kind of mistake a sentence had (PROPOSAL, DECISIONS D-54).",
+      "enum": [
+        "grammar",
+        "word_choice",
+        "false_friend"
+      ],
+      "title": "MistakeKind",
+      "type": "string"
+    },
+    "MistakeTopic": {
+      "description": "The group a mistake belongs to, so the same mistake can be counted across sentences and\npeople. A fixed list: the screen writes the label in the reader's language.",
+      "enum": [
+        "verb_tense",
+        "verb_form",
+        "agreement",
+        "articles",
+        "prepositions",
+        "pronouns",
+        "plurals",
+        "word_order",
+        "word_choice",
+        "false_friend",
+        "other"
+      ],
+      "title": "MistakeTopic",
+      "type": "string"
+    },
+    "NeededWord": {
+      "additionalProperties": false,
+      "description": "A word the person needed in the session (from its word moments), and what they said.",
+      "properties": {
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "meaning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Meaning"
+        },
+        "said_instead": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Said Instead"
+        },
+        "times": {
+          "title": "Times",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expression",
+        "meaning",
+        "said_instead",
+        "times"
+      ],
+      "title": "NeededWord",
+      "type": "object"
+    },
+    "SessionMode": {
+      "description": "The two kinds of session (Papear, v0.7).\n\n`meeting`: people talk to each other at work; Mochi listens, shows a hint when someone is\nstuck and speaks only when asked. `review`: one person goes over their saved words with Mochi\non their phone.",
+      "enum": [
+        "meeting",
+        "review"
+      ],
+      "title": "SessionMode",
+      "type": "string"
+    },
+    "SpokenSentence": {
+      "additionalProperties": false,
+      "description": "One sentence a person said, in a report of their own. `better`: the sentence put right,\nNone when nothing was wrong with it; `topic`: the group its mistake belongs to.",
+      "properties": {
+        "at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+          "title": "At",
+          "type": "string"
+        },
+        "better": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Better"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "topic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MistakeTopic"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "utterance_id": {
+          "title": "Utterance Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "utterance_id",
+        "at",
+        "text"
+      ],
+      "title": "SpokenSentence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Payload of `conversation.report.created`: what Mochi noticed in ONE person's speech in\nONE session, written after it stopped. PROPOSAL (DECISIONS D-54).\n\nIt is that person's alone: their phone gets the event, and only they may read\n`GET /api/users/{id}/reports`. `my_sentences` holds what their registered voice said, never\nwhat others said. Nothing of it is shown during the meeting. `strengths` and `focus_next`\nare short lines in the language the person is at home in.",
+  "properties": {
+    "company_id": {
+      "title": "Company Id",
+      "type": "string"
+    },
+    "ended_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Ended At",
+      "type": "string"
+    },
+    "focus_next": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Focus Next",
+      "type": "array"
+    },
+    "mistakes": {
+      "items": {
+        "$ref": "#/$defs/Mistake"
+      },
+      "title": "Mistakes",
+      "type": "array"
+    },
+    "mode": {
+      "$ref": "#/$defs/SessionMode"
+    },
+    "my_sentences": {
+      "items": {
+        "$ref": "#/$defs/SpokenSentence"
+      },
+      "title": "My Sentences",
+      "type": "array"
+    },
+    "record_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Record Id"
+    },
+    "report_id": {
+      "title": "Report Id",
+      "type": "string"
+    },
+    "speaking_minutes": {
+      "title": "Speaking Minutes",
+      "type": "number"
+    },
+    "started_at": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T[\\d:]{8}\\.\\d{3}Z$",
+      "title": "Started At",
+      "type": "string"
+    },
+    "strengths": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Strengths",
+      "type": "array"
+    },
+    "target_language": {
+      "$ref": "#/$defs/Language"
+    },
+    "unknown_words": {
+      "items": {
+        "$ref": "#/$defs/NeededWord"
+      },
+      "title": "Unknown Words",
+      "type": "array"
+    },
+    "user_id": {
+      "title": "User Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_id",
+    "company_id",
+    "record_id",
+    "user_id",
+    "target_language",
+    "mode",
+    "started_at",
+    "ended_at",
+    "speaking_minutes",
+    "my_sentences",
+    "mistakes",
+    "unknown_words",
+    "strengths",
+    "focus_next"
+  ],
+  "title": "ConversationReport",
+  "type": "object"
+}

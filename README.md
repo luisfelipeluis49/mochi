@@ -1,9 +1,12 @@
-# Mochi
+# Papear (Mochi)
 
-Mochi is a small physical companion that helps **two people practice a language with each other**
-(English and Brazilian Portuguese). It listens during a session they start, shows a one-word hint
-when one of them gets stuck, hosts a short two-player game, and remembers the words each person
-needed. Product and contracts: [`AGENTS.md`](AGENTS.md). This repository holds the **backend**,
+Papear is language learning for companies, in their own meetings (English and Brazilian
+Portuguese). **Mochi**, a small device on the meeting table or a phone with the app, listens during
+a meeting people start, tells registered voices apart, shows a one-word hint when someone is stuck,
+and remembers the words each person needed. Later each person goes over their words with Mochi in a
+**review** on their phone, and the company's administrators see how the team is doing in a **team
+view**. Product and contracts: [`AGENTS.md`](AGENTS.md); the company data model and its API:
+[`docs/TEAM_VIEW.md`](docs/TEAM_VIEW.md). This repository holds the **backend**,
 the shared contracts and the scripts, the web app (`apps/web`: Home, Mobile and Audience views),
 the Mochi AR glasses app (`apps/glasses`, outside the hackathon MVP) and the Pi bridge
 (`hardware/`); each app has its own README and owner.
@@ -14,8 +17,9 @@ flowchart LR
   Pi -- audio --> Agora[Agora agent: STT + TTS]
   Agora -- "HTTPS: one turn" --> GW
   subgraph Backend [Backend: one process]
-    GW[gateway] --> INT[intelligence: decide / handle / apply / words_for]
+    GW[gateway] --> INT[intelligence: decide / apply / words_for]
     INT --> GW
+    GW --> TEAM[team: session records, word moments, team view]
   end
   GW -- WebSocket events --> Home[Home view]
   GW -- WebSocket events --> Mobile[Mobile views]
@@ -33,7 +37,9 @@ scripts/smoke.sh                          # in another terminal: PASS/FAIL per d
 
 Try it by hand: `curl -X POST localhost:8000/api/sessions/demo/start`, then
 `scripts/say.sh "I need to adiar my meeting tomorrow"`, and watch events with
-`uv run --project services/backend python scripts/watch_ws.py --as user=ana`.
+`uv run --project services/backend python scripts/watch_ws.py --as user=ana`. A review:
+`curl -X POST localhost:8000/api/sessions/p-1/start -H 'content-type: application/json' -d '{"mode":"review","user_id":"ana"}'`.
+The team view: `curl 'localhost:8000/api/companies/demo/insights?viewer=ana'`.
 
 ## Dependencies and versions
 
@@ -80,6 +86,13 @@ when run from source.
 | `MOCHI_AGENT_IDLE_TIMEOUT_SECONDS` | 60 | Agora `idle_timeout`: the agent exits this long after the Pi leaves (0 = never; hard cap 72 h) |
 | `MOCHI_HINT_TTL_SECONDS`, `MOCHI_DECIDE_TIMEOUT_SECONDS` | 8, 2 | hint lifetime; `decide()` time limit |
 | `MOCHI_SPEAK_BASE_SECONDS`, `MOCHI_SPEAK_SECONDS_PER_WORD` | 0.6, 0.45 | speaking window for `mute_speaker` |
+| `MOCHI_TEAM_MIN_PEOPLE` | 1 | the team view leaves out an expression fewer people than this needed (D-45); use 2 or 3 for a real company |
+| `MOCHI_LIVE_TRANSCRIPT` | true | every finished sentence goes to the screens of its session (`transcript.line`) and to the device as a caption (D-51). There is no sign-in: set false where the meeting must not be readable by anyone who opens the page |
+| `MOCHI_EXPLAIN_TERMS` | true | idioms and technical terms are explained to the people listening (D-53); one more small model call per sentence; needs `MODEL_API_KEY` |
+| `MOCHI_SPEECH_REPORTS` | true | after Stop each person gets a private report of what was wrong in what they said (D-54); one model call per person and session; needs `MODEL_API_KEY` |
+| `MOCHI_REPORT_MODEL_NAME` | (empty) | the model that writes the reports; empty: `MOCHI_MODEL_NAME` |
+| `MOCHI_REPORT_REASONING_EFFORT` | (empty) | empty: `low` where `MOCHI_MODEL_REASONING_EFFORT` is set, else none |
+| `MOCHI_REPORT_TIMEOUT_SECONDS` | 60 | how long one report may take to write |
 | `MOCHI_CORS_ORIGINS`, `MOCHI_LOG_LEVEL`, `PORT` | `*`, `INFO`, 8000 | server |
 
 ## Docker
@@ -90,7 +103,7 @@ docker run --rm -p 8000:8000 -e MOCHI_AGORA_MODE=fake -e MOCHI_ENABLE_DEV_ROUTES
 ```
 
 `scripts/deploy.sh` does the build, runs the container with `.env`, and checks `/readyz`. The build context
-is the repo root. The image runs **one worker** (the session is in memory; saved words, users and voices are in Postgres when `DATABASE_URL` is set).
+is the repo root. The image runs **one worker** (the session is in memory; saved words, users, voices and the company's history are in Postgres when `DATABASE_URL` is set).
 
 ## Render
 
@@ -119,7 +132,7 @@ Real turn and Portuguese: `docs/REAL_TURN_RUNBOOK.md` (browser test client: `scr
 | 1 | Empty reply keeps the agent silent | **Unverified.** Not in Agora's docs. Fallback built: `MOCHI_SILENCE_STRATEGY=mute_speaker` | Start; say an ordinary sentence; Mochi must make no sound. If it does, switch the strategy |
 | 2 | `adiar` / `guarda-chuva` survive speech-to-text | **Unverified.** `asr.language` is one tag; no documented code-switching | Say both demo sentences; read the `turn` log lines for the transcribed text |
 | 3 | Audio both ways on the Pi without hearing itself | **Unverified** (Matheus) | Say `Oi Mochi, what's the word for fila?`; Mochi answers; confirm the answer is not logged as a new `turn` |
-| 4 | Tap anywhere registers in the kiosk browser | **Unverified** (Tasnim/Matheus) | Start a round; tap 20 times; each tap must register |
+| 4 | Each sentence is stored with the person who said it | **Measured offline only** (D-46: 95 in 100 right, none wrong, on recorded voices) | Two registered voices take turns; read `GET /dev/sessions/demo/transcript` |
 
 Verified against real Agora on 2026-11-20: it accepts the `006` tokens this builder produces, with the token
 built for the agent uid (`join` returned an agent). Whether the Pi's IoT SDK accepts a `006` token is still open.

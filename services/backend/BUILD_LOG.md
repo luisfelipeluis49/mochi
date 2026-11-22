@@ -35,3 +35,9 @@ Append one entry per checkpoint: what works and how to see it.
   atomic WebSocket connect, no `/join` retries, full OpenAI chunk shape, whole-word cue matching, a wake phrase
   needs an ask, false friends need a model, accent folding. 72 fixtures. See it: `make -C services/backend verify`.
 
+## 2026-11-21: Papear (DECISIONS D-43 to D-45)
+- Removed with the game: `handle()` and `intelligence/round_engine.py`, the activity endpoints and
+  service, the secret-word guards, the `round` device command. Lines above that name them are history.
+- Added: session modes `meeting` and `review`, the recognised speaker on each turn, a roster beyond
+  the two demo people, and the `team` package (session records, word moments, the team view) with
+  its tables and the company routes. See `docs/TEAM_VIEW.md`.

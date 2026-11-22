@@ -78,3 +78,49 @@ class PhraseMatcherTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StartPhrasesTest(unittest.TestCase):
+    """ "vamos papear" / "let's chat": a phrase is found by its own last word, not only by the name.
+    Phone strings are what the recogniser wrote for spoken test clips (2026-11-22)."""
+
+    def setUp(self):
+        self.m = PhraseMatcher({"wake": ["vamos papear", "let's chat", "let's papear"],
+                                "goodbye": ["tchau mochi", "bye mochi", "goodbye mochi"]}, ignore=["mochila"])
+
+    def hit(self, phones, **kw):
+        found = self.m.match(phones, **kw)
+        return (found.group, found.phrase) if found else None
+
+    def test_vamos_papear_as_it_is_really_heard(self):
+        for heard in ("vamuspapea", "vamospapja", "vamospapeaɾ", "voʊmuspɑpjəɛ", "vomuʃpapjɛa",   # vamos papear
+                      "vamupapea", "vomupɑpja", "zoʊmupɑpjɛ",                                      # vamo papear; a lost v
+                      "bondʒivomuspapje", "bondiwvomospapɛa"):                                    # after "bom dia,"
+            self.assertEqual(self.hit(heard), ("wake", "vamos papear"), heard)
+
+    def test_lets_chat_and_lets_papear(self):
+        for heard in ("lɛtstʃæt", "lɛtstʃɑt", "oʊkeɪlɛtstʃæt", "əkeɪlɛtstʃæt"):
+            self.assertEqual(self.hit(heard), ("wake", "let s chat"), heard)
+        self.assertEqual(self.hit("lɛtspapiaɹ"), ("wake", "let s papear"))
+
+    def test_other_things_people_say_do_not_start_a_session(self):
+        for heard in ("vamospasjaɾamaja", "vamosparaporaki", "vamospagaɾakoanta",   # passear, parar, pagar
+                      "vamosprepararoɾelatɔrio", "upapɛwistanamɛzɐ",                 # preparar; o papel
+                      "eogostodɛpapiakomɛlɐ", "aʒentʃifikowpapendateatadʒi",        # papear without "vamos"
+                      "lɛtstʃɛkðənʌmbəz", "lɛtskætʃʌptumɑɹoʊ",                       # let's check, let's catch up
+                      "wihædənaɪstʃætjɛstədeɪ",                                      # a chat, without "let's"
+                      "ojmɔtɕi", "haɪmoʊtʃi"):                                       # the greetings no longer wake
+            self.assertIsNone(self.hit(heard), heard)
+
+    def test_a_look_alike_of_lets_chat_can_still_start_one(self):
+        """Known and accepted for now: "chat" is four sounds, and "let's shut the door" is written
+        with the same ones. "vamos papear" has no such neighbour on the test clips."""
+        self.assertEqual(self.hit("lɛtsʃʌtðədɔɹ"), ("wake", "let s chat"))
+
+    def test_goodbye_is_still_by_name(self):
+        self.assertEqual(self.hit("tʃawmotʃi"), ("goodbye", "tchau mochi"))
+        self.assertEqual(self.hit("baɪmoʊtʃi"), ("goodbye", "bye mochi"))
+
+    def test_the_language_follows_the_phrase(self):
+        self.assertEqual(self.m.match("vamuspapea").phrase.split()[0], "vamos")   # Portuguese greeting
+        self.assertEqual(self.m.match("lɛtstʃæt").phrase.split()[0], "let")       # English greeting

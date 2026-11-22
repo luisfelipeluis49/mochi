@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field, StringConstraints
 from mochi_backend.gateway.device_link import require_device
 from mochi_backend.gateway.device_service import DeviceState
 from mochi_backend.gateway.routes.dependencies import ContainerDep
-from mochi_contracts import Language
+from mochi_contracts import HeardPhrase, Language
 
 router = APIRouter()
 NAME_LIMIT = 40
 VOICES_LIMIT = 8
+HEARD_LIMIT = 60  # a second of reports holds two or three; this only stops runaway bodies
 NAME_PATTERN = r"^[ '\-]*\p{L}[\p{L} '\-]*$"  # at least one letter
 PersonName = Annotated[str, StringConstraints(pattern=NAME_PATTERN, max_length=NAME_LIMIT)]
 BoundedText = Annotated[str, StringConstraints(max_length=NAME_LIMIT)]
@@ -52,6 +53,8 @@ class DeviceReport(BaseModel):
     temperature: float | None = None  # the processor's, degrees Celsius
     voices: list[BoundedText] = Field(default=[], max_length=VOICES_LIMIT)  # whose voices it knows
     speaker: BoundedText | None = None  # whose voice it hears now, when it recognises it
+    # The stretches of speech heard since the last report, each with who said it (D-46).
+    heard: list[HeardPhrase] = Field(default=[], max_length=HEARD_LIMIT)
 
 
 class VoiceResult(BaseModel):
@@ -63,24 +66,24 @@ class VoiceResult(BaseModel):
 
 
 @router.get("/api/devices/{device_id}/state")
-async def device_state(
-    device_id: str, container: ContainerDep, authorization: Annotated[str | None, Header()] = None
-) -> DeviceState:
+async def device_state(device_id: str, container: ContainerDep) -> DeviceState:
     """Example: `/api/devices/home_pi_01/state` -> `{capturing, agora, speaker_muted}`.
 
-    Open to anyone, as in AGENTS 6.4. With the device key, a round also carries its secret word.
+    Open to anyone, as in AGENTS 6.4 (a device key sent along is ignored).
     """
-    return container.devices.state(device_id, has_device_key(container, authorization))
+    return container.devices.state(device_id)
 
 
 @router.post("/api/devices/{device_id}/status", status_code=204, dependencies=[DeviceKey])
 async def device_status(device_id: str, body: DeviceReport, container: ContainerDep) -> None:
     """The device says how loud it is, how warm, whose voices it knows and who is talking.
 
-    Example: `{"volume": 80, "temperature": 52.4, "voices": ["Ana"], "speaker": "Ana"}`.
+    Example: `{"volume": 80, "temperature": 52.4, "voices": ["Ana"], "speaker": "Ana",
+    "heard": [{"speaker": "Ana", "seconds": 2.4, "ago_ms": 380}]}`.
     """
     require_device(device_id)
     container.device_link.report(body.volume, body.temperature, body.voices, body.speaker)
+    container.device_link.heard(body.heard)
 
 
 @router.post("/api/devices/{device_id}/voices", status_code=204, dependencies=[DeviceKey])

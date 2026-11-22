@@ -1,10 +1,12 @@
-"""Decides whether a string of recognised speech sounds is someone greeting (or leaving) Mochi.
+"""Decides whether a string of recognised speech sounds is someone starting a session ("vamos
+papear", "let's chat") or leaving Mochi ("tchau Mochi").
 
-The recogniser (see wakeword.py) writes what it hears as phones, not words, so "hi Mochi" arrives as
-something like "haɪmoʊtʃi" and "oi Mochi" as "ojmɔtɕi" whichever language was spoken. Here both the
-heard phones and the configured phrases are folded onto a small alphabet (fold), and a phrase counts
-as heard when the name is found (weighted edit distance, so "muɕi" and "mwɔtʃi" still count) with
-its cue word right in front of it.
+The recogniser (see wakeword.py) writes what it hears as phones, not words, so "vamos papear" arrives
+as something like "vamuspapia" and "tchau Mochi" as "tSaumɔtɕi" whichever language was spoken. Here
+both the heard phones and the configured phrases are folded onto a small alphabet (fold), and a
+phrase counts as heard when its last word, the anchor, is found (weighted edit distance, so "papea"
+and "papier" still count) with its cue words right in front of it. A phrase that has the name
+("mochi") in it is anchored on the name, wherever it stands; any other on its last word.
 
 Folded alphabet: vowels a e i o u ə   consonants b d f g h k l m n p r s t v z, S (sh), Z (zh),
 T / D (th).
@@ -44,6 +46,15 @@ SOUNDS = {
     "e": ["i"], "ai": ["ai"], "bom": ["bo"], "dia": ["dZia"],
     "bye": ["bai"], "goodbye": ["gudbai"], "adeus": ["adeus"], "ate": ["ate"], "logo": ["logu"],
     "tchau": ["tSau", "tSiau", "tSia"],  # "tchau mochi" runs together as "tSianmotSi"
+    # "vamos papear" / "let's chat" (2026-11-22), as the recogniser wrote 450 spoken clips: "vamos"
+    # loses its s ("vamo papear"); the final r of "papear" is rarely
+    # there, its e is as often an i, and its second p is now and then a t. The first sound of an
+    # utterance is the least reliable one: the v of "vamos" came back as b, d, z, l or not at all,
+    # and its a as o, so the cue is also accepted from its vowel on.
+    "papear": ["papia", "papea", "papiar", "papie", "patea", "patia"],
+    "vamos": ["vamus", "vamos", "vamu", "vomus", "vomos", "vomu", "amus", "omus", "amu", "omu", "bons"],
+    "vamo": ["vamu", "vomu", "amu", "omu"],
+    "let": ["let", "lit", "lət", "lat"], "chat": ["tSat", "tSet"],
 }
 
 _SIMILAR = {  # substitutions that cost less than a full mismatch
@@ -99,9 +110,10 @@ class PhraseMatcher:
     def __init__(self, groups: dict[str, list[str]], name: str = "mochi", sounds: dict[str, list[str]] | None = None,
                  name_tolerance: float = 0.45, cue_tolerance: float = 0.3, ignore: list[str] | None = None,
                  careful: tuple[str, ...] = ("goodbye",), costs: Costs | None = None):
-        """groups: {"wake": ["oi mochi", ...], "goodbye": ["tchau mochi", ...]}; every phrase ends in the name.
+        """groups: {"wake": ["vamos papear", "let's chat"], "goodbye": ["tchau mochi", ...]}. A phrase
+        is its anchor (the name when the phrase has it, else its last word) and the cue words before it.
 
-        name_tolerance: how loosely the name may be said (edit cost; 0 = exactly as in SOUNDS).
+        name_tolerance: how loosely an anchor may be said (edit cost; 0 = exactly as in SOUNDS).
         cue_tolerance: how loosely the word before it may be said (edit cost per phone of that word).
         ignore: words that start with the name's sounds but are not it ("mochila").
         careful: groups never matched generously. A false goodbye would cut a conversation short,
@@ -110,25 +122,29 @@ class PhraseMatcher:
         self.c = costs or Costs()
         self.sounds = {**SOUNDS, **{plain(k)[0]: v for k, v in (sounds or {}).items()}}
         self.name = plain(name)[0]
-        self.name_prons = self._prons(self.name)
         self.name_tolerance, self.cue_tolerance = name_tolerance, cue_tolerance
         self.careful = set(careful)
-        # what comes right after the name's sounds inside each ignored word: "mochila" -> "l"
-        self.ignore_next = set()
-        for word in ignore or []:
-            for pron in self._prons(plain(word)[0]):
-                for npron in self.name_prons:
-                    cost, _s, end = min(self._find(npron, pron), default=(9, 0, 0))
-                    if cost <= name_tolerance and end < len(pron):
-                        self.ignore_next.add(pron[end])
-        self.cues: list[tuple[str, str, str]] = []  # (group, phrase, folded cue)
+        self.anchors: dict[str, list[str]] = {}  # anchor word -> how it sounds
+        self.cues: list[tuple[str, str, str, str]] = []  # (group, phrase, folded cue, anchor)
         for group, phrases in groups.items():
             for phrase in phrases:
-                words = [w for w in plain(phrase) if w != self.name]
+                said = plain(phrase)
+                anchor = self.name if self.name in said else (said[-1] if said else "")
+                words = [w for w in said if w != anchor]
                 if not words:
                     continue
+                self.anchors.setdefault(anchor, self._prons(anchor))
                 for pron in self._phrase_prons(words):
-                    self.cues.append((group, " ".join(words + [self.name]), pron))
+                    self.cues.append((group, " ".join(words + [anchor]), pron, anchor))
+        self.name_prons = self.anchors.get(self.name) or self._prons(self.name)
+        # what comes right after an anchor's sounds inside each ignored word: "mochila" -> "l"
+        self.ignore_next: dict[str, set[str]] = {anchor: set() for anchor in self.anchors}
+        for word in ignore or []:
+            for pron in self._prons(plain(word)[0]):
+                for anchor, apron in ((a, ap) for a, prons in self.anchors.items() for ap in prons):
+                    cost, _s, end = min(self._find(apron, pron), default=(9, 0, 0))
+                    if cost <= name_tolerance and end < len(pron):
+                        self.ignore_next[anchor].add(pron[end])
 
     def _prons(self, word: str) -> list[str]:
         return self.sounds.get(word) or [_guess(word)]
@@ -231,34 +247,43 @@ class PhraseMatcher:
         """
         heard = fold(phones)
         best: Hit | None = None
+        for anchor, prons in self.anchors.items():
+            for pron in prons:
+                best = self._match_anchor(anchor, pron, heard, final, from_start, best)
+        return best
+
+    def _match_anchor(self, anchor: str, pron: str, heard: str, final: bool, from_start: bool,
+                      best: Hit | None) -> Hit | None:
+        """The best hit so far, or a better one for this way of saying this anchor."""
         loose = self.name_tolerance + 0.15
-        for pron in self.name_prons:
-            found = self._find(pron, heard)
-            if final and pron[-1] in VOWELS:
-                found += [(c + self.c.drop_last_vowel, s, e) for c, s, e in self._find(pron[:-1], heard)
-                          if e == len(heard)]
-            for cost, s, e in found:
-                after = len(heard) - e
-                # while the speaker is still talking the newest phones are unsettled: wait for three
-                # more before deciding, so "a mochi-" can still turn out to be "a mochila"
-                if cost > loose or e - s < 3 or (not final and after < 3):
+        found = self._find(pron, heard)
+        if final and pron[-1] in VOWELS:
+            found += [(c + self.c.drop_last_vowel, s, e) for c, s, e in self._find(pron[:-1], heard)
+                      if e == len(heard)]
+        for cost, s, e in found:
+            after = len(heard) - e
+            # while the speaker is still talking the newest phones are unsettled: wait for three
+            # more before deciding, so "a mochi-" can still turn out to be "a mochila"
+            if cost > loose or e - s < 3 or (not final and after < 3):
+                continue
+            if self.ignore_next[anchor] & set(heard[e:e + 2]):
+                continue
+            is_last = final and after <= 1
+            for group, phrase, cue, its_anchor in self.cues:
+                if its_anchor != anchor:
                     continue
-                if self.ignore_next & set(heard[e:e + 2]):
+                got = self._cue(cue, heard[max(0, s - len(cue) - 2):s])
+                if got is None:
                     continue
-                is_last = final and after <= 1
-                for group, phrase, cue in self.cues:
-                    got = self._cue(cue, heard[max(0, s - len(cue) - 2):s])
-                    if got is None:
-                        continue
-                    cc, cue_cost, used = got
-                    if group in self.careful:  # at most one dropped or swapped vowel in the cue
-                        ok = cue_cost <= self.c.drop_vowel and (is_last or cost <= self.name_tolerance)
-                    elif is_last:
-                        ok = cc <= self.cue_tolerance
-                    elif from_start and s - used <= 1:
-                        ok = cc <= self.cue_tolerance and cost <= self.name_tolerance
-                    else:  # mid-sentence: at most one small slip in the cue
-                        ok = cue_cost <= self.cue_tolerance and cost <= self.name_tolerance
-                    if ok and (best is None or cost + cc < best.score):
-                        best = Hit(group, phrase, round(cost + cc, 3), heard[s - used:e])
+                cc, cue_cost, used = got
+                if group in self.careful:  # at most one dropped or swapped vowel in the cue
+                    ok = cue_cost <= self.c.drop_vowel and (is_last or cost <= self.name_tolerance)
+                elif is_last:
+                    ok = cc <= self.cue_tolerance
+                elif from_start and s - used <= 1:
+                    ok = cc <= self.cue_tolerance and cost <= self.name_tolerance
+                else:  # mid-sentence: at most one small slip in the cue
+                    ok = cue_cost <= self.cue_tolerance and cost <= self.name_tolerance
+                if ok and (best is None or cost + cc < best.score):
+                    best = Hit(group, phrase, round(cost + cc, 3), heard[s - used:e])
         return best

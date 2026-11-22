@@ -442,7 +442,7 @@ dev = [
 
 [[package]]
 name = "mochi-contracts"
-version = "0.4.0"
+version = "0.7.0"
 source = { editable = "../../packages/contracts" }
 dependencies = [
     { name = "pydantic" },

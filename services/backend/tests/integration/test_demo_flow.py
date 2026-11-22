@@ -1,7 +1,8 @@
-"""The two-minute demo (AGENTS section 2, scripted per INTELLIGENCE_PLAN 4), real app.
+"""The demo (AGENTS section 2), real app: a meeting, then a review, then the team view.
 
-Turns and the game go over HTTP (`/dev/sessions/demo/turn`, the activity endpoints); the screens are
-fake WebSocket clients on the real hub. No model key: rules only, default `two_turns` cooldown.
+Turns go over HTTP (`/dev/sessions/{id}/turn`), and so do the review and the team view; the
+screens are fake WebSocket clients on the real hub. No model key: rules only, default
+`two_turns` cooldown.
 """
 
 from collections.abc import AsyncIterator
@@ -10,17 +11,9 @@ import httpx
 import pytest
 
 from mochi_backend.app import create_app
-from mochi_contracts import (
-    Activity,
-    DecisionKind,
-    GameState,
-    Hint,
-    LearningEvent,
-    LearningState,
-    PrivatePrompt,
-)
+from mochi_contracts import DecisionKind, Hint, LearningEvent, LearningState
 from tests.fakes.fake_sender import FakeSender
-from tests.harness import ANA, AUDIENCE, BEN, HOME, Harness, make_harness
+from tests.harness import ANA, BEN, Harness, make_harness
 
 ADIAR = "I need to adiar my meeting tomorrow."
 GUARDA_CHUVA = "I forgot my guarda-chuva at the office."
@@ -50,11 +43,11 @@ def _payloads(sender: FakeSender, kind: str) -> list[object]:
     return [e.payload for e in sender.events if e.type.value == kind]
 
 
-async def test_scripted_demo_from_hint_to_recalled_in_a_game(
+async def test_scripted_demo_from_hint_to_recalled_in_a_review(
     demo: tuple[httpx.AsyncClient, Harness],
 ) -> None:
     client, harness = demo
-    ana, ben, home, audience = await harness.connect_all(ANA, BEN, HOME, AUDIENCE)
+    ana, ben = await harness.connect_all(ANA, BEN)
 
     assert (await _say(client, harness, ADIAR))[0] is DecisionKind.SHOW_HINT
     assert (await _say(client, harness, "Oh, why? What's going on?"))[0] is DecisionKind.IGNORE
@@ -72,36 +65,48 @@ async def test_scripted_demo_from_hint_to_recalled_in_a_game(
     brain = harness.container.core.intelligence
     postpone = next(w for w in brain.words_for("ana") if w.expression == "postpone")
     assert postpone.learning_state is LearningState.ASSISTED
+    assert (await client.post("/api/sessions/demo/stop")).status_code == 200
 
-    cut = len(audience.texts)
-    assert (await client.post("/api/sessions/demo/activity/start")).status_code == 200
-    prompts = [
-        p for p in _payloads(home, "activity.private_prompt") if isinstance(p, PrivatePrompt)
-    ]
-    assert [p.secret_word for p in prompts] == ["umbrella"]
-    # umbrella is also a stock word, so a saved-word link proves the word came from Ana's card.
-    assert prompts[0].source_learning_event_id is not None
-    _assert_secret_hidden_while_active(audience, ana, ben, home, cut)
-
-    done = await client.post("/api/sessions/demo/activity/result", json={"result": "guessed"})
-    assert done.status_code == 200
-    assert done.json()["revealed_word"] == "umbrella"
+    await _review_brings_umbrella_back(client, harness)
     _assert_umbrella_reinforced(brain.words_for("ana"), brain.words_for("ben"))
+    await _assert_the_company_sees_numbers_only(client)
 
 
-def _assert_secret_hidden_while_active(
-    audience: FakeSender, ana: FakeSender, ben: FakeSender, home: FakeSender, cut: int
-) -> None:
-    for watcher in (audience, ana, ben):
-        assert "activity.private_prompt" not in watcher.types()
-    for watcher in (audience, ana, ben, home):
-        for event in watcher.events:
-            if event.type.value != "activity.state.changed":
-                continue
-            assert isinstance(event.payload, Activity)
-            if event.payload.state is GameState.ACTIVE_ROUND:
-                assert event.payload.revealed_word is None
-    assert all("umbrella" not in text for text in audience.texts[cut:])
+async def _review_brings_umbrella_back(client: httpx.AsyncClient, harness: Harness) -> None:
+    """Later, on her phone: Ana's own session, in review mode."""
+    review = {"mode": "review", "user_id": "ana"}
+    started = await client.post("/api/sessions/p-ana/start", json=review)
+    assert started.status_code == 200
+    assert (started.json()["mode"], started.json()["participants"]) == ("review", ["ana"])
+    harness.clock.advance(60)
+    said = await client.post(
+        "/dev/sessions/p-ana/turn", json={"text": "I left my umbrella at the office."}
+    )
+    assert said.status_code == 200
+    assert (await client.post("/api/sessions/p-ana/stop")).status_code == 200
+
+
+async def _assert_the_company_sees_numbers_only(client: httpx.AsyncClient) -> None:
+    refused = await client.get("/api/companies/demo/insights", params={"viewer": "ben"})
+    assert refused.status_code == 403  # Ben is a member, not an administrator
+    reply = await client.get("/api/companies/demo/insights", params={"viewer": "ana"})
+    assert reply.status_code == 200
+    view = reply.json()
+    assert (view["totals"]["meetings"], view["totals"]["reviews"]) == (1, 1)
+    assert [(g["expression"], g["people"], g["times"]) for g in view["shared_gaps"]] == [
+        ("postpone", 1, 1),
+        ("umbrella", 1, 1),
+    ]
+    assert view["funnel"] == {
+        "discovered": 2,
+        "assisted": 2,
+        "reinforced": 1,
+        "used_independently": 0,
+    }
+    assert "adiar my meeting" not in reply.text  # no sentence leaves a person's own page
+    mine = await client.get("/api/users/ana/moments", params={"viewer": "ana"})
+    assert [m["heard"] for m in mine.json()] == [GUARDA_CHUVA, ADIAR]
+    assert (await client.get("/api/users/ana/moments", params={"viewer": "ben"})).status_code == 403
 
 
 def _assert_umbrella_reinforced(

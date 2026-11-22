@@ -11,7 +11,6 @@ from mochi_backend.intelligence.character_port import CharacterModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import load_settings
-from mochi_contracts import GameState
 from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
@@ -126,23 +125,6 @@ def test_quiet_mid_stream_says_only_what_came_before() -> None:
     model = FakeStreamingCharacterModel("Oh, hello", " there. [qu", "iet] and more.")
     _, client = _client(ON, model)
     assert parse_stream(_turn(client, CHAT))[0] == "Oh, hello there."
-
-
-def test_play_is_said_whole_after_the_round_has_started() -> None:
-    model = FakeStreamingCharacterModel("[mood excited]", "[play]", " Yay,", " let's play!")
-    harness, client = _client(ON, model)
-    raw = _turn(client, "Hi Mochi, let's play a game.")
-    assert _contents(raw) == ["Yay, let's play! Ben describes. Ana guesses!"]
-    assert harness.container.core.store.activity.state is GameState.ACTIVE_ROUND
-
-
-def test_during_a_round_the_line_is_buffered_so_the_secret_is_screened() -> None:
-    model = FakeStreamingCharacterModel(*PIECES)
-    harness, client = _client(ON, model)
-    assert client.post("/api/sessions/demo/activity/start").status_code == 200
-    assert harness.container.core.store.activity.state is GameState.ACTIVE_ROUND
-    _turn(client, CHAT)
-    assert model.streamed == 0 and model.replied == 1
 
 
 def test_with_the_mute_speaker_strategy_the_flag_does_nothing() -> None:

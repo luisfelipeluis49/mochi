@@ -5,14 +5,15 @@ from dataclasses import dataclass
 
 from starlette.requests import HTTPConnection
 
-from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.connections import ConnectionService
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
 from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
+from mochi_backend.gateway.roster import Roster
 from mochi_backend.gateway.session_registry import SessionRegistry
 from mochi_backend.gateway.session_service import SessionService
+from mochi_backend.gateway.team_service import TeamService
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
 from mochi_backend.gateway.voice_directory import VoiceDirectory
 from mochi_backend.settings import Settings
@@ -26,7 +27,6 @@ class AppContainer:
     core: GatewayCore
     pipeline: TurnPipeline
     sessions: SessionService
-    activity: ActivityService
     devices: DeviceService
     device_link: DeviceLink
     connections: ConnectionService
@@ -34,6 +34,8 @@ class AppContainer:
     voices: VoiceDirectory
     intelligence_name: str
     registry: SessionRegistry
+    roster: Roster
+    team_service: TeamService
     storage_name: str = "memory"
     storage_unsaved: Callable[[], int] = lambda: 0  # noqa: E731 - a default, not a name to reuse
 

@@ -1,32 +1,38 @@
-"""The intelligence object the gateway uses through its port: decide, handle, apply, words_for."""
+"""The intelligence object the gateway uses through its port: decide, apply, words_for."""
 
 import asyncio
 
+from mochi_backend.intelligence import speech_report
 from mochi_backend.intelligence.character_port import (
     CharacterModel,
     DeviceStatus,
     NullCharacterModel,
 )
+from mochi_backend.intelligence.coach_port import CoachModel, NullCoachModel
 from mochi_backend.intelligence.decision_flow import DecisionFlow, Minds
+from mochi_backend.intelligence.explain_port import ExplainModel, NullExplainModel
+from mochi_backend.intelligence.explaining import Explainer
 from mochi_backend.intelligence.hint_builder import HintFactory
+from mochi_backend.intelligence.learning_rules import used_alone
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
 from mochi_backend.intelligence.mochi_talk import MochiTalk
 from mochi_backend.intelligence.model_port import HintModel
-from mochi_backend.intelligence.round_engine import RoundEngine
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.warm_start import WarmsUp
-from mochi_backend.platform.clock import Clock
+from mochi_backend.platform.clock import Clock, iso_z, parse_iso_z
 from mochi_backend.platform.ids import IdGenerator
 from mochi_backend.platform.text_sink import TextSink
 from mochi_contracts import (
-    ActivityCommand,
-    ActivityResult,
+    ConversationReport,
     Decision,
     Language,
     LearningEvent,
+    Participant,
     SessionContext,
+    TranscriptMark,
     Turn,
+    Utterance,
 )
 
 
@@ -47,9 +53,11 @@ class Intelligence:
         self._parts = (clock, ids, model, book, tuning)
         factory = HintFactory(clock, ids, tuning.hint_ttl_seconds)
         self._memory = MemoryStore()
-        self._thinkers: list[HintModel | CharacterModel] = [model]
+        self._thinkers: list[HintModel | CharacterModel | ExplainModel] = [model]
+        self._explains: ExplainModel = NullExplainModel()
+        self._explainer = Explainer(self._explains, book, clock, tuning)
+        self._coach: CoachModel = NullCoachModel()
         self._warming: set[asyncio.Task[None]] = set()  # kept, or a running task may be collected
-        self._rounds = RoundEngine(clock, ids, book)
         self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
         self._flow = DecisionFlow(
             clock=clock,
@@ -60,7 +68,7 @@ class Intelligence:
         )
 
     def another_conversation(self) -> "Intelligence":
-        """A fresh conversation (own Mochi talk, rounds and device status) over the same words.
+        """A fresh conversation (own Mochi talk and device status) over the same words.
 
         Each session has one, so a phone's chat never changes the Pi's; the saved words are the
         one thing they share. Example: `brain.another_conversation().words_for("ana")` is the same
@@ -70,6 +78,8 @@ class Intelligence:
         other = Intelligence(clock=clock, ids=ids, model=model, lexicon=book, settings=tuning)
         other._memory = self._memory  # noqa: SLF001 - the same class sharing its saved words
         other._talk.use(self._talk.character)  # noqa: SLF001
+        other.explain_with(self._explains)
+        other.coach_with(self._coach)
         return other
 
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
@@ -84,10 +94,6 @@ class Intelligence:
         The Decision is the same as `decide` would return. Example: `decide_streaming(t, c, s)`.
         """
         return await self._flow.run(turn, context, sink)
-
-    def handle(self, command: ActivityCommand, context: SessionContext) -> ActivityResult:
-        """Start a round or record its result. Raises ValueError when the command cannot apply."""
-        return self._rounds.handle(command, context)
 
     def apply(self, proposals: list[LearningEvent]) -> list[LearningEvent]:
         """Create or update learning events; returns the stored records."""
@@ -110,17 +116,71 @@ class Intelligence:
         Example: `brain.speak_as(OpenAiCharacterModel(http, url, "gpt-4.1-mini", key, 6.0))`.
         """
         self._talk.use(character)
-        self._thinkers = [self._thinkers[0], character]
+        self._thinkers = [self._thinkers[0], character, self._explains]
 
-    def session_started(self, woken: bool, language: Language | None = None) -> None:
-        """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
-        to it, so the next sentence is for it. Otherwise Mochi waits for its name.
+    def explain_with(self, model: ExplainModel) -> None:
+        """Give Mochi the model that explains idioms and technical terms (without one, none are).
+
+        Example: `brain.explain_with(OpenAiExplainModel(JsonChat(http, config, "explain")))`.
+        """
+        self._explains = model
+        self._explainer.use(model)
+        self._thinkers = [*self._thinkers[:2], model]
+
+    def coach_with(self, model: CoachModel) -> None:
+        """Give Mochi the model that looks over a person's sentences after a session.
+
+        Example: `brain.coach_with(OpenAiCoachModel(JsonChat(http, config, "coach")))`.
+        """
+        self._coach = model
+
+    async def coach(
+        self, draft: ConversationReport, person: Participant
+    ) -> ConversationReport | None:
+        """The report with what was wrong in that person's sentences filled in (D-54).
+
+        `draft` holds their sentences and the words they needed. None when there is no model or
+        it did not answer. Example: `await brain.coach(draft, ana)`.
+        """
+        return await speech_report.completed(self._coach, draft, person, self._parts[3])
+
+    async def explain(self, turn: Turn, context: SessionContext) -> TranscriptMark | None:
+        """An idiom or a technical term in the sentence that the people listening may not
+        know, with what it means (D-53); None for nearly every sentence, and always while
+        someone is talking WITH Mochi. Example: "Let's circle back on that." -> "circle back".
+        """
+        if self._talk.attentive or self._talk.listening():
+            return None
+        return await self._explainer.explain(turn, context)
+
+    def used_alone(
+        self, said: list[Utterance], shown: list[str], began: str
+    ) -> list[LearningEvent]:
+        """After a meeting: the saved words people used in it on their own, as proposals for
+        `apply` (D-55). `said`: the meeting's sentences with their final speakers; `shown`: every
+        word a screen showed during it; `began`: when it started.
+
+        Example: `brain.apply(brain.used_alone(said, ["postpone"], record.started_at))`.
+        """
+        on_screen = {word.lower() for word in shown}
+        now, start = iso_z(self._parts[0].now()), parse_iso_z(began)
+        people = sorted({sentence.user_id for sentence in said if sentence.user_id})
+        return [
+            event
+            for person in people
+            for event in used_alone(self.words_for(person), said, on_screen, start, now)
+        ]
+
+    def session_started(self, conversing: bool, language: Language | None = None) -> None:
+        """A session begins. `conversing`: one person talks WITH Mochi (a review on their phone),
+        so every sentence is for it. Otherwise it is a meeting and Mochi waits for its name.
 
         `language`: the one Mochi was called and greeted in; a short answer that could be either
-        language ("Play.", "Ok.") is then answered in it.
+        language ("Ok.") is then answered in it.
         Example: `session_started(True, Language.PT_BR)`.
         """
-        self._talk.begin(woken, language)
+        self._talk.begin(conversing, language)
+        self._explainer.fresh_session()
         self._warm_up()
 
     def _warm_up(self) -> None:
@@ -146,8 +206,14 @@ class Intelligence:
             volume=volume, temperature=temperature, voices=voices, speaker=speaker
         )
 
+    def interrupted(self) -> None:
+        """Someone talked over Mochi and it was cut short: it goes back to just listening.
+
+        Example: in a meeting, the sentence after `interrupted()` is not taken as said to Mochi.
+        """
+        self._talk.hush()
+
     def reset(self) -> None:
-        """Clear saved words, any unfinished round and Mochi's conversation (demo reset)."""
+        """Clear saved words and Mochi's conversation (demo reset)."""
         self._memory.reset()
-        self._rounds.reset()
         self._talk.reset()

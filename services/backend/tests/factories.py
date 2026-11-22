@@ -4,8 +4,6 @@ from datetime import timedelta
 
 from mochi_backend.platform.clock import iso_z
 from mochi_contracts import (
-    Activity,
-    GameState,
     Hint,
     Language,
     Participant,
@@ -29,8 +27,7 @@ def make_context(
     participants: list[Participant] | None = None,
     turns: list[Turn] | None = None,
     hints: list[Hint] | None = None,
-    activity: Activity | None = None,
-    mode: SessionMode = SessionMode.TOGETHER,
+    mode: SessionMode = SessionMode.MEETING,
 ) -> SessionContext:
     """A demo SessionContext (Ana learns English, Ben learns Portuguese, focus en)."""
     people = participants if participants is not None else [ANA, BEN]
@@ -41,7 +38,6 @@ def make_context(
         participants=people,
         recent_turns=turns or [],
         recent_hints=hints or [],
-        activity=activity,
         learning_events={p.user_id: [] for p in people},
     )
 
@@ -64,19 +60,4 @@ def make_hint(created_at_seconds: float, ttl_seconds: float = 8.0) -> Hint:
         example=None,
         reason=Reason.CODE_SWITCH,
         expires_at=iso_z(created + timedelta(seconds=ttl_seconds)),
-    )
-
-
-def active_round(round_id: str = "round_x") -> Activity:
-    """A public ACTIVE_ROUND activity."""
-    return Activity(
-        activity_id="describe_and_guess",
-        round_id=round_id,
-        state=GameState.ACTIVE_ROUND,
-        describer_user_id="ben",
-        guesser_user_id="ana",
-        public_instruction="Ben describes. Ana guesses!",
-        result=None,
-        revealed_word=None,
-        word_source=None,
     )

@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from mochi_backend.gateway.connections import parse_target
 from mochi_backend.gateway.routes.dependencies import ContainerDep
 
 router = APIRouter()
@@ -34,7 +33,7 @@ async def websocket_endpoint(socket: WebSocket, container: ContainerDep) -> None
     # Parse first. The close still follows accept(): a server that closes before accepting answers
     # the handshake with HTTP 403, and a browser then sees code 1006 with no reason.
     try:
-        target = parse_target(dict(socket.query_params))
+        target = container.connections.target_for(dict(socket.query_params))
     except ValueError as error:
         await socket.accept()
         await socket.close(code=BAD_QUERY_CLOSE_CODE, reason=_legal_reason(str(error)))

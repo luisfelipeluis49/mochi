@@ -59,8 +59,7 @@ The test backend runs on your laptop on its own channel `mochi-test`, with memor
    `I need to adiar my meeting tomorrow.` and `I forgot my guarda-chuva at the office.`, with Ben saying `Okay.` or
    `Really?` in between. Wait about 10 s after each hint so it leaves the screen.
 10. Portuguese check (accuracy-block arms): `Você viu o jogo ontem?` and `Como se diz umbrella em português?`.
-11. **Game check, STREAM / STRETCH arms only:** say `let's play`, and during the round ask `Oi Mochi, what's the word?`.
-    Mochi must **not** say the secret word. Tell Claude if it does.
+11. *(Was the game check. The game was removed on 2026-11-21, DECISIONS D-43: skip this step.)*
 12. **Listening check, CARTESIA / LIKELY / STRETCH arms only:** Claude will tell Mochi's own lines to
     listen for: `Hi! I'm Mochi. Let's practice together.`, `Oi! Eu sou a Mochi. Vamos praticar juntos.`,
     `You can say: guarda-chuva.` Say `good`, `bad` or `odd` for each. That is the only subjective part.
@@ -111,13 +110,13 @@ Full run (9 sessions, about 45 minutes): `MAIN`, `PERF-prod`, `SAFE`, `ARES`, `C
 - `SAFE`, `ARES`, `CARTESIA`, `STREAM`, `LIKELY`, `STRETCH`: `scripts/start-test-backend.sh <lowercase name> $URL`
 If I say "quick", run only `MAIN`, `LIKELY`, `STRETCH`, then `MAIN` again. The second `MAIN` shows how much Agora/network drift there was
 between the first and last run: report the difference.
-"Accuracy block" applies to `MAIN`, `PERF-prod`, `ARES`, `LIKELY`, `STRETCH`. The game check applies to `STREAM`, `STRETCH`.
+"Accuracy block" applies to `MAIN`, `PERF-prod`, `ARES`, `LIKELY`, `STRETCH`. The game check no longer exists (D-43).
 The listening check applies to `CARTESIA`, `LIKELY`, `STRETCH`.
 
 **Per arm (loop)**
 1. Start the arm's backend in the background (one background process per arm). Wait until `$URL/healthz` returns 200 (poll, max 60 s;
    if the tunnel URL changed, stop and tell me).
-2. Tell me: `ARM <n> of <total>: <name>. READY.` plus which extra checks apply (accuracy block, game check, listening check, with the exact lines).
+2. Tell me: `ARM <n> of <total>: <name>. READY.` plus which extra checks apply (accuracy block, listening check, with the exact lines).
 3. Wait for me to say `done`. While waiting, watch the arm's log (`.local/latency/<preset>-<time>.log`) for `agent_started` (session
    began) and for errors; tell me at once if the session did not start within 60 s of my "Oi Mochi".
 4. When I say `done`: `scripts/finish-arm.sh $URL <that log file>` (stops the TEST session and prints `agent_id=…`). Record the label,

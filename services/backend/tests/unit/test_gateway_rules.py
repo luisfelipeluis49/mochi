@@ -17,6 +17,7 @@ from mochi_backend.gateway.delivery_rules import is_recipient
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.openai_sse import completion_json, parse_stream, sse_events
+from mochi_backend.gateway.roster import Roster
 from mochi_backend.gateway.routes.agora_llm import (
     ChatMessage,
     ContentPart,
@@ -28,15 +29,12 @@ from mochi_backend.platform.http_client import HttpResponse, HttpTransportError,
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_backend.settings import SettingsError, load_settings
 from mochi_contracts import (
-    Activity,
     EventPayload,
     EventType,
-    GameState,
     HintCleared,
     Language,
     LearningEvent,
     LearningState,
-    PrivatePrompt,
     Reason,
     SessionMode,
     SessionState,
@@ -44,6 +42,7 @@ from mochi_contracts import (
     Speak,
     SpeakReason,
     StateChange,
+    User,
 )
 from tests.factories import make_hint
 from tests.fakes.fake_clock import FakeClock
@@ -54,15 +53,12 @@ from tests.harness import ANA, ANA_AR, AUDIENCE, BEN, BEN_AR, HOME
 
 SESSION = SessionState(
     status=SessionStatus.ACTIVE,
-    mode=SessionMode.TOGETHER,
+    mode=SessionMode.MEETING,
     focus=Language.EN,
     capturing=True,
     participants=["ana", "ben"],
 )
 SPEAK = Speak(text="hi", language=Language.EN, reason=SpeakReason.ASKS_MOCHI)
-PROMPT = PrivatePrompt(
-    round_id="r", describer_user_id="ben", secret_word="umbrella", source_learning_event_id=None
-)
 
 
 def _card(user: str | None) -> LearningEvent:
@@ -78,20 +74,6 @@ def _card(user: str | None) -> LearningEvent:
         state_history=[
             StateChange(learning_state=LearningState.DISCOVERED, at="2026-11-19T16:00:00.000Z")
         ],
-    )
-
-
-def _activity(state: GameState, revealed: str | None = None, text: str = "go") -> Activity:
-    return Activity(
-        activity_id="describe_and_guess",
-        round_id="r",
-        state=state,
-        describer_user_id="ben",
-        guesser_user_id="ana",
-        public_instruction=text,
-        result=None,
-        revealed_word=revealed,
-        word_source=None,
     )
 
 
@@ -129,16 +111,10 @@ TARGETS = {
             "ana",
             {"ana", "home", "audience", "ana_ar"},
         ),
-        (
-            EventType.ACTIVITY_STATE_CHANGED,
-            _activity(GameState.IDLE),
-            None,
-            {"ana", "ben", "home", "audience"},  # glasses: hints only
-        ),
-        (EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT, None, {"home"}),
         (EventType.LEARNING_EVENT_CREATED, _card("ana"), None, {"ana"}),
         (EventType.LEARNING_EVENT_UPDATED, _card("ben"), None, {"ben"}),
         (EventType.LEARNING_EVENT_CREATED, _card(None), None, set()),
+        # glasses: session state and hints only
         (EventType.AGENT_SPEAK_REQUESTED, SPEAK, None, {"ana", "ben", "home", "audience"}),
     ],
 )
@@ -158,7 +134,7 @@ async def test_hub_sets_every_envelope_field_and_counts_up_by_one() -> None:
     hub, _ = _hub()
     first = await hub.publish(EventType.SESSION_STATE_CHANGED, SESSION)
     second = await hub.publish(EventType.AGENT_SPEAK_REQUESTED, SPEAK)
-    assert (first.schema_version, first.session_id) == ("0.4", "demo")
+    assert (first.schema_version, first.session_id) == ("0.7", "demo")
     assert first.emitted_at == "2026-11-19T16:00:00.000Z"
     assert (first.sequence, second.sequence) == (1, 2)
     assert first.event_id != second.event_id
@@ -173,34 +149,6 @@ async def test_hub_drops_a_dead_socket_without_breaking_the_broadcast() -> None:
     await hub.publish(EventType.SESSION_STATE_CHANGED, SESSION)
     await hub.publish(EventType.SESSION_STATE_CHANGED, SESSION)
     assert len(alive.texts) == 2 and "connection_dropped" in logger.names()
-
-
-async def test_hub_strips_a_revealed_word_from_an_active_round() -> None:
-    hub, logger = _hub()
-    sender = FakeSender()
-    hub.register(AUDIENCE, sender)
-    await hub.publish(
-        EventType.ACTIVITY_STATE_CHANGED, _activity(GameState.ACTIVE_ROUND, "umbrella")
-    )
-    [event] = sender.events
-    assert isinstance(event.payload, Activity) and event.payload.revealed_word is None
-    assert "secret_leak_blocked" in logger.names()
-
-
-async def test_hub_blocks_the_secret_from_the_audience_until_the_result() -> None:
-    hub, _ = _hub()
-    audience, home = FakeSender(), FakeSender()
-    hub.register(AUDIENCE, audience)
-    hub.register(HOME, home)
-    await hub.publish(EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT)
-    leaky = _activity(GameState.ACTIVE_ROUND, text="Find the umbrella")
-    await hub.publish(EventType.ACTIVITY_STATE_CHANGED, leaky)
-    assert all("umbrella" not in t for t in audience.texts)
-    assert home.types() == ["activity.private_prompt", "activity.state.changed"]
-    await hub.publish(
-        EventType.ACTIVITY_STATE_CHANGED, _activity(GameState.ROUND_RESULT, "umbrella")
-    )
-    assert "umbrella" in audience.texts[-1]
 
 
 async def test_live_hint_expires_on_schedule_and_is_replaced_by_a_newer_one() -> None:
@@ -271,6 +219,21 @@ def test_parse_target_accepts_the_three_shapes_and_explains_the_rest() -> None:
         parse_target({"user": "zed"})
 
 
+def test_parse_target_knows_the_people_added_to_the_roster() -> None:
+    roster = Roster()
+    with pytest.raises(ValueError, match="unknown connection query"):
+        parse_target({"user": "caio"}, roster)
+    caio = User(
+        user_id="caio",
+        display_name="Caio",
+        comfortable_languages=[Language.PT_BR],
+        target_language=Language.EN,
+    )
+    roster.add(caio)
+    assert parse_target({"user": "caio"}, roster).user_id == "caio"
+    assert roster.named(" CAIO ") == "caio" and roster.named("Nobody") is None
+
+
 def test_parse_target_surface_ar_makes_a_glasses_target() -> None:
     assert parse_target({"user": "ana", "surface": "ar"}) == ANA_AR
     with pytest.raises(ValueError, match=r"unknown surface 'vr'"):
@@ -283,12 +246,10 @@ def test_parse_target_surface_ar_makes_a_glasses_target() -> None:
         parse_target({"device": "home_pi_01", "surface": "ar"})
 
 
-def test_glasses_never_get_cards_prompts_game_or_speech() -> None:
+def test_glasses_never_get_cards_or_speech() -> None:
     cases: list[tuple[EventType, EventPayload]] = [
         (EventType.LEARNING_EVENT_CREATED, _card("ana")),
         (EventType.LEARNING_EVENT_UPDATED, _card("ana")),
-        (EventType.ACTIVITY_PRIVATE_PROMPT, PROMPT),
-        (EventType.ACTIVITY_STATE_CHANGED, _activity(GameState.ACTIVE_ROUND)),
         (EventType.AGENT_SPEAK_REQUESTED, SPEAK),
     ]
     for event, payload in cases:
@@ -468,6 +429,15 @@ async def test_join_and_speak_are_never_retried_but_leave_is() -> None:
     gone, _ = _client(HttpTransportError("down"), HttpTransportError("down"))
     with pytest.raises(AgoraError, match="failed after 2 attempts"):
         await gone.stop_agent("A1")
+
+
+async def test_interrupt_posts_to_the_documented_endpoint_and_may_be_sent_twice() -> None:
+    client, http = _client(HttpResponse(502, "bad gateway"), HttpResponse(200, "{}"))
+    await client.interrupt("agent-9")
+    assert [post.url.rsplit("/", 2)[-2:] for post in http.posts] == [["agent-9", "interrupt"]] * 2  # noqa: E501
+    failing, _ = _client(HttpResponse(404, "no such agent"))
+    with pytest.raises(AgoraError, match="interrupt"):
+        await failing.interrupt("agent-9")
 
 
 async def test_stop_and_speak_use_the_documented_endpoints() -> None:

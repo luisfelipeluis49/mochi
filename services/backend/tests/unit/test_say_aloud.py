@@ -8,7 +8,7 @@ from mochi_backend.intelligence.model_port import ModelSuggestion
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.platform.ids import SequentialIdGenerator
 from mochi_contracts import Decision, DecisionKind, Hint, Language, SessionContext
-from tests.factories import active_round, make_context, make_hint, make_turn
+from tests.factories import make_context, make_hint, make_turn
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_hint_model import FakeHintModel
 
@@ -30,11 +30,11 @@ def _after_the_hint(**changes: object) -> SessionContext:
     return make_context(turns=turns, hints=[_haircut()]).model_copy(update=changes)
 
 
-async def _said(text: str, context: SessionContext, woken: bool = False) -> Decision:
+async def _said(text: str, context: SessionContext, conversing: bool = False) -> Decision:
     brain = Intelligence(
         clock=FakeClock(), ids=SequentialIdGenerator(), model=FakeHintModel(IGNORE)
     )
-    brain.session_started(woken)
+    brain.session_started(conversing)
     return await brain.decide(make_turn(text, 60), context)
 
 
@@ -57,10 +57,8 @@ async def test_with_no_recent_hint_there_is_nothing_to_say() -> None:
 async def test_mochi_stays_out_when_the_question_is_not_for_it() -> None:
     to_partner = await _said("Ben, can you pronounce it for me?", _after_the_hint())
     assert to_partner.speak is None
-    in_a_round = await _said("Can you pronounce it?", _after_the_hint(activity=active_round()))
-    assert in_a_round.speak is None
     # while Mochi is part of the talk it answers in its own words, not with the bare word
-    chatting = await _said("Can you pronounce it for me?", _after_the_hint(), woken=True)
+    chatting = await _said("Can you pronounce it for me?", _after_the_hint(), conversing=True)
     assert chatting.speak is None or "cortar o cabelo. cortar" not in chatting.speak.text
 
 

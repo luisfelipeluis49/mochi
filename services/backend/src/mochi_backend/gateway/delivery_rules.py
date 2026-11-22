@@ -5,6 +5,7 @@ from typing import Literal
 
 from mochi_backend.gateway.roster import SESSION_ID
 from mochi_contracts import (
+    ConversationReport,
     EventPayload,
     EventType,
     Hint,
@@ -12,6 +13,13 @@ from mochi_contracts import (
 )
 
 TargetKind = Literal["mobile", "home", "audience", "glasses"]
+# Events that belong to one person: their phone gets them, in whichever session it follows.
+# (`transcript.line` is the opposite: everyone in that session, see `is_recipient`.)
+PERSONAL_EVENTS = (
+    EventType.LEARNING_EVENT_CREATED,
+    EventType.LEARNING_EVENT_UPDATED,
+    EventType.CONVERSATION_REPORT_CREATED,
+)
 
 
 @dataclass(frozen=True)
@@ -31,12 +39,12 @@ def is_recipient(
 
     `hint_user` is the target user of the hint an event refers to (None = shown to everyone).
     Example: `hint.created` for Ana goes to Home, Audience and Ana's phone, not Ben's.
+    `transcript.line` goes to every screen of the session (the people there heard the
+    sentence), and `conversation.report.created` to its person's phone alone.
     """
     if target.kind == "glasses":
         return _glasses_recipient(event_type, target, hint_user)
-    if event_type is EventType.ACTIVITY_PRIVATE_PROMPT:
-        return target.kind == "home"
-    if event_type in (EventType.LEARNING_EVENT_CREATED, EventType.LEARNING_EVENT_UPDATED):
+    if event_type in PERSONAL_EVENTS:
         return _owner_only(payload, target)
     if event_type in (EventType.HINT_CREATED, EventType.HINT_CLEARED):
         return _hint_audience(hint_user, target)
@@ -55,7 +63,7 @@ def _glasses_recipient(
 
 
 def _owner_only(payload: EventPayload, target: ConnectionTarget) -> bool:
-    if not isinstance(payload, LearningEvent) or payload.user_id is None:
+    if not isinstance(payload, LearningEvent | ConversationReport) or payload.user_id is None:
         return False  # a learning event with no user is stored but shown to nobody
     return target.kind == "mobile" and target.user_id == payload.user_id
 
