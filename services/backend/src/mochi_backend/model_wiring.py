@@ -6,6 +6,7 @@ Kept apart from `composition.py` only for its size; nothing else constructs thes
 from mochi_backend.intelligence.json_chat import JsonChat, JsonChatConfig
 from mochi_backend.intelligence.openai_coach_model import OpenAiCoachModel
 from mochi_backend.intelligence.openai_explain_model import OpenAiExplainModel
+from mochi_backend.intelligence.openai_interpret_model import OpenAiInterpretModel
 from mochi_backend.intelligence.openai_phrase_model import OpenAiPhraseModel
 from mochi_backend.intelligence.service import Intelligence
 from mochi_backend.platform.http_client import HttpxClient
@@ -25,6 +26,10 @@ def look_beyond_the_word(brain: Intelligence, settings: Settings, logger: EventL
         http = HttpxClient()
         chat = JsonChat(http, _explain_model(settings), "phrase", logger).warming(http)
         brain.phrase_with(OpenAiPhraseModel(chat))
+    if settings.mochi_speak_for_me:
+        http = HttpxClient()
+        chat = JsonChat(http, _explain_model(settings), "interpret", logger).warming(http)
+        brain.interpret_with(OpenAiInterpretModel(chat))
     if settings.mochi_speech_reports:
         chat = JsonChat(HttpxClient(), _coach_model(settings), "coach", logger)
         brain.coach_with(OpenAiCoachModel(chat))

@@ -45,6 +45,7 @@ from mochi_backend.intelligence.quiet_rules import (
 )
 from mochi_backend.intelligence.saved_phrase import PhraseSaver
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.speak_for_me import SpeakForMe
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.stuck_signs import partner_lost, searching_aside, stuck_signs
 from mochi_backend.intelligence.subtle_cases import detect_subtle, marker_for, suspect_in
@@ -102,6 +103,7 @@ class Minds:
 
     hints: HintModel
     talk: MochiTalk
+    voice: SpeakForMe | None = None  # "Mochi, speak for me" (D-64); None: the mode does not exist
 
 
 class DecisionFlow:
@@ -121,6 +123,7 @@ class DecisionFlow:
         self._lexicon = lexicon
         self._model = minds.hints
         self._talk = minds.talk
+        self._voice = minds.voice
         self._ttl = settings.hint_ttl_seconds
         self._model_timeout = settings.model_timeout_seconds
         self._judge_everything = settings.judge_every_sentence
@@ -149,6 +152,10 @@ class DecisionFlow:
     async def _decide(
         self, heard: Turn, session_context: SessionContext, sink: TextSink | None
     ) -> Decision:
+        # Someone Mochi speaks for, or a command that turns that on or off (D-64).
+        spoken_for = await self._voice.take(heard, session_context) if self._voice else None
+        if spoken_for is not None:
+            return spoken_for
         turn = _with_its_question(heard, session_context)
         # The focus is the language this sentence is in (AGENTS 7.3 "the language being spoken").
         spoken = focus_for(turn.text, self._lexicon, session_context.focus)

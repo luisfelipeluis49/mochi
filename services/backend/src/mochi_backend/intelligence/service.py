@@ -13,6 +13,7 @@ from mochi_backend.intelligence.decision_flow import DecisionFlow, Minds
 from mochi_backend.intelligence.explain_port import ExplainModel, NullExplainModel
 from mochi_backend.intelligence.explaining import Explainer
 from mochi_backend.intelligence.hint_builder import HintFactory
+from mochi_backend.intelligence.interpret_port import InterpretModel, NullInterpretModel
 from mochi_backend.intelligence.learning_rules import used_alone
 from mochi_backend.intelligence.lexicon import Lexicon
 from mochi_backend.intelligence.memory_store import MemoryStore
@@ -21,6 +22,7 @@ from mochi_backend.intelligence.model_port import HintModel
 from mochi_backend.intelligence.phrase_port import NullPhraseModel, PhraseModel
 from mochi_backend.intelligence.phrasing import Phraser
 from mochi_backend.intelligence.settings import IntelligenceSettings
+from mochi_backend.intelligence.speak_for_me import SpeakForMe
 from mochi_backend.intelligence.warm_start import WarmsUp
 from mochi_backend.platform.clock import Clock, iso_z, parse_iso_z
 from mochi_backend.platform.ids import IdGenerator
@@ -57,20 +59,27 @@ class Intelligence:
         factory = HintFactory(clock, ids, tuning.hint_ttl_seconds)
         self._memory = MemoryStore()
         self._thinkers: list[HintModel | CharacterModel | ExplainModel] = [model]
+        self._warming: set[asyncio.Task[None]] = set()  # kept, or a running task may be collected
+        self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
+        self._beyond_the_word(book, clock, tuning)
+        self._flow = DecisionFlow(
+            clock=clock,
+            factory=factory,
+            lexicon=book,
+            minds=Minds(model, self._talk, self._voice),
+            settings=tuning,
+        )
+
+    def _beyond_the_word(self, book: Lexicon, clock: Clock, tuning: IntelligenceSettings) -> None:
+        """What looks at more than the stuck word, each with no model until one is given:
+        explaining (D-53), the whole sentence (D-59), the report (D-54), speaking for (D-64)."""
         self._explains: ExplainModel = NullExplainModel()
         self._explainer = Explainer(self._explains, book, clock, tuning)
         self._phrases: PhraseModel = NullPhraseModel()
         self._phraser = Phraser(self._phrases, book, tuning)
         self._coach: CoachModel = NullCoachModel()
-        self._warming: set[asyncio.Task[None]] = set()  # kept, or a running task may be collected
-        self._talk = MochiTalk(clock, NullCharacterModel(), tuning)
-        self._flow = DecisionFlow(
-            clock=clock,
-            factory=factory,
-            lexicon=book,
-            minds=Minds(model, self._talk),
-            settings=tuning,
-        )
+        self._interprets: InterpretModel = NullInterpretModel()
+        self._voice = SpeakForMe(self._interprets, book, tuning)
 
     def another_conversation(self) -> "Intelligence":
         """A fresh conversation (own Mochi talk and device status) over the same words.
@@ -86,6 +95,7 @@ class Intelligence:
         other.explain_with(self._explains)
         other.coach_with(self._coach)
         other.phrase_with(self._phrases)
+        other.interpret_with(self._interprets)
         return other
 
     async def decide(self, turn: Turn, context: SessionContext) -> Decision:
@@ -132,6 +142,15 @@ class Intelligence:
         self._explains = model
         self._explainer.use(model)
         self._thinkers = [*self._thinkers[:2], model]
+
+    def interpret_with(self, model: InterpretModel) -> None:
+        """Give Mochi the model that says someone's sentence in the meeting's language, for
+        "Mochi, speak for me" (D-64). Without one the mode turns on and says nothing.
+
+        Example: `brain.interpret_with(OpenAiInterpretModel(JsonChat(http, config, "interpret")))`.
+        """
+        self._interprets = model
+        self._voice.use(model)
 
     def phrase_with(self, model: PhraseModel) -> None:
         """Give Mochi the model that writes the sentence a stuck speaker was reaching for (D-59).
@@ -208,6 +227,7 @@ class Intelligence:
         """
         self._talk.begin(conversing, language, explains)
         self._explainer.fresh_session()
+        self._voice.fresh_session()
         self._warm_up()
 
     def _warm_up(self) -> None:

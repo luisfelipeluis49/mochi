@@ -29,3 +29,5 @@ class IntelligenceSettings:
     explain_gap_seconds: float = 20.0  # at least this long between two explanations
     # The whole sentence a stuck speaker was reaching for is suggested after their hint (D-59).
     suggest_phrases: bool = True
+    # "Mochi, speak for me": a person's sentences are said aloud in the meeting's language (D-64).
+    speak_for_me: bool = True

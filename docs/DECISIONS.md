@@ -1684,3 +1684,54 @@ gone and must not leave a dead writer behind (same reason as `write_behind.py`).
 **Log.** `turn_committed {segment_id, commit_ms}`: time from the decision to the end of the commit
 (publishes, notes, transcript line). No text. Compare it with `arrived_to_decided_ms` and
 `reply_first_byte` to see what this process spends after `decide()`.
+
+## D-64: speak for me: Mochi says a person's sentences in the meeting's language (2026-11-22)
+
+**Asked** (Suhuai, from the team's product notes): a person says "Hey Mochi, speak for me" (their voice
+must be registered); then they talk in their own language and Mochi translates and says each sentence in
+English, while they go on following the others in the transcript; a voice command turns it off.
+
+**Proposed, built** (AGENTS 7.9), entirely inside `decide()`: `intelligence/speak_for_me.py` holds who Mochi
+speaks for and is asked before everything else; a sentence to say comes back as an ordinary `SPEAK`
+decision, so the gateway, the device and the contracts are unchanged (no new event, route, enum value or
+port method). The sentence is written by one model call (`openai_interpret_model.py`), within the two
+seconds every decision has.
+
+- **On** needs Mochi's name, the words ("speak for me", "talk for me", "fala por mim", "falar por mim"),
+  and a voice the device recognised on that sentence. An unknown voice is told to register first.
+- **What is said:** the person's sentences in the language they are at home in. Their sentences in the
+  meeting's language go through the usual rules; a sentence with Mochi's name in it is for Mochi.
+- **Off:** "Mochi, stop", "Mochi, pode parar", "Mochi, chega", "stop speaking for me", "para de falar por
+  mim", "Mochi, I'll speak myself"; and every new session starts with it off.
+- **A voice the device could not name:** when Mochi speaks for exactly one person, a sentence in that
+  person's language is taken as theirs (in an English meeting nobody else says whole Portuguese
+  sentences); an unnamed voice saying stop turns it off for everyone.
+
+**Tried.** The model's instructions on ten written sentences (`gpt-5.4-mini`, no thinking): seven said
+naturally in the other language, both ways round, and NOTHING for a filler, a sentence already in the
+meeting's language and one addressed to Mochi; 0.8 s on average. Then three real sessions on the Pi's own
+backend (real Agora, recogniser and model; spoken clips; the device's voice reports sent as the Pi's
+tracker would send them):
+
+- "Hey Mochi, speak for me" → confirmed; "A gente precisa adiar o lançamento para a semana que vem." →
+  Mochi: "We need to postpone the launch until next week."; "Porque a gente ainda precisa destravar a
+  autenticação." → "Because we still need to unblock authentication."; Ana's own "I agree with that plan."
+  and Ben's question were left alone. The model took 0.6 to 1.0 s per sentence.
+- **Two things the sessions found.** "Mochi, para de falar por mim" contains the words that turn the mode
+  ON and did so: off is now looked for first. And the recogniser wrote the same clip as "Mochi, pode
+  falar por mim" in the next run, which asks for the opposite, and wrote a Brazilian-accented "Mochi,
+  stop" as "Mochi está". So Mochi now teaches the short way out in the person's own language ("Mochi,
+  pode parar", which was understood and turned it off), and the long phrases are only also accepted.
+
+**Open:**
+- **It leans on who-said-it** (D-46, D-49): right about nine times in ten in a quiet room, worse with
+  other voices. A sentence given to the wrong person is either not said, or said for someone who did not
+  ask. The clips above had their speaker reported, not recognised.
+- **The wait.** A sentence is said about two seconds after it ends plus the model's second; someone who
+  talks in long paragraphs gets Mochi's voice a sentence behind them, on top of their own.
+- **Mochi's English goes into the room** and may come back as a turn (AGENTS 12.3).
+- Only the two languages, only towards the language the person is learning.
+- What Mochi said for someone is not kept, and it is not marked in the transcript (the line shows what
+  they said; `agent.speak.requested` carries what Mochi said).
+- `main`'s D-63 (one writer per client in the hub) arrived the same hour; this is the next number.
+
