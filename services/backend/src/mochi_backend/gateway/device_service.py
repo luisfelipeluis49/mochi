@@ -9,6 +9,7 @@ from mochi_backend.gateway.agora.client_port import RtcTokenIssuer
 from mochi_backend.gateway.device_commands import COMMAND_LIFETIME, DeviceCommand
 from mochi_backend.gateway.errors import NotFoundError
 from mochi_backend.gateway.roster import HOME_DEVICE_ID
+from mochi_backend.gateway.session_service import AgoraJoin as AgoraJoinInfo
 from mochi_backend.gateway.session_service import SessionConfig
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -17,15 +18,6 @@ from mochi_contracts import Activity, GameState
 
 # Re-issue the Pi token when this little of its life is left, so a poll never returns a dead one.
 REFRESH_MARGIN = timedelta(minutes=5)
-
-
-class AgoraJoinInfo(BaseModel):
-    """Where and how the bridge joins the channel."""
-
-    app_id: str
-    channel: str
-    uid: int
-    token: str
 
 
 class DeviceState(BaseModel):

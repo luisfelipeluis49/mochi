@@ -2,7 +2,7 @@
 // StartPage.tsx  —  LANGUAGE: TypeScript + JSX (React)
 // -----------------------------------------------------------------------------
 // The page at "/". Each phone belongs to one person:
-//   - if this phone already knows its owner (it opened /me?user=... before),
+//   - if this phone already knows its owner (it opened /m?user=... before),
 //     it goes straight to that person's "My conversations" page;
 //   - otherwise it explains how to open your own link once.
 // There is no list of people to choose from: Tasnim's phone shows Tasnim's page,
@@ -35,7 +35,7 @@ export function StartPage({ lang }: { lang: Language }) {
 
   // This phone knows its owner: go to their page.
   useEffect(() => {
-    if (owner) window.location.replace(withOptions(`/me?user=${owner}`));
+    if (owner) window.location.replace(withOptions(`/m?user=${owner}`));
   }, [owner]);
   if (owner) return null;
 
@@ -51,7 +51,7 @@ export function StartPage({ lang }: { lang: Language }) {
       <section className="practice">
         <h2>{t.firstTimeTitle}</h2>
         <p className="first-time">{t.firstTimeText}</p>
-        <code className="your-link">{window.location.origin}/me?user=<b>{t.yourName}</b></code>
+        <code className="your-link">{window.location.origin}/m?user=<b>{t.yourName}</b></code>
       </section>
 
       {/* For whoever sets up the device and the projector */}

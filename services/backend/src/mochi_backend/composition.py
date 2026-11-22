@@ -1,7 +1,9 @@
 """Composition root: builds every dependency from `Settings`. Nothing else constructs adapters."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from functools import partial
 
 from mochi_backend.gateway.activity_service import ActivityService
 from mochi_backend.gateway.agora.client_port import AgoraAgentClient, RtcTokenIssuer, SpeechTuning
@@ -17,7 +19,8 @@ from mochi_backend.gateway.device_service import DeviceService
 from mochi_backend.gateway.event_hub import EventHub
 from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingDecider
 from mochi_backend.gateway.live_hint import LiveHint
-from mochi_backend.gateway.roster import DEMO_USERS
+from mochi_backend.gateway.roster import DEMO_USERS, SESSION_ID
+from mochi_backend.gateway.session_registry import SessionRegistry, SessionRuntime
 from mochi_backend.gateway.session_service import SessionConfig, SessionService
 from mochi_backend.gateway.session_store import SessionStore
 from mochi_backend.gateway.silence_policy import SilencePolicy
@@ -43,7 +46,7 @@ from mochi_backend.storage.event_log import StorageEventSink
 from mochi_backend.storage.factory import StorageStart, storage_for
 from mochi_contracts import Language
 
-LLM_PATH = "/agora/llm/demo/chat/completions"
+LLM_PATH = "/agora/llm/demo/chat/completions"  # SessionConfig.for_session swaps `demo`
 MAX_KEYWORDS = 128  # what ARES accepts (Agora join page)
 
 
@@ -60,6 +63,9 @@ class Adapters:
     intelligence: IntelligencePort
     intelligence_name: str
     storage: StorageStart = field(default_factory=StorageStart)
+    # A new conversation over the same saved words, one per session. None: every session shares
+    # `intelligence` (a fake in a test).
+    brain_factory: Callable[[], IntelligencePort] | None = None
 
 
 def _model_for(settings: Settings, logger: EventLogger) -> HintModel:
@@ -84,26 +90,33 @@ def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
     )
 
 
+def _agora_for(
+    settings: Settings, clock: Clock, ids: IdGenerator, logger: EventLogger
+) -> tuple[AgoraAgentClient, RtcTokenIssuer]:
+    """Agora's REST client and token issuer, or the local mock in fake mode."""
+    if settings.mochi_agora_mode == "fake":
+        return LocalMockAgoraClient(logger), LocalMockTokenIssuer()
+    creds = (settings.agora_rest_key, settings.agora_rest_secret)
+    secrets = (settings.model_api_key, settings.mochi_turn_key, settings.mochi_device_key)
+    rest = AgoraRestClient(HttpxClient(), settings.agora_app_id, *creds, ids)
+    tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
+    return rest.hide_secrets((*secrets, *creds)), tokens
+
+
 def default_adapters(settings: Settings) -> Adapters:
     """Real adapters; `MOCHI_AGORA_MODE=fake` swaps Agora for a local mock."""
     clock, ids = SystemClock(), UuidIdGenerator()
     logger = configure_json_logging(settings.mochi_log_level)
-    if settings.mochi_agora_mode == "fake":
-        agora: AgoraAgentClient = LocalMockAgoraClient(logger)
-        tokens: RtcTokenIssuer = LocalMockTokenIssuer()
-    else:
-        creds = (settings.agora_rest_key, settings.agora_rest_secret)
-        secrets = (settings.model_api_key, settings.mochi_turn_key, settings.mochi_device_key)
-        http = HttpxClient()
-        rest = AgoraRestClient(http, settings.agora_app_id, *creds, ids)
-        agora = rest.hide_secrets((*secrets, *creds))
-        tokens = AgoraTokenIssuer(settings.agora_app_id, settings.agora_app_certificate, clock)
+    agora, tokens = _agora_for(settings, clock, ids, logger)
     storage = storage_for(settings.database_url, logger, DEMO_USERS, settings.mochi_local_data)
     brain = _brain_for(settings, (clock, ids, logger), storage)
     name = "rules+model" if settings.model_configured else "rules"
     name += "+character" if settings.character_configured else ""
     scheduler = AsyncioScheduler(logger)
-    return Adapters(clock, ids, scheduler, logger, agora, tokens, brain, name, storage)
+    shared = (agora, tokens, brain, name, storage)
+    return Adapters(
+        clock, ids, scheduler, logger, *shared, brain_factory=brain.another_conversation
+    )
 
 
 def _brain_for(
@@ -233,8 +246,9 @@ def _session_config(settings: Settings) -> SessionConfig:
     )
 
 
-def _core(settings: Settings, adapters: Adapters) -> GatewayCore:
-    hub = EventHub(adapters.clock, adapters.ids, adapters.logger)
+def _core(
+    settings: Settings, adapters: Adapters, hub: EventHub, brain: IntelligencePort
+) -> GatewayCore:
     silence = SilencePolicy(
         settings.mochi_silence_strategy,
         adapters.clock,
@@ -246,7 +260,7 @@ def _core(settings: Settings, adapters: Adapters) -> GatewayCore:
         store=SessionStore(),
         hub=hub,
         live_hint=live,
-        intelligence=adapters.intelligence,
+        intelligence=brain,
         silence=silence,
         clock=adapters.clock,
         ids=adapters.ids,
@@ -294,28 +308,77 @@ def _game(core: GatewayCore, pipeline: TurnPipeline, agora: AgoraAgentClient) ->
     return activity
 
 
-def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
-    """Wire the gateway from settings and adapters.
-
-    Example: `build_container(settings, default_adapters(settings))`.
-    """
-    core = _core(settings, adapters)
-    config = _session_config(settings)
-    start = adapters.storage
-    voices = VoiceDirectory(start.storage, start.voices, start.users or DEMO_USERS)
+def _runtime(
+    session_id: str, settings: Settings, adapters: Adapters, hub: EventHub, voices: VoiceDirectory
+) -> SessionRuntime:
+    """One session's parts. The demo session uses the main brain; another gets its own."""
+    config = _session_config(settings).for_session(session_id)
+    core = _core(settings, adapters, hub, _brain_of(session_id, adapters))
     pipeline = _pipeline(settings, core, voices)
-    return AppContainer(
-        settings=settings,
+    return SessionRuntime(
+        session_id=session_id,
         core=core,
         pipeline=pipeline,
         sessions=SessionService(core, adapters.agora, adapters.tokens, config),
         activity=_game(core, pipeline, adapters.agora),
-        devices=_devices(core, adapters, config),
-        device_link=DeviceLink(core, adapters.agora),
-        connections=ConnectionService(core.hub, core.store, core.live_hint, adapters.intelligence),
         demo_reset=DemoReset(core),
+    )
+
+
+def _brain_of(session_id: str, adapters: Adapters) -> IntelligencePort:
+    """The demo session's brain is the main one; another session talks with its own."""
+    if session_id == SESSION_ID or adapters.brain_factory is None:
+        return adapters.intelligence
+    return adapters.brain_factory()
+
+
+def build_container(settings: Settings, adapters: Adapters) -> AppContainer:
+    """Wire the gateway from settings and adapters.
+
+    The demo session (the Pi's) is built now; any other is built by its first Start.
+    Example: `build_container(settings, default_adapters(settings))`.
+    """
+    hub = EventHub(adapters.clock, adapters.ids, adapters.logger)
+    start = adapters.storage
+    voices = VoiceDirectory(start.storage, start.voices, start.users or DEMO_USERS)
+    demo = _runtime(SESSION_ID, settings, adapters, hub, voices)
+    others = partial(_other_runtime, settings, adapters, hub, voices)
+    registry = SessionRegistry(demo, others)
+    return _assemble(settings, adapters, (demo, registry, voices), hub)
+
+
+def _assemble(
+    settings: Settings,
+    adapters: Adapters,
+    parts: tuple[SessionRuntime, SessionRegistry, VoiceDirectory],
+    hub: EventHub,
+) -> AppContainer:
+    demo, registry, voices = parts
+    core = demo.core
+    return AppContainer(
+        settings=settings,
+        core=core,
+        pipeline=demo.pipeline,
+        sessions=demo.sessions,
+        activity=demo.activity,
+        devices=_devices(core, adapters, _session_config(settings)),
+        device_link=DeviceLink(core, adapters.agora),
+        connections=ConnectionService(hub, adapters.intelligence, registry),
+        demo_reset=demo.demo_reset,
         voices=voices,
         intelligence_name=adapters.intelligence_name,
-        storage_name=start.name,
-        storage_unsaved=start.storage.unsaved_writes,
+        registry=registry,
+        storage_name=adapters.storage.name,
+        storage_unsaved=adapters.storage.storage.unsaved_writes,
     )
+
+
+def _other_runtime(
+    settings: Settings,
+    adapters: Adapters,
+    hub: EventHub,
+    voices: VoiceDirectory,
+    session_id: str,
+) -> SessionRuntime:
+    """A session opened by a client: its own hub view, store, brain and Agora channel."""
+    return _runtime(session_id, settings, adapters, hub.for_session(session_id), voices)

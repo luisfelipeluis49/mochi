@@ -1,40 +1,30 @@
 // =============================================================================
-// MobileView.tsx  —  LANGUAGE: TypeScript + JSX (React)
+// AnalyticsView.tsx  —  LANGUAGE: TypeScript + JSX (React)
 // -----------------------------------------------------------------------------
-// A PERSON'S PHONE.  URL: /m?user=ana  (or /m?user=ben)
-// "Mochi Mobile": the ANALYTICS page — a place to reflect after talking, not during.
-// (The vision slides: "Sem celular. Só conversa." Hints and the game live on Mochi itself.)
+// THE ANALYTICS TAB (company version).  /m/analytics?user=ana
+// How the sessions went and which words to learn. No Start/Stop here (that is the Session tab).
 // Shows, from top to bottom:
-//   1. Start / Stop (the Operator uses these) + the current mode + "Start a game"
-//   1b. The LIVE HINT, when this person gets stuck (word, meaning, example). The backend sends it only
-//       to the phone of the person it is for (AGENTS.md 6.2 / 9.4); it goes away with the hint on Mochi.
-//   2. "Your progress": new words, used with help, recalled in a game, minutes practiced
-//   3. "Your last session": the summary card (PROPOSED v0.5)
-//   4. "Sessions": minutes per session, as bars
-//   5. "My words": one card per saved word, with its path (Hint shown → Used with help → ...)
+//   0. while this phone's session runs: a note that its analytics come when it ends + a button back
+//   1. "Your progress": new words, used with help, recalled in a game, minutes practiced
+//   2. "Your last session": the summary card (strengths, to review, new expressions, next step)
+//   3. "Sessions": minutes per session, as bars
+//   4. "Words to learn": one card per saved word, with its path (Hint shown → Used with help → ...)
 // It does NOT filter anything: the backend only sends Ana's words and summaries to Ana's phone.
-// THE PHONE AS MICROPHONE (PROPOSAL_phone_microphone.md): Start on this phone also turns on this
-// phone's mic (no backend change). While a session started on the Pi runs, this phone shows no live
-// hint or new cards; they appear when the session ends.
 // =============================================================================
 
-import { type RefObject, useState } from "react";
 import { LEARNING_STATE_ORDER, type Language, type LearningEvent, type SessionSummary } from "../contracts.ts";
 import { barPercent, lastSession, progress, sessionHistory } from "../lib/analytics.ts";
-import type { Backend } from "../lib/backend.ts";
 import { copyFor, displayName } from "../lib/i18n.ts";
-import { showLive } from "../lib/phoneMic.ts";
-import { usePhoneMic } from "../lib/usePhoneMic.ts";
-import { type ClientState, hintOptions, liveHint, wordsNewestFirst } from "../lib/store.ts";
+import { type ClientState, wordsNewestFirst } from "../lib/store.ts";
 
-// The inputs this screen receives from main.tsx.
+// The inputs this screen receives from PhoneApp.tsx.
 interface Props {
-  user: string;                        // "ana" or "ben" (the backend roster)
-  state: ClientState;                  // all data received from the backend
-  now: number;                         // current time (the live hint disappears on time)
-  lang: Language;                      // "en" or "pt-BR"
-  connected: boolean;                  // is the connection to the backend open?
-  backend: RefObject<Backend | null>;  // used to send Start / Stop
+  user: string;                  // "ana" or "ben" (the backend roster)
+  state: ClientState;            // all data received from the backend
+  lang: Language;                // "en" or "pt-BR"
+  connected: boolean;            // is the connection to the backend open?
+  live: boolean;                 // is THIS phone's session running right now?
+  onBackToSession: () => void;   // the button in the "session in progress" note
 }
 
 /** A date as short text in the page's language, e.g. "21 nov" or "Nov 21". */
@@ -93,33 +83,13 @@ function SummaryCard({ s, lang }: { s: SessionSummary; lang: Language }) {
   );
 }
 
-// --- The whole phone page ------------------------------------------------------
-export function MobileView({ user, state, now, lang, connected, backend }: Props) {
+// --- The whole Analytics tab ---------------------------------------------------
+export function AnalyticsView({ user, state, lang, connected, live, onBackToSession }: Props) {
   const t = copyFor(lang);
-  const [busy, setBusy] = useState(false);              // true while a button request is on its way (buttons are disabled)
-  const [error, setError] = useState<string | null>(null); // error message if the backend could not be reached
-  const capturing = state.session?.capturing ?? false;  // is Mochi listening right now?
-  const { here, startHere, stopHere } = usePhoneMic(capturing, (problem) => setError(t.micProblem[problem])); // this phone's mic
-  const live = showLive(capturing, here);               // false while a session started on the Pi runs
-  const hint = live ? liveHint(state, now) : null;      // the hint for this person, while it is on screen
   const words = wordsNewestFirst(state);                // saved words, newest first
   const p = progress(state);                            // the numbers for "Your progress"
   const last = lastSession(state);                      // the newest session summary, or null
   const history = sessionHistory(state);                // all sessions, oldest first
-
-  // Helper for the buttons: disable them, send the command, show an error if it fails.
-  const run = async (fn: (b: Backend) => Promise<void>) => {
-    if (!backend.current) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await fn(backend.current);
-    } catch {
-      setError(t.requestFailed);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // The four numbers at the top. Each: [number, label].
   const tiles: [number, string][] = [
@@ -130,44 +100,23 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
   ];
 
   return (
-    <main className="mobile">
+    <main className="mobile analytics">
       {/* Top bar: name + connection status */}
       <header>
-        <h1>Mochi · {displayName(user)}</h1>
+        <h1>{t.analyticsTitle} · {displayName(user)}</h1>
         <span className={`dot ${connected ? "on" : "off"}`}>{connected ? t.connected : t.disconnected}</span>
       </header>
 
-      {/* 1. Start / Stop (only one shows at a time) + the current mode */}
-      <section className="controls">
-        <p className="status">
-          {capturing ? t.sessionOn : t.sessionOff}
-          {capturing && state.session && <span className="mode-pill">{t.mode}: {t.modeName[state.session.mode]}</span>}
-        </p>
-        {capturing ? (
-          <button className="btn stop" disabled={busy} onClick={() => run(stopHere)}>{t.stop}</button>
-        ) : (
-          <button className="btn start" disabled={busy} onClick={() => run(startHere)}>{t.start}</button>
-        )}
-        {/* Start a Describe & Guess round (the Operator's phone). Shown while Mochi listens and no round is
-            running. Until the backend can start a round by voice ("Bora jogar!"), this is the only way in the UI. */}
-        {capturing && state.activity?.state !== "ACTIVE_ROUND" && (
-          <button className="btn secondary" disabled={busy} onClick={() => run((b) => b.activityStart())}>{t.startGame}</button>
-        )}
-        {error && <p className="error">{error}</p>}
-      </section>
-
-      {/* 1b. Live hint: only while there is one (the backend sends this phone only its owner's hints) */}
-      {hint && (
-        <section className="live-hint" aria-live="polite">
-          <div className="tag">{t.liveHint}</div>
-          {hintOptions(hint.expression).map((o) => <div key={o} className="expr">{o}</div>)}
-          {hint.meaning && <div className="meaning">{hint.meaning}</div>}
-          {hint.example && <div className="example">“{hint.example}”</div>}
+      {/* 0. A session is running on this phone: its analytics come when it ends */}
+      {live && (
+        <section className="record-notice">
+          <p>{t.analyticsNotice}</p>
+          <button type="button" className="btn secondary" onClick={onBackToSession}>{t.backToSession}</button>
         </section>
       )}
 
-      {/* 2. Your progress: four numbers (hidden while a session started on the Pi runs) */}
-      {live && <section>
+      {/* 1. Your progress: four numbers */}
+      <section>
         <h2>{t.progressTitle}</h2>
         <div className="stats">
           {tiles.map(([n, label]) => (
@@ -177,15 +126,15 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
             </div>
           ))}
         </div>
-      </section>}
+      </section>
 
-      {/* 3. Your last session: the summary, or a short message until a session ends */}
+      {/* 2. Your last session: the summary, or a short message until a session ends */}
       <section>
         <h2>{t.lastSessionTitle}</h2>
         {last ? <SummaryCard s={last} lang={lang} /> : <p className="empty">{t.noSummary}</p>}
       </section>
 
-      {/* 4. Sessions: one bar per session, longest = full width */}
+      {/* 3. Sessions: one bar per session, longest = full width */}
       {history.length > 0 && (
         <section>
           <h2>{t.sessionsTitle}</h2>
@@ -201,13 +150,13 @@ export function MobileView({ user, state, now, lang, connected, backend }: Props
         </section>
       )}
 
-      {/* 5. My words: a message if empty, otherwise one card per word (hidden like the numbers) */}
-      {live && <section>
-        <h2>{t.myWords}</h2>
+      {/* 4. Words to learn: a message if empty, otherwise one card per word */}
+      <section>
+        <h2>{t.wordsToLearn}</h2>
         {words.length === 0 ? <p className="empty">{t.noWords}</p> : (
           <ul className="cards">{words.map((w) => <WordCard key={w.learning_event_id} w={w} lang={lang} />)}</ul>
         )}
-      </section>}
+      </section>
     </main>
   );
 }

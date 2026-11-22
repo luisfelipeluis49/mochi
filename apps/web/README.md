@@ -2,15 +2,14 @@
 
 One React + TypeScript (Vite) app with three views. It shows what the gateway sends. It never decides who sees what, and it has no AI, speech, or storage.
 
-Updated for the **new product vision (Nov 2026)**: Ana and Sophie, "Oi, Mochi!" and three modes (Praticar · Companhia · Jogar), Mochi hosting the game. Mochi's screen is the same on the device and in the web app. **The phone is the analytics page ("Mochi Mobile")**: progress, last session, sessions, and words. No hints or game on the phone ("Sem celular. Só conversa."). The new data needed for this is a **proposal** (`PROPOSAL_contracts_v0.5.md`); until the team approves it, only the mock sends it.
+**Company version (Nov 2026):** Mochi joins meetings. On the Pi you wake it with "Hi Mochi"; on a phone you tap **Start session** and Mochi takes part live through the phone, with the same behaviour as the Pi's screen. After the meeting, the **Analytics** tab shows how it went and which words to learn. Mochi's screen (`/home`) and the projector are unchanged. Data still marked PROPOSED (the session summary) is in `PROPOSAL_contracts_v0.5.md`.
 
 | URL | What it is |
 |---|---|
-| `/` | **Start page**. Each phone belongs to one person: once a phone has opened its owner's link (`/me?user=tasnim`), `/` goes straight to that person's page. Otherwise it explains how to open your link, plus links to Mochi's screen and the projector. No list of people to choose from |
+| `/` | **Start page**. Each phone belongs to one person: once a phone has opened its owner's link (`/m?user=tasnim`), `/` goes straight to that person's page. Otherwise it explains how to open your link, plus links to Mochi's screen and the projector. No list of people to choose from |
 | `/home?device=home_pi_01` | Mochi's 3.5-inch screen: **who is talking** (name badge in the corner, like the device's `face.html`), face (cream), "What do you want to do today?", hints with 1–3 options and who they are for, what Mochi says, the game. Tap anywhere, or hold (600 ms) |
-| `/m?user=ana` · `/m?user=ben` | A person's phone, the analytics page: Start/Stop and mode, **Your progress** (new words, used with help, recalled in a game, minutes), **Your last session** (summary), **Sessions** (minutes per session), **My words** cards |
-| `/m` **phone as microphone** (`PROPOSAL_phone_microphone.md`, no backend change) | **Iniciar on `/m` and Record on `/me`** also turn on the phone's mic (Agora Web SDK, loaded from Agora's CDN only then) and the hints show on that phone. **Start on the Pi** ("Oi, Mochi!"): the Pi listens and shows; the phone shows no live hint, numbers or new cards until the session ends. The Pi must be **off** during a phone session (see the proposal). The mic needs **https** (the Vercel link); with `?mock=1` no mic is used |
-| `/me?user=tasnim` | **My conversations**, on that person's own phone: **Record a conversation → Stop and save** makes one entry in the history; tap an entry to see **only what you said** (each sentence, the better version under mistakes, the words you needed). Plus the analytics of all your conversations (work meetings, calls, chats). Totals, mistakes per 10 minutes over time, practice next, most common mistakes ("You said → Better"), words you didn't know, the list of conversations. Needs the proposed `conversation.report.created` event; works now with `?mock=1` |
+| `/m?user=ana` · `/m?user=ben` | **Company version: a person's phone, two tabs at the bottom (Session · Analytics)**, switched without reloading. **Session**: *Start session* (on the Pi you say "Hi Mochi"; here you tap) and Mochi joins the meeting **live** through the phone: the phone's mic listens, Mochi speaks through the phone (its own Agora session, D-41), and the middle of the screen behaves like Mochi's own screen: face while listening, the word (with meaning and example) when someone gets stuck, what Mochi says, who is talking. *Stop session*. No recording and no game. The mic needs **https** (Vercel or ngrok); with `?mock=1` no mic is used |
+| `/m/analytics?user=ana` | **Analytics** tab: **Your progress** (new words, used with help, recalled in a game, minutes), **Your last session** (strengths, to review, new expressions, next step), **Sessions** (minutes per session), **Words to learn** cards. During a session, a note that its analytics come when it ends. The old `/me` address opens this tab |
 | `/audience` | The projector. Never shows the secret word before `ROUND_RESULT` |
 
 Add to any URL: `?mock=1` (replay the demo without a backend), `&people=tasnim,matheus` (your names in the mock demo; Mochi shows who is talking), `&speed=4` (faster mock), `&debug=1` (last ten events), `&lang=pt-BR` (Portuguese text), `&projector=1` (a phone page drawn large, for the projector).
@@ -40,7 +39,7 @@ The web app is a set of static files (`npm run build` → `dist/`). It talks to 
 3. **Environment Variables:** `VITE_BACKEND_URL` = `https://mochi-backend-6e2a.onrender.com`
    (the Render backend; no slash at the end).
 4. **Deploy.** Vercel gives a `https://….vercel.app` address. Pages: `/home?device=home_pi_01` (Pi kiosk),
-   `/m?user=ana`, `/m?user=ben`, `/audience`, and `/me?user=…` (extras, `?mock=1` until the backend sends reports).
+   `/m?user=ana` (Session) and `/m/analytics?user=ana` (Analytics), `/m?user=ben`, `/audience`.
 
 The backend allows any origin (`MOCHI_CORS_ORIGINS=*`), so no backend change is needed. Every push to
 `main` redeploys the web app; pull requests get their own preview link.
@@ -56,7 +55,7 @@ See `CODE_GUIDE.md` for every file, grouped by language.
 **Tested:** 60 logic tests (`npm test`) cover:
 - duplicate events ignored, hint expiry, hint options, session summaries;
 - the analytics numbers (words by step, minutes added up, session order, bar sizes);
-- the "My conversations" numbers (totals, mistakes per 10 minutes, improvement, mistakes and words grouped, practice next);
+- the Session tab follows Mochi's own screen (face, hint with meaning and example, Mochi speaking, no game on the phone); the tabs keep the person and options;
 - the mode question winning over Mochi speaking it;
 - the full round (reveal, guessed, skipped, no double send, result then back to the face);
 - that the mock gives the secret word only to Mochi's screen, and words and summaries only to their owner.

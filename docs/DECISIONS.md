@@ -759,6 +759,46 @@ woken session; "first sound" = end of the speech to Mochi's first audio arriving
   hint model and Mochi's line (`_model_before_line`); when the hint wins Mochi shows the word and says
   nothing (typed, 12 each: `main` 7 silent, the branch 2). Not fixed here.
 
+## D-41: many sessions at once; the phone no longer turns the Pi off (2026-11-21)
+
+**Why.** There was one session, `demo`, for everybody. The phone as a microphone (PR #16) started it,
+read the Pi's join block (the Pi's channel and uid) and joined with it; the Pi saw the same state and
+joined too, and Agora kicked one of them out. And a phone's Stop was the Pi's Stop: it ended the one
+agent, and since #15 the Pi leaves when its agent does. A sentence from either came to the same turn
+endpoint, the same hint history and the same cooldown. AGENTS section 8 lists "multiple sessions" as
+out of scope unless a human asks; Luís asked ("multiple connections that do not interact").
+- **A session is its own world:** store, hub view, live hint, silence policy, turn pipeline, game, Mochi's
+  conversation (`Intelligence.another_conversation()`), Agora channel `<MOCHI_CHANNEL>-<id>` and Agora
+  agent. `demo` is the Pi's and is built at start-up exactly as before, so the bridge, `/api/devices/
+  home_pi_01/state` and every existing route behave the same. Any other id (`^[A-Za-z0-9_-]{1,40}$`) is
+  opened by its first Start and forgotten at its Stop. At most 8 live (each holds a paid Agora agent);
+  a ninth Start is a 409.
+- **The id is in the path.** `POST /api/sessions/{id}/start|stop|activity/start|activity/result`,
+  `POST /dev/sessions/{id}/turn`, and Agora's turn endpoint `POST /agora/llm/{id}/chat/completions`
+  (each agent is started with its own session in the URL; that is what keeps sentences apart).
+  Unknown session: 404 (turn, game, join). Stopping what is not running is a 200.
+- **New:** `GET /api/sessions/{id}/agora` is the phone's join block for its own channel. The phone
+  never reads the Pi's device state again.
+- **WebSocket:** an optional `&session=<id>` on `?user=`, `?user=&surface=ar` and `?view=audience`
+  (default `demo`, so nothing existing changes). Connecting before Start opens nothing: the client
+  sees an idle session, and the real events once the session starts. Mochi's own screen is the Pi's.
+- **Delivery.** An event reaches only the connections that follow its session. The exception is a
+  learning event: it belongs to a person, so it reaches that person's phone in every session.
+  `sequence` is still one counter for the whole process (a client ignores one it has applied; gaps
+  are allowed).
+- **Source of truth.** Saved words, users and voices are the one thing the sessions share, and they
+  are in the database (D-32, D-33): every session's brain writes to the same `MemoryStore` and sink.
+  The live parts (hints, game, who is on air) stay in memory, as D-32 decided.
+- **Not built, for the team:**
+  - A game in a phone session: the secret word goes to the Home view only, and a phone session has
+    none. Starting a round there is allowed but nobody sees the word.
+  - More than one Pi (device ids): `home_pi_01` is still the only device, and it follows `demo`.
+  - Persisting live sessions in Postgres (a restart ends every session; the Pi starts a new one).
+  - A phone session whose agent Agora ended by itself stays "capturing" until its Stop or 8 are used.
+  - `POST /api/demo/reset` still clears everybody's words (they are shared); it resets the demo session.
+- **Owners:** gateway (Luís). `Intelligence.another_conversation` and `MochiTalk.character` are in
+  Kauê's directory (a copy of one object, no behaviour change). The web change is Tasnim's and is
+  kept in its own commit.
 
 ## D-42: stuck without asking: hints before anyone says "how do you say" (2026-11-21)
 

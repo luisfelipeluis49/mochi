@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from mochi_backend.gateway.delivery_rules import ConnectionTarget, hint_user_of, is_recipient
@@ -34,6 +34,24 @@ class Sender(Protocol):
         ...
 
 
+@dataclass
+class _Shared:
+    """What every session's hub view has in common: the clients, the counter, the lock."""
+
+    connections: list["Connection"] = field(default_factory=list)
+    sequence: int = 0
+    hint_users: dict[str, str | None] = field(default_factory=dict)
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+@dataclass(frozen=True)
+class _Scope:
+    """Which session a hub view publishes for, and the state all views share."""
+
+    session_id: str
+    shared: _Shared
+
+
 @dataclass(frozen=True)
 class Connection:
     """A registered client."""
@@ -55,7 +73,13 @@ SnapshotSource = Callable[[], list[tuple[EventType, EventPayload]]]
 
 
 class EventHub:
-    """Registry of connections plus the single global sequence counter."""
+    """The publisher for one session; views for other sessions share its clients and counter.
+
+    `hub.for_session("p-1")` is another publisher over the same clients: an event goes only to the
+    clients that joined that session, so two sessions never see each other's hints, rounds or
+    secrets. A learning event is the exception: it belongs to a person, so it reaches that
+    person's phone in every session (saved words are the one thing the sessions share).
+    """
 
     def __init__(
         self,
@@ -63,31 +87,41 @@ class EventHub:
         ids: IdGenerator,
         logger: EventLogger,
         send_timeout_seconds: float = DEFAULT_SEND_TIMEOUT_SECONDS,
+        scope: "_Scope | None" = None,
     ) -> None:
         self._clock = clock
         self._ids = ids
         self._logger = logger
-        self._connections: list[Connection] = []
-        self._sequence = 0
-        self._hint_users: dict[str, str | None] = {}
+        scope = scope or _Scope(SESSION_ID, _Shared())
+        self._session_id = scope.session_id
+        self._shared = scope.shared
         self._secrets = SecretGuard()
-        self._lock = asyncio.Lock()  # one publish at a time keeps sequences in delivery order
         self._send_timeout = send_timeout_seconds
+
+    def for_session(self, session_id: str) -> "EventHub":
+        """A publisher for `session_id` over the same clients, counter and lock."""
+        return EventHub(
+            self._clock,
+            self._ids,
+            self._logger,
+            self._send_timeout,
+            _Scope(session_id, self._shared),
+        )
 
     def register(self, target: ConnectionTarget, sender: Sender) -> Connection:
         """Add a client. Example: `hub.register(ConnectionTarget("mobile", user_id="ana"), ws)`."""
         connection = Connection(target, sender)
-        self._connections.append(connection)
+        self._shared.connections.append(connection)
         return connection
 
     @property
     def connection_count(self) -> int:
-        """How many clients are registered right now."""
-        return len(self._connections)
+        """How many clients are registered right now (in every session)."""
+        return len(self._shared.connections)
 
     def unregister(self, connection: Connection) -> None:
         """Remove a client (idempotent)."""
-        self._connections = [c for c in self._connections if c is not connection]
+        self._shared.connections[:] = [c for c in self._shared.connections if c is not connection]
 
     def protect_secret(self, word: str) -> None:
         """Treat `word` as a secret until the round result is published."""
@@ -99,15 +133,17 @@ class EventHub:
 
     def reset(self) -> None:
         """Forget hint routing and secrets (demo reset). Sequence keeps counting up."""
-        self._hint_users.clear()
+        self._shared.hint_users.clear()
         self._secrets.clear()
 
     async def publish(self, event_type: EventType, payload: EventPayload) -> Envelope:
         """Wrap `payload` in an envelope and send it to every connection entitled to it."""
-        async with self._lock:
+        async with self._shared.lock:
             self._note_secrets(event_type, payload)
             outbound = self._outbound(event_type, payload)
-            await asyncio.gather(*(self._deliver(c, outbound) for c in list(self._connections)))
+            await asyncio.gather(
+                *(self._deliver(c, outbound) for c in list(self._shared.connections))
+            )
             self._log(outbound.envelope)
             return outbound.envelope
 
@@ -120,11 +156,11 @@ class EventHub:
         and the client is registered before the next one starts, so it sees each event once and
         in order. A dead client is dropped at its first failed send, not after three.
         """
-        async with self._lock:
+        async with self._shared.lock:
             connection = Connection(target, sender)
             if not await self._send_snapshot(connection, snapshot()):
                 return None
-            self._connections.append(connection)
+            self._shared.connections.append(connection)
             return connection
 
     async def _send_snapshot(
@@ -164,28 +200,30 @@ class EventHub:
         )
 
     def _envelope(self, event_type: EventType, payload: EventPayload) -> Envelope:
-        self._sequence += 1
+        self._shared.sequence += 1
         if event_type is EventType.HINT_CREATED:
-            self._hint_users[getattr(payload, "hint_id", "")] = hint_user_of(payload)
+            self._shared.hint_users[getattr(payload, "hint_id", "")] = hint_user_of(payload)
         return Envelope(
             schema_version=SCHEMA_VERSION,
             event_id=self._ids.new("evt"),
             type=event_type,
-            session_id=SESSION_ID,
+            session_id=self._session_id,
             emitted_at=iso_z(self._clock.now()),
-            sequence=self._sequence,
+            sequence=self._shared.sequence,
             payload=payload,
         )
 
     def _hint_user(self, envelope: Envelope) -> str | None:
         if isinstance(envelope.payload, HintCleared):
-            return self._hint_users.get(envelope.payload.hint_id)
+            return self._shared.hint_users.get(envelope.payload.hint_id)
         return hint_user_of(envelope.payload)
 
     async def _deliver(self, connection: Connection, outbound: _Outbound) -> bool:
         """Send if this client is entitled to the event. False only when the client failed."""
         envelope = outbound.envelope
         hint_user = self._hint_user(envelope)
+        if not self._in_scope(envelope, connection):
+            return True
         if not is_recipient(envelope.type, envelope.payload, connection.target, hint_user):
             return True
         if connection.target.kind == "audience" and outbound.leaks:
@@ -199,13 +237,20 @@ class EventHub:
             return False
         return True
 
+    def _in_scope(self, envelope: Envelope, connection: Connection) -> bool:
+        """This client is in the session the event is for; a person's words reach them anywhere."""
+        if envelope.type in (EventType.LEARNING_EVENT_CREATED, EventType.LEARNING_EVENT_UPDATED):
+            return True
+        return connection.target.session_id == self._session_id
+
     def _log(self, envelope: Envelope) -> None:
         self._logger.log(
             "event_published",
             {
                 "type": envelope.type.value,
+                "session_id": self._session_id,
                 "sequence": envelope.sequence,
                 "event_id": envelope.event_id,
-                "connections": len(self._connections),
+                "connections": len(self._shared.connections),
             },
         )

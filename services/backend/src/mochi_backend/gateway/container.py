@@ -11,6 +11,7 @@ from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.demo_reset import DemoReset
 from mochi_backend.gateway.device_link import DeviceLink
 from mochi_backend.gateway.device_service import DeviceService
+from mochi_backend.gateway.session_registry import SessionRegistry
 from mochi_backend.gateway.session_service import SessionService
 from mochi_backend.gateway.turn_pipeline import TurnPipeline
 from mochi_backend.gateway.voice_directory import VoiceDirectory
@@ -32,6 +33,7 @@ class AppContainer:
     demo_reset: DemoReset
     voices: VoiceDirectory
     intelligence_name: str
+    registry: SessionRegistry
     storage_name: str = "memory"
     storage_unsaved: Callable[[], int] = lambda: 0  # noqa: E731 - a default, not a name to reuse
 
