@@ -43,6 +43,7 @@ from mochi_backend.intelligence.quiet_rules import (
     hints_of_last_turns,
     lasting_quiet_reason,
 )
+from mochi_backend.intelligence.saved_phrase import PhraseSaver
 from mochi_backend.intelligence.settings import IntelligenceSettings
 from mochi_backend.intelligence.spoken_focus import focus_for
 from mochi_backend.intelligence.stuck_signs import partner_lost, searching_aside, stuck_signs
@@ -129,6 +130,9 @@ class DecisionFlow:
         self._hedge_after = settings.hedge_after_seconds
         self._hear_window = settings.hear_window_seconds
         self._speaker: str | None = None  # whose voice said the turn being decided, when known
+        self._phrases = PhraseSaver(
+            factory, lambda text, fallback: focus_for(text, lexicon, fallback)
+        )
 
     async def run(
         self, turn: Turn, context: SessionContext, sink: TextSink | None = None
@@ -139,7 +143,7 @@ class DecisionFlow:
         """
         used = assisted_updates(turn, context, self._clock, self._ttl)
         used += recalled_updates(turn, context, self._clock)
-        decision = await self._decide(turn, context, sink)
+        decision = self._phrases.add_to(await self._decide(turn, context, sink), context)
         return decision.model_copy(update={"learning_events": [*decision.learning_events, *used]})
 
     async def _decide(
@@ -239,7 +243,7 @@ class DecisionFlow:
             return None, await self._follow_up(turn, context, None)
         found = self._by_rules(turn.text, context)
         if not self._needs_model(found, turn.text, context):
-            return found, await self._follow_up(turn, context, found)
+            return found, await self._follow_up(turn, context, found, may_explain=True)
         return await self._model_before_line(found, turn, context)
 
     async def _model_before_line(
@@ -250,7 +254,7 @@ class DecisionFlow:
         The line is kept only if it is ready when the hint model answers, or when there is no
         hint and the line is all that is left; its own timeout bounds that wait.
         """
-        line = asyncio.ensure_future(self._follow_up(turn, context, None))
+        line = asyncio.ensure_future(self._follow_up(turn, context, None, may_explain=True))
         try:
             match = await self._by_model(found, turn.text, context)
             if match is None or line.done():
@@ -362,7 +366,11 @@ class DecisionFlow:
         )
 
     async def _follow_up(
-        self, turn: Turn, context: SessionContext, match: CaseMatch | None
+        self,
+        turn: Turn,
+        context: SessionContext,
+        match: CaseMatch | None,
+        may_explain: bool = False,
     ) -> str | None:
         """A sentence without the wake phrase that may still be for Mochi: right after it spoke
         (an answer to its question), or with its name in it (the greeting is often misheard).
@@ -370,7 +378,11 @@ class DecisionFlow:
         Returns Mochi's line, or None: neither applies, or Mochi judged it was not meant for it.
         A word the rules found is shown either way, and Mochi is told to teach that one.
         """
-        maybe_for_mochi = self._talk.listening() or says_mochi(turn.text)
+        maybe_for_mochi = (
+            self._talk.listening()
+            or says_mochi(turn.text)
+            or (may_explain and match is None and self._talk.may_explain(turn.text))
+        )
         if not maybe_for_mochi:
             return None
         return await self._line(turn, match, named=False)

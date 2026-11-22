@@ -1520,6 +1520,14 @@ two to be reconciled now; these are the choices, each one open to the owners' ve
 - **Decision numbers.** `main`'s two entries were renumbered D-56 and D-57, because `hardware` had fourteen
   entries and their references in code against two.
 
+**A second round, the same day.** While the first merge was in CI, `main` got PRs #24 and #25 (words the
+guest would learn go to the person; phrases Mochi teaches are saved; a web session's quiet listener that
+explains an idiom aloud). They are D-60 to D-62 below. Merged the same way, with two decisions:
+- A web user's session started **with** the wake phrase is a conversation with Mochi, started without it
+  a quiet listener that may explain aloud (D-62), as on `main`. The device's meeting is neither (D-43).
+- The silent explainer of D-53 stands back in a web session's quiet listener: there Mochi explains aloud
+  itself (D-62), and two explanations of one idiom would be one too many.
+
 **Checked:** the merged backend passes both sides' tests with lint, strict types and the schema check. The
 Postgres tests, skipped until now for want of a database, were run against a throwaway PostgreSQL 17 on
 the Pi (the Debian packages unpacked into a folder, no install): all 7 pass. And the deploy was rehearsed:
@@ -1573,3 +1581,83 @@ sexta-feira de manhã."), and IGNORE for the question; 0.7 s on average. One of 
   product choice (today: wherever the hint goes).
 - Nothing is kept: neither the suggestion nor that it was said is in the person's history or the team view.
 - `apps/web` does not show it yet (AGENTS 9.4).
+
+## D-60: in a web session, words the guest would learn go to the person, swapped (2026-11-22)
+
+*Written on `main` under an earlier number (D-44, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
+
+**Why.** Render logs of a real session showed why Training stayed empty. The person (Portuguese at home, learning
+English) said "tênis" inside an English sentence and the hint model produced `tênis (sneakers)`. The whose-word rule
+(AGENTS 7.3) gives a word to the one participant learning the language of the sentence, and in a web session that was
+the invented `guest` (the opposite languages, D-56). The card and its learning event were saved for the guest, so the
+person's Training, My words and screen never saw them. Assigning the pair to the person as it was would teach them
+`tênis`, which they know.
+- **Rule (`gateway/guest_reown.py`, applied to every decision of a session that has a person):** a hint or learning
+  event owned by `guest` becomes the person's with the two sides swapped: the word they are missing in the language
+  they practise (`sneakers`) with what they said as its meaning (`tênis`), `target_language` = their target language,
+  the example (written in the other language) removed. With no meaning it cannot be swapped and is dropped. Owners
+  other than the guest are untouched. The Pi's `demo` session has no person and is unchanged.
+- **Not changed:** `intelligence/` (the whose-word rule, the hint model, the character).
+- **Still not covered, and what Training is meant to be:** "words, contexts and phrases you had a hard time saying or
+  understanding". Today only hints become learning events. In Praticar, Papear's own answer to "how do I say my
+  sneakers are nice?" (a phrase) is spoken and saved nowhere, so a person who only chats with Papear still has an empty
+  Training. Saving those phrases needs the character reply to carry a structured "save this phrase"; that is the next
+  step and a change in `intelligence/`.
+
+## D-61: phrases Papear teaches become Training material (2026-11-22)
+
+*Written on `main` under an earlier number (D-45, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
+
+**Why.** Training is meant to hold what a person had a hard time saying or understanding, often a whole phrase
+("how do I say my sneakers are nice?"). Only hints became learning events, so a person who just chats with Papear
+(`SPEAK`, no hint) had an empty Training even after D-60.
+- **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: TEXT | MEANING]`: a word,
+  phrase or sentence the person needed (asked how to say it, did not know it, or got it wrong), in the language they
+  learn, with its meaning in their own, at most twelve words, written next to the line it speaks. It is used for single
+  words too, because `[show WORD]` only draws on the device face and saves nothing. The gateway already strips every bracket before speech (`split_commands`, `SpokenRelease`), so it is never
+  said. `intelligence/saved_phrase.py` (`PhraseSaver`) reads it from the spoken line in `DecisionFlow.run` and adds a
+  DISCOVERED `LearningEvent` (`detection_signal: asks_mochi`, `hint_id: null`) for the one participant learning the
+  phrase's language (AGENTS 7.3). At most two per line; the same phrase is not saved twice; a line with no tag, or
+  no speech, changes nothing. In a web session a phrase in the wrong language lands on the guest and D-60 swaps it.
+- **Contracts.** No new event, field or enum: a phrase is a `LearningEvent` whose `expression` has several words.
+  Training, My words and the digest show it as they show a word.
+- **Unverified.** The tag is only as good as the model's habit of writing it. It was tested with a scripted character
+  (`FakeCharacterModel`), never with the live `gpt-5.4-mini`. Watch the `decision` and `learning_event` log lines of a
+  real session after deploy; if the model forgets the tag, the prompt wording is the first thing to change.
+- **Not built.** Phrases the person said badly (grammar feedback is out of scope, AGENTS 8) and sentences the person
+  did not understand when the partner spoke them; both need the character or the hint model to name the phrase.
+- **Seen live (a 10.4 minute web chat, 2026-11-22):** about 60 turns, every one answered by the character (`SPEAK`,
+  no hint): words the person pretended not to know (`portão de ferro`, `apartamento`, `prédio`, `pé direito`) and
+  corrections of past and future sentences (`Eu fui ao parque ontem`, `eu vou comer croissant amanhã`). Nothing was
+  saved, because a woken session sends every sentence to the character and the hint path is skipped, and nothing the
+  character says was stored. That is what this entry fixes, if the model writes the tag.
+- **Open:** the person switched between practising English and Portuguese inside one session while the profile has one
+  target language. A phrase in the language that is not their profile target is swapped by D-60 into the profile
+  target, which is wrong for someone pretending to learn the other language. A per-session choice of language is a
+  product decision.
+
+## D-62: a web session listens quietly or talks, as the Pi does (2026-11-22)
+
+*Written on `main` under an earlier number (D-46, PRs #24 and #25); renumbered when it was merged with `hardware` (D-58).*
+
+**Why.** Every web session started "woken" (the Start button sent `woken_by`), which is the Pi's "Oi Mochi": Papear
+then chats about every sentence and never watches in silence. The Pi has both ways (Companhia: quiet; Praticar: talks),
+and the product needs both on the web.
+- **Two modes, chosen before Start and remembered on the device** (`apps/web/src/lib/mode.ts`). *Quiet listener* (the
+  default) sends no `woken_by`: the backend treats it like the Pi's operator Start, two people talking, hints on
+  screen, speech only when called by name. *Conversation* sends the wake phrase as before. No new field, route or enum:
+  the existing optional `woken_by` carries the choice. Switching by voice still works through the character's
+  `[listen]` and `[chat]`.
+- **Unasked explanations (new, web only).** A session started with a person (`user_id`) tells intelligence
+  `session_started(..., explains=True)`. While it is not a conversation, a sentence of four or more words that the
+  hint rules and the hint model left without a hint is also shown to the character with a note that says: speak only
+  to explain an idiom, a figure of speech or an expression the other person may not understand, or one used wrongly,
+  in a sentence or two, with a `[phrase: …]` tag (D-61); otherwise answer `[quiet]`. Grammar slips and small mistakes are
+  never commented on. The Pi's session (no person) and a woken session never do this. It reuses `SpeakReason.ASKS_MOCHI`
+  for the spoken line, as other spoken lines already do.
+- **AGENTS 1, rule 2** gets one sentence for this exception; it is proposed until the owners agree.
+- **Cost.** Up to one extra character call per sentence of four or more words in a quiet web session (the hint model
+  already runs per sentence). Watch `model_usage` lines with `"kind": "character"` after deploy.
+- **Unverified.** Whether the live model stays quiet most of the time and explains only real idioms. The note was
+  tested with a scripted character, never the real model; too chatty is the likely failure, and the note is the first
+  thing to tighten. Nobody has tried it with two people in a room either.

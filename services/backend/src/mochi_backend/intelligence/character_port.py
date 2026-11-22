@@ -42,6 +42,7 @@ class CharacterRequest(BaseModel):
     named: bool = True  # False: nobody clearly called Mochi; it may answer [quiet]
     language: Language = Language.EN  # the language the sentence is in: the reply's language
     conversing: bool = False  # this person talks WITH Mochi (a review), not people to each other
+    explains: bool = False  # a quiet listener that may explain an expression nobody asked about
     given: list[str] = []  # words Mochi handed over earlier in this talk: a goodbye may name one
     reviewing: bool = False  # a review session on a phone; False: a meeting
     review: list[ReviewWord] = []  # in a review: the words Mochi should bring back

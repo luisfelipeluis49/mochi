@@ -45,7 +45,7 @@ test("the Say it button only with SpeechRecognition", () => {
 
 test("empty states", () => {
   const none = renderToString(<TrainingEmpty lang="en" hasWords={false} nextAt={null} now={NOW} onGoSession={noop} />);
-  assert.ok(none.includes("Words you need in a session show up here.") && none.includes('href="/session"'));
+  assert.ok(none.includes("Training is made of the words Papear showed you when you got stuck.") && none.includes('href="/session"'));
   const caught = renderToString(<TrainingEmpty lang="pt-BR" hasWords nextAt={NOW + 86_400_000} now={NOW} onGoSession={noop} />);
   assert.ok(caught.includes("Tudo em dia! Próxima palavra amanhã."));
 });
@@ -56,7 +56,7 @@ test("the screen: a round from the words, untrainable ones counted", () => {
   assert.ok(html.includes("1 / 2"));
   assert.ok(html.includes("1 word has no meaning yet and is not in training."));
   const empty = renderToString(<TrainingScreen lang="en" userId="luis" words={[]} progress={{}} now={NOW} hasSpeech={false} onResult={noop} onGoSession={noop} />);
-  assert.ok(empty.includes("Words you need in a session show up here."));
+  assert.ok(empty.includes("Training is made of the words Papear showed you when you got stuck."));
   const later = renderToString(<TrainingScreen lang="en" userId="luis" words={[word("a")]} progress={{ a: { box: 2, due_at: NOW + 86_400_000, correct: 1, wrong: 0, last_at: NOW } }} now={NOW} hasSpeech={false} onResult={noop} onGoSession={noop} />);
   assert.ok(later.includes("All caught up! Next word due tomorrow."));
 });

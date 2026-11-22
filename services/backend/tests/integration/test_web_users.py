@@ -9,6 +9,7 @@ from starlette.websockets import WebSocketDisconnect
 from mochi_backend.app import create_app
 from mochi_backend.gateway.agora.client_port import AgoraError
 from mochi_backend.intelligence.word_owner import owner_for
+from tests.fakes.fake_character_model import FakeCharacterModel
 from tests.fakes.fake_storage import FakeStorage
 from tests.harness import Harness, make_harness
 
@@ -247,3 +248,112 @@ def test_guest_and_unknown_users_cannot_connect(user: str) -> None:
         socket.receive_text()
     assert closed.value.code == 4400
     assert "user=ana|ben|<user_id>" in closed.value.reason
+
+
+def test_a_word_the_guest_would_own_reaches_the_person_in_the_language_they_practise() -> None:
+    # Sam is at home in English and practises Portuguese, and says "adiar" in an English sentence.
+    # The rules give "postpone (adiar)" to the guest, who is nobody. Sam needs "adiar" (what Sam is
+    # learning), with "postpone" as its meaning (D-60).
+    client, harness = _client()
+    sam = _new_user(client, "Sam", comfortable_language="en", target_language="pt-BR")
+    client.post(f"/api/sessions/{WEB}/start", json={"user_id": sam})
+    client.post(f"/dev/sessions/{WEB}/turn", json={"text": ADIAR})
+    shown = harness.container.registry.runtime(WEB).core.live_hint.current
+    assert shown is not None and shown.target_user_id == sam
+    assert (shown.expression, shown.meaning, shown.target_language.value) == (
+        "adiar",
+        "postpone",
+        "pt-BR",
+    )
+    [word] = client.get(f"/api/users/{sam}/words").json()
+    assert (word["expression"], word["meaning"], word["target_language"]) == (
+        "adiar",
+        "postpone",
+        "pt-BR",
+    )
+    assert client.get("/api/users/ana/words").json() == []
+
+
+def test_a_phrase_papear_teaches_becomes_something_to_practise() -> None:
+    # The person asks how to say a phrase; Papear answers with it and tags it, silently (D-61).
+    line = (
+        "[mood happy] You can say: my sneakers are nice."
+        "[phrase: my sneakers are nice | meus tênis são bonitos] Now try it about your own shoes."
+    )
+    harness = make_harness(env=_DEV, character=FakeCharacterModel(line))
+    client = TestClient(create_app(harness.container))
+    luis = _new_user(client, "Luis")
+    _start(client, WEB, luis)
+    turn = client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "Como é que eu falo que meus tênis são bonitos?"}
+    ).json()
+    assert "[" not in turn["reply"] and "phrase" not in turn["reply"]  # never spoken
+    [saved] = client.get(f"/api/users/{luis}/words").json()
+    assert saved["expression"] == "my sneakers are nice"
+    assert (saved["meaning"], saved["target_language"], saved["hint_id"]) == (
+        "meus tênis são bonitos",
+        "en",
+        None,
+    )
+    assert saved["learning_state"] == "DISCOVERED" and saved["detection_signal"] == "asks_mochi"
+    client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "Como é que eu falo que meus tênis são bonitos?"}
+    )
+    assert len(client.get(f"/api/users/{luis}/words").json()) == 1  # said twice: one card
+
+
+IDIOM = "Honestly it is raining cats and dogs outside today."
+EXPLAINED = (
+    '[mood curious] "Raining cats and dogs" means raining very hard.'
+    "[phrase: raining cats and dogs | chovendo muito]"
+)
+
+
+def _quiet_web(character: FakeCharacterModel) -> tuple[TestClient, Harness, str]:
+    harness = make_harness(env=_DEV, character=character)
+    client = TestClient(create_app(harness.container))
+    person = _new_user(client, "Luis")
+    started = client.post(f"/api/sessions/{WEB}/start", json={"user_id": person})  # not woken
+    assert started.status_code == 200
+    return client, harness, person
+
+
+def test_a_quiet_web_session_explains_an_idiom_without_being_asked_and_saves_it() -> None:
+    character = FakeCharacterModel(EXPLAINED)
+    client, _, person = _quiet_web(character)
+    turn = client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM}).json()
+    assert turn["decision"]["decision"] == "SPEAK"
+    assert "very hard" in turn["reply"] and "phrase" not in turn["reply"]
+    assert character.requests[0].explains and not character.requests[0].conversing
+    [saved] = client.get(f"/api/users/{person}/words").json()
+    assert saved["expression"] == "raining cats and dogs"
+
+
+def test_a_quiet_web_session_says_nothing_when_nothing_needs_explaining() -> None:
+    character = FakeCharacterModel("[quiet]")
+    client, _, person = _quiet_web(character)
+    turn = client.post(
+        f"/dev/sessions/{WEB}/turn", json={"text": "We are going to the park later."}
+    )
+    assert turn.json()["decision"]["decision"] == "IGNORE" and turn.json()["reply"] == ""
+    assert client.get(f"/api/users/{person}/words").json() == []
+    short = client.post(f"/dev/sessions/{WEB}/turn", json={"text": "Yes, of course."})
+    assert short.json()["decision"]["decision"] == "IGNORE"
+    assert len(character.requests) == 1  # a short sentence is never worth a model call
+
+
+def test_the_pi_and_a_woken_web_session_do_not_explain_on_their_own() -> None:
+    character = FakeCharacterModel(EXPLAINED)
+    harness = make_harness(env=_DEV, character=character)
+    client = TestClient(create_app(harness.container))
+    client.post("/api/sessions/demo/start")  # the Pi's: nobody woke it, two people talk
+    pi = client.post("/dev/sessions/demo/turn", json={"text": IDIOM}).json()
+    assert pi["decision"]["decision"] == "IGNORE" and character.requests == []
+    person = _new_user(client, "Luis")
+    _start(client, WEB, person)  # woken ("hey mochi"): it is a conversation
+    client.post(f"/dev/sessions/{WEB}/turn", json={"text": IDIOM})
+    assert (
+        character.requests
+        and character.requests[0].conversing
+        and not character.requests[0].explains
+    )

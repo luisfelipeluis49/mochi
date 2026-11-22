@@ -8,6 +8,7 @@ import {
 } from "../contracts.ts";
 import { type Failure, type Op, type ProblemKind, problemOfHttp } from "./httpProblem.ts";
 import { type UiLang, wokenBy } from "./i18n.ts";
+import type { SessionMode } from "./mode.ts";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -47,7 +48,7 @@ export interface Api {
   getUser(userId: string): Promise<User>;
   words(userId: string): Promise<LearningEvent[]>;
   sessions(userId: string): Promise<SessionRecord[]>;
-  start(sessionId: string, userId: string, lang: UiLang): Promise<SessionState>;
+  start(sessionId: string, userId: string, lang: UiLang, mode: SessionMode): Promise<SessionState>;
   stop(sessionId: string): Promise<SessionState | null>;
   agora(sessionId: string): Promise<AgoraJoin>;
 }
@@ -106,8 +107,12 @@ export function createApi(opts: ApiOptions = {}): Api {
     getUser: (id) => call("user", "GET", `/api/users/${enc(id)}`, undefined, isUser),
     words: (id) => call("user", "GET", `/api/users/${enc(id)}/words`, undefined, arrayOf(isLearningEvent)),
     sessions: (id) => call("user", "GET", `/api/users/${enc(id)}/sessions`, undefined, arrayOf(isSessionRecord)),
-    start: (sid, userId, lang) =>
-      call("start", "POST", `/api/sessions/${enc(sid)}/start`, { user_id: userId, woken_by: wokenBy(lang) }, isSessionState),
+    // Only a conversation sends the wake phrase: without it the session is a quiet listener (D-46).
+    start: (sid, userId, lang, mode) =>
+      call(
+        "start", "POST", `/api/sessions/${enc(sid)}/start`,
+        mode === "talk" ? { user_id: userId, woken_by: wokenBy(lang) } : { user_id: userId }, isSessionState,
+      ),
     stop: async (sid) => {
       const v = await call("other", "POST", `/api/sessions/${enc(sid)}/stop`, undefined, (x: unknown): x is unknown => true);
       return isSessionState(v) ? v : null;

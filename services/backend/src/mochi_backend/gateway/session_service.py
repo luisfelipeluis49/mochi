@@ -189,8 +189,24 @@ class SessionService:
                 return self._store.session_state()
             self._begin(agent_id, mode, person)
             self._logger.log("agent_started", {"agent_id": agent_id, "mode": mode.value})
-            self._intelligence.session_started(mode is SessionMode.REVIEW, language)
+            self._tell_intelligence(woken_by, mode, person, language)
             return await self._publish_state()
+
+    def _tell_intelligence(
+        self,
+        woken_by: str | None,
+        mode: SessionMode,
+        person: User | None,
+        language: Language | None,
+    ) -> None:
+        """How Mochi takes part from here on. A review, and a web user's own session that was
+        started by its wake phrase, are conversations with Mochi (D-57). A web user's session
+        started without it is a quiet listener that may explain an expression aloud (D-62). The
+        device's meeting is neither: Mochi waits for its name (D-43)."""
+        reviewing = mode is SessionMode.REVIEW
+        own = person is not None and not reviewing
+        talking = reviewing or (own and bool(woken_by))
+        self._intelligence.session_started(talking, language, explains=own)
 
     def _person(self, mode: SessionMode, user_id: str | None, user: User | None) -> User | None:
         """Who the session is for: the reviewer, a web session's user, or nobody in particular

@@ -88,6 +88,23 @@ class HintFactory:
             state_history=[first],
         )
 
+    def phrase_event(
+        self, user_id: str, language: Language, phrase: str, meaning: str
+    ) -> LearningEvent:
+        """The DISCOVERED event for a phrase Mochi taught (it has no hint card)."""
+        first = StateChange(learning_state=LearningState.DISCOVERED, at=iso_z(self._clock.now()))
+        return LearningEvent(
+            learning_event_id=self._ids.new("learn"),
+            user_id=user_id,
+            target_language=language,
+            expression=phrase,
+            meaning=meaning,
+            detection_signal=Reason.ASKS_MOCHI,
+            hint_id=None,
+            learning_state=LearningState.DISCOVERED,
+            state_history=[first],
+        )
+
 
 def already_saved(hint: Hint, context: SessionContext) -> bool:
     """True when that person already has this expression saved (no duplicate card)."""

@@ -33,6 +33,7 @@ SECONDS_PER_WORD = 0.4  # roughly how long Mochi takes to say a word
 FORGET_AFTER = timedelta(minutes=2)  # an old exchange is not context for a new one
 # A word Mochi put on its screen.
 SHOWN = re.compile(r"\[\s*show\b\s*:?\s*([^\]]+?)\s*\]", re.IGNORECASE)
+MIN_WORDS_TO_EXPLAIN = 4  # an idiom needs a few words around it
 GIVEN_LIMIT = 3  # words remembered for the goodbye: the newest ones
 
 
@@ -57,6 +58,7 @@ class MochiTalk:
         self._given: list[str] = []  # words Mochi handed over in this session, newest last
         self._until: datetime | None = None
         self._attentive = False  # someone is talking WITH Mochi, not next to it
+        self.explains = False  # a quiet listener may explain an expression unasked (web sessions)
         self.reviewing = False  # this session is a review (told to Mochi with every sentence)
         self.review: list[ReviewWord] = []  # in a review: the words to bring back
         self.language = Language.EN  # of the last sentence Mochi answered: the tie-breaker
@@ -71,7 +73,9 @@ class MochiTalk:
         """Swap the model that writes the lines."""
         self._model = model
 
-    def begin(self, conversing: bool, language: Language | None = None) -> None:
+    def begin(
+        self, conversing: bool, language: Language | None = None, explains: bool = False
+    ) -> None:
         """A session starts. `conversing`: one person talks WITH Mochi (a review), so every
         sentence is for it; otherwise people talk to each other and Mochi waits for its name.
 
@@ -80,6 +84,7 @@ class MochiTalk:
         """
         self._history, self._until, self._attentive = [], None, conversing
         self._given, self.review = [], []
+        self.explains = explains  # a web session's quiet listener may explain unasked (D-62)
         self.language = language or self.language
         if conversing:
             self.called()
@@ -87,6 +92,13 @@ class MochiTalk:
     def called(self) -> None:
         """Someone called Mochi without asking anything yet: the next sentence is for it."""
         self._until = self._clock.now() + self._follow_up
+
+    def may_explain(self, text: str) -> bool:
+        """A quiet web session may explain what was said, but a short sentence holds no idiom.
+
+        Example: with `explains` on and nobody chatting, "It is raining cats and dogs." is True.
+        """
+        return self.explains and not self._attentive and len(text.split()) >= MIN_WORDS_TO_EXPLAIN
 
     @property
     def attentive(self) -> bool:
@@ -157,6 +169,7 @@ class MochiTalk:
             named=named,
             language=language,
             conversing=self._attentive,
+            explains=self.explains and not self._attentive,
             given=list(self._given),
             reviewing=self.reviewing,
             review=list(self.review),

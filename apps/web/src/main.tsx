@@ -35,7 +35,7 @@ function mockDeps(): AppDeps {
   const api = mockApi(b);
   let current = "";
   return {
-    api: { ...api, start: (sid, uid, lang) => { current = sid; return api.start(sid, uid, lang); } },
+    api: { ...api, start: (sid, uid, lang, mode) => { current = sid; return api.start(sid, uid, lang, mode); } },
     WebSocket: mockSocketClass(b),
     joinVoice: mockJoinVoice(b, () => current || rememberedSession() || ""),
     micEnv: (hooks) => browserMicEnv(realTimers, hooks),

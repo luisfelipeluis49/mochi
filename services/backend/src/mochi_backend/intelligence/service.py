@@ -172,8 +172,8 @@ class Intelligence:
         know, with what it means (D-53); None for nearly every sentence, and always while
         someone is talking WITH Mochi. Example: "Let's circle back on that." -> "circle back".
         """
-        if self._talk.attentive or self._talk.listening():
-            return None
+        if self._talk.attentive or self._talk.listening() or self._talk.explains:
+            return None  # ... and a web session's quiet listener explains aloud itself (D-62)
         return await self._explainer.explain(turn, context)
 
     def used_alone(
@@ -194,15 +194,19 @@ class Intelligence:
             for event in used_alone(self.words_for(person), said, on_screen, start, now)
         ]
 
-    def session_started(self, conversing: bool, language: Language | None = None) -> None:
+    def session_started(
+        self, conversing: bool, language: Language | None = None, explains: bool = False
+    ) -> None:
         """A session begins. `conversing`: one person talks WITH Mochi (a review on their phone),
         so every sentence is for it. Otherwise it is a meeting and Mochi waits for its name.
 
         `language`: the one Mochi was called and greeted in; a short answer that could be either
         language ("Ok.") is then answered in it.
+        `explains`: while it only listens, Mochi may also explain an idiom or a wrong expression
+        aloud, unasked (a web session's quiet mode, D-62).
         Example: `session_started(True, Language.PT_BR)`.
         """
-        self._talk.begin(conversing, language)
+        self._talk.begin(conversing, language, explains)
         self._explainer.fresh_session()
         self._warm_up()
 
