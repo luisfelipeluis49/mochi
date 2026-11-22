@@ -41,9 +41,10 @@ _REPORTED = re.compile(
 # Saying that one will repeat oneself is not asking Mochi to. Seen live (D-69): "I'll say it
 # again: can you send me the plan before lunch?" made Mochi say the last hint aloud, four times.
 _ONESELF = re.compile(
-    r"\b(?:i(?:'ll| will|'m going to| am going to|'m gonna| can| could| should)?|let me"
-    r"|we(?:'ll| will)?)\s+(?:just\s+)?say (?:it|that|this|the word)\b|"
-    r"\b(?:vou|vamos|posso|deixa eu|deixa que eu|eu) (?:fal\w+|diz\w+|dig\w+|repet\w+)\b"
+    r"\b(?:i'll|i will|i'm going to|i am going to|i'm gonna|i have to|i need to|let me|let's"
+    r"|we'll|we will|want me to)\s+(?:just\s+)?say (?:it|that|this|the word)\b|"
+    r"\b(?:vou|vamos|vai|tenho que|preciso|deixa eu|deixa que eu|quer que eu) "
+    r"(?:falar|dizer|repetir)\b"
 )
 # A word the recogniser put in quotes: "Você pode falar 'reunião' para mim?"
 _QUOTED = re.compile(r"[\"“]([^\"”]{2,40})[\"”]|(?<!\w)['‘]([^'’]{2,40})['’](?!\w)")

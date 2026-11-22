@@ -86,7 +86,7 @@ _DESCRIBING = re.compile(
     r"(?:that|where|who|you|they|for|to|of|que|onde|de|para|pra)\b"
 )
 _SEARCHING = re.compile(
-    r"como é que (?:se )?(?:fala|diz|chama)|como (?:é|era) mesmo|como (?:se )?chama|"
+    r"como [eé] que (?:se )?(?:fala|diz|chama)|como (?:é|era) mesmo|como (?:se )?chama|"
     r"qual é (?:a palavra|o nome)|(?:não|nao) lembro (?:a palavra|o nome)|esqueci o nome|"
     r"how (?:do|can|would) (?:you|i) (?:say|call)|how to say|how is it called|"
     r"what(?:'s| is) (?:it|that) called|what(?:'s| is) the (?:name|word)|"
@@ -174,6 +174,15 @@ def before_search(text: str) -> str | None:
     found = _SEARCHING.search(lowered(text))
     before = lowered(text)[: found.start()] if found else ""
     return before if words_of(before) else None
+
+
+def after_search(text: str) -> str:
+    """What follows the words the speaker looked for the word with: usually the word itself.
+
+    Example: `after_search("We need to, como é que fala, destravar isso")` is ", destravar isso".
+    """
+    found = _SEARCHING.search(lowered(text))
+    return lowered(text)[found.end() :] if found else ""
 
 
 def search_language(text: str) -> Language | None:

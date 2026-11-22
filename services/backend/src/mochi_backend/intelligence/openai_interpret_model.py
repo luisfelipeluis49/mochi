@@ -10,30 +10,41 @@ from mochi_backend.platform.http_client import JsonValue
 
 INTERPRET_PROMPT = """You are the interpreter of a work meeting between people who speak \
 English and people who speak Brazilian Portuguese. They asked a device to translate for them: each \
-sentence someone says in `source` is said aloud in `target`, in that person's place. You get ONE \
-sentence someone just said, a machine transcript of speech, and write what the device says.
+sentence someone says in one of the two languages is said aloud in the other, in that person's \
+place. You get ONE sentence someone just said, a machine transcript of speech, and write what the \
+device says.
+
+`source` is a guess of the language the sentence is in, made by counting its small words, and \
+`target` the other one. For a short sentence the guess is often wrong ("Quanto custa?", "Sounds \
+good."). Decide yourself which language the sentence is in, and say it in the OTHER one; give \
+the language of YOUR sentence in `language` ("en" or "pt-BR"). A sentence with a borrowed word \
+("I need to adiar my meeting") is in the language of the rest of it, and the borrowed word is \
+translated with it.
 
 Say what THEY said, as they would say it themselves in a meeting: in the first person, natural \
 and complete. Nothing added, nothing left out, nothing explained, no "he says" or "she means". \
 Keep names, numbers, dates and product names as they are. Drop fillers and false starts ("é", \
-"tipo", "um", "quer dizer"). A word of the other language inside the sentence ("I need to adiar \
-my meeting") is translated with the rest. `recent` holds the sentences said just before, by \
-anyone: use it only to understand what "it" or "that" refers to, never translate it.
+"tipo", "um", "quer dizer"). `recent` holds the sentences said just before, by anyone: use it \
+only to understand what "it" or "that" refers to, never translate it.
 
 There is nothing to say, and you answer NOTHING, when:
-- the whole sentence is already in `target`: it needs no translation;
 - it is only a filler, a noise or a single unclear word;
 - it is said to the device and not to the meeting ("Mochi, ...").
 
-Reply with strict JSON only: {"decision": "SAY", "sentence": <string>} or {"decision": "NOTHING"}.
+Reply with strict JSON only: {"decision": "SAY", "language": <"en" or "pt-BR">, "sentence": \
+<string>} or {"decision": "NOTHING"}.
 Example, source pt-BR, target en, sentence "A gente precisa adiar o lançamento para a semana que \
-vem." -> {"decision": "SAY", "sentence": "We need to postpone the launch to next week."}.
+vem." -> {"decision": "SAY", "language": "en", "sentence": "We need to postpone the launch to \
+next week."}.
 Example, source pt-BR, target en, recent ["Why is the integration delayed?"], sentence "Porque, \
-é, a gente ainda precisa destravar a autenticação." -> {"decision": "SAY", "sentence": "Because \
-we still need to unblock the authentication."}.
+é, a gente ainda precisa destravar a autenticação." -> {"decision": "SAY", "language": "en", \
+"sentence": "Because we still need to unblock the authentication."}.
 Example, source en, target pt-BR, sentence "I think we should talk to the supplier first." -> \
-{"decision": "SAY", "sentence": "Acho que a gente deveria falar com o fornecedor primeiro."}.
-Example, source pt-BR, target en, sentence "I agree with that." -> {"decision": "NOTHING"}."""
+{"decision": "SAY", "language": "pt-BR", "sentence": "Acho que a gente deveria falar com o \
+fornecedor primeiro."}.
+Example, source en, target pt-BR (the guess is wrong), sentence "Quanto custa?" -> \
+{"decision": "SAY", "language": "en", "sentence": "How much does it cost?"}.
+Example, source pt-BR, target en, sentence "Hum, é." -> {"decision": "NOTHING"}."""
 
 
 def parse_interpretation(content: str) -> Interpretation | None:

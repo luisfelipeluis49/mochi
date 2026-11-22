@@ -6,7 +6,7 @@ Two people share one mic and each speaks their own language, so one session focu
 from mochi_backend.intelligence.clear_cases import asked_term, asks_for_word, wanted_language
 from mochi_backend.intelligence.language_guess import spoken_language
 from mochi_backend.intelligence.lexicon import Lexicon, other_language
-from mochi_backend.intelligence.stuck_signs import before_search, search_language
+from mochi_backend.intelligence.stuck_signs import after_search, before_search, search_language
 from mochi_backend.intelligence.tokens import normalized, words_of
 from mochi_backend.intelligence.wake_phrase import says_mochi
 from mochi_contracts import Language
@@ -30,15 +30,24 @@ def _begun_in(text: str, lexicon: Lexicon, fallback: Language) -> Language | Non
 
     Seen live (D-69): "We need to, como é que fala, destravar a autenticação?" is mostly
     Portuguese words, and is an English sentence: the speaker broke off to ask in their own
-    language. Counted as Portuguese, the English hint was dropped.
+    language, about words of their own language. Counted as Portuguese, the English hint was
+    dropped.
     Example: that sentence -> English; "Ben, como se diz recibo?" -> None (nothing was begun);
-    "Ana, eu não sei, como se diz recibo?" -> None (asked in the language it was begun in).
+    "Eu não sei, how do you say recibo?" -> None (the word asked about is in the language of
+    the beginning: an aside in their own language, and the question is the sentence).
     """
     before = before_search(text)
     if before is None or len(words_of(before)) < _MIN_BEGUN or says_mochi(before):
         return None  # "E aí Mochi, what's the word for fila?" begins nothing: it calls Mochi
     language = spoken_language(before, lexicon, fallback)
-    return language if search_language(text) is other_language(language) else None
+    own = other_language(language)
+    asked_in_own = search_language(text) is own
+    return language if asked_in_own and _in(after_search(text), own, lexicon) else None
+
+
+def _in(words: str, language: Language, lexicon: Lexicon) -> bool:
+    """True when `words` are in `language`, or do not say (nothing followed the question)."""
+    return spoken_language(words, lexicon, language) is language
 
 
 def focus_for(text: str, lexicon: Lexicon, fallback: Language) -> Language:
@@ -50,13 +59,14 @@ def focus_for(text: str, lexicon: Lexicon, fallback: Language) -> Language:
     "Eu esqueci meu umbrella" practises Portuguese. A tie or no evidence gives `fallback`.
     A sentence left unfinished to look for its word practises the language it was begun in.
     """
+    asks = asks_for_word(text)
+    named = wanted_language(text) if asks else None  # "... em inglês?" says it outright
+    if named is not None:
+        return named
     begun = _begun_in(text, lexicon, fallback)
     if begun is not None:
         return begun
-    if asks_for_word(text):
-        named = wanted_language(text)  # "... em inglês?" says it outright
-        if named is not None:
-            return named
+    if asks:
         asked = _asked_language(text, lexicon)
         if asked is not None:
             return other_language(asked)

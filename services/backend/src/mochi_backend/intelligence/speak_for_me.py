@@ -12,6 +12,7 @@ import asyncio
 import re
 from collections import deque
 
+from mochi_backend.intelligence.answer_checks import language_named
 from mochi_backend.intelligence.interpret_port import (
     Interpretation,
     InterpretModel,
@@ -39,6 +40,12 @@ _ON = re.compile(
     r"|\bfal[ae]r?\s+por\s+(?:mim|nos|(?:a\s+)?gente)\b|\btraduz\w*\s+(?:pra|para)\s+(?:mim|nos|(?:a\s+)?gente)\b"
     r"|\bseja\s+(?:a\s+minha\s+voz|(?:o\s+)?(?:meu|nosso)\s+interprete)\b"
 )
+# Not asking: "Mochi, don't translate for us", "não precisa falar por mim", "I asked Mochi to
+# speak for me yesterday". With the words that turn it on, these mean stop, or nothing.
+_NOT_ASKING = re.compile(
+    r"\b(?:don'?t|do\s+not|doesn'?t|didn'?t|not|no\s+need|never|nao|nunca|sem"
+    r"|asked|told|said|pedi\w*|falei|disse)\b"
+)
 # Clear without Mochi's name: nobody says these to a colleague.
 _OFF_PLAIN = re.compile(
     r"\bstop\s+(?:speaking|talking|translating)\s+for\s+(?:me|us)\b"
@@ -49,17 +56,28 @@ _OFF_PLAIN = re.compile(
 # mim", which asks for the opposite (D-64).
 _OFF_NAMED = re.compile(
     r"\bthat'?s\s+enough\b|\bi(?:'ll|\s+will|\s+can)\s+speak\s+(?:for\s+)?myself\b"
+    r"|\bstop\s+(?:speaking|talking|translating|interpreting)\b"
     r"|\bpar[ae]r?\s+de\s+(?:falar|traduzir)\b|\bdeixa\s+que\s+eu\s+falo\b|\beu\s+mesm[oa]\s+falo\b"
 )
-# The short ones count only as the last thing said: "Mochi, pode parar" is a command, "Mochi,
-# quando chega o relatório?" and "Mochi, como eu falo fila em inglês?" are questions.
-_TAIL = r"(?:[\s,]+(?:now|please|thanks|thank\s+you|agora|por\s+favor|obrigad[oa]))*[\s.!?]*$"
-_OFF_SHORT = re.compile(r"\b(?:stop|pode\s+parar|chega|eu\s+falo)" + _TAIL)
-# The name as the recogniser mishears it ("Moji, pode parar", "Hey Moshe, stop"), and then the
-# stop phrase and nothing else. "Pode parar." with no name at all is a sentence to translate.
-_OFF_MISHEARD = re.compile(
-    r"^(?:(?:hey|hi|oi|ei|ola|okay|ok)[\s,]+)?m[ou]\w{1,5}[\s,]+(?:stop|pode\s+parar|chega)" + _TAIL
+# Mochi's name as the recogniser writes it: Mochi, Moshi, Moji, Motchi, Moshe, Muchi.
+_NAME = r"m(?:o(?:ch|sh|tch|tsh|j|x|g)\w{0,3}|uch[iy]|ouch\w*)"
+# The short ones count only where a sentence ends: "Mochi, pode parar." and "Stop, Mochi" are
+# commands, also with more said after them; "Mochi, quando chega o relatório?" and "Mochi, how
+# do you say stop sign?" are questions.
+_POLITE = (
+    r"(?:[\s,]+(?:now|please|thanks|thank\s+you|okay|ok|agora|por\s+favor|obrigad[oa]|ta\s+bom"
+    rf"|valeu|{_NAME}))*"
 )
+_ENDS = r"\s*(?:[.!?]|$)"
+_OFF_SHORT = re.compile(r"\b(?:stop|pode\s+parar|par[ae]|chega)" + _POLITE + _ENDS)
+# The name misheard beyond what `says_mochi` knows ("Moji, pode parar", "Hey Moshe, stop"), and
+# then the stop phrase. "Pode parar." with no name at all is a sentence to translate.
+_OFF_MISHEARD = re.compile(
+    rf"^(?:(?:hey|hi|oi|ei|ola|okay|ok)[\s,]+)?{_NAME}[\s,.]+(?:stop|pode\s+parar|chega)"
+    + _POLITE
+    + _ENDS
+)
+_SENTENCE_END = re.compile(r"[.!?]+\s*")
 # Both ways out are named to whoever asked in English: said with a Brazilian accent, "Mochi,
 # stop" was heard as "Mochi está" in a live session; "Mochi, pode parar" was understood (D-64).
 ON_LINES = {
@@ -75,7 +93,7 @@ OFF_LINES = {
     Language.EN: "Okay, over to you.",
     Language.PT_BR: "Combinado, agora é com vocês.",
 }
-_OWN_WORDS = 4  # how many of its own sentences Mochi remembers, to know them when they come back
+_OWN_WORDS = 12  # the pieces of its own last lines Mochi remembers, to know them coming back
 
 
 def _named_stop(low: str) -> bool:
@@ -132,16 +150,22 @@ class SpeakForMe:
         other language; None for every other turn (the usual rules then apply)."""
         if not self._enabled or context.mode is not SessionMode.MEETING:
             return None
+        if self._on and normalized(turn.text) in self._own:
+            return _silent()  # its own voice, heard by a microphone: not a command, not a sentence
         low = folded(turn.text)
         named = says_mochi(turn.text) or has_wake_phrase(turn.text)
-        # Off is looked for first: "para de falar por mim" holds the words that turn it on.
-        if self._on and self._stops(low, named):
-            return self._turn_off(turn)
-        if named and _ON.search(low):
-            return self._turn_on(turn)
-        if not self._on or named:  # a sentence for Mochi is answered, not translated
-            return None
+        command = self._command(turn, low, named)
+        if command is not None or not self._on or named:
+            return command  # a sentence for Mochi is answered, not translated
         return await self._in_the_other_language(turn, context)
+
+    def _command(self, turn: Turn, low: str, named: bool) -> Decision | None:
+        """What this turn does to the mode. Off is looked for first: "para de falar por mim"
+        holds the words that turn it on, and so does "don't translate for us"."""
+        asks = named and _ON.search(low) is not None
+        if self._stops(low, named) or (asks and _NOT_ASKING.search(low)):
+            return self._turn_off(turn) if self._on else None
+        return self._turn_on(turn) if asks else None
 
     @staticmethod
     def _stops(low: str, named: bool) -> bool:
@@ -165,18 +189,28 @@ class SpeakForMe:
         return self._says(OFF_LINES[language], language)
 
     def _says(self, text: str, language: Language) -> Decision:
-        """A SPEAK decision, remembered: on a microphone that hears Mochi, its own sentence
-        comes back as a turn and must not be translated back."""
-        self._own.append(normalized(text.partition("] ")[2] or text))
+        """A SPEAK decision, remembered whole and sentence by sentence: on a microphone that
+        hears Mochi, its own words come back as turns and must not be translated back. A piece
+        that reads as a stop command ("Mochi, pode parar", in its welcome) is not remembered:
+        said by a person it has to work."""
+        spoken = text.rpartition("] ")[2]
+        pieces = [spoken, *_SENTENCE_END.split(spoken)]
+        kept = [p for p in pieces if p.strip() and not self._stops(folded(p), named=True)]
+        self._own.extend(normalized(piece) for piece in [spoken, *kept])
         speak = Speak(text=text, language=language, reason=SpeakReason.ASKS_MOCHI)
         return Decision(decision=DecisionKind.SPEAK, hint=None, speak=speak, learning_events=[])
 
+    async def _asked(self, request: InterpretRequest) -> Interpretation | None:
+        try:
+            return await asyncio.wait_for(self._model.interpret(request), self._timeout)
+        except Exception:  # noqa: BLE001 - saying nothing is always a safe answer
+            return None
+
     async def _in_the_other_language(self, turn: Turn, context: SessionContext) -> Decision | None:
-        """The sentence in the other language, to be spoken; silence when it is Mochi's own
-        sentence coming back; None when there is nothing to say (a filler, a model that failed)."""
-        if normalized(turn.text) in self._own:
-            return _silent()
-        # A short sentence with no telling word is taken to go on in the language before it.
+        """The sentence in the other language, to be spoken; None when there is nothing to say
+        (a filler, a model that failed)."""
+        # A guess, from the small words; a short sentence with none ("Quanto custa?") goes the
+        # way of the one before it. The model decides, and says which language it answered in.
         source = self._language(turn.text, self._last or context.focus)
         request = InterpretRequest(
             text=turn.text,
@@ -184,12 +218,10 @@ class SpeakForMe:
             source=source,
             target=other_language(source),
         )
-        try:
-            answer = await asyncio.wait_for(self._model.interpret(request), self._timeout)
-        except Exception:  # noqa: BLE001 - saying nothing is always a safe answer
-            return None
+        answer = await self._asked(request)
         sentence = _worth_saying(answer, turn.text)
-        if sentence is None:
+        if answer is None or sentence is None:
             return None
-        self._last = source
-        return self._says(sentence, request.target)
+        target = language_named(answer.language) or request.target
+        self._last = other_language(target)
+        return self._says(sentence, target)

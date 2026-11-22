@@ -1947,8 +1947,9 @@ destravar a autenticação." gets **unblock authentication** and "Because we nee
 longer holds *who* Mochi speaks for, only whether it is interpreting. On: anyone, by name ("speak for me",
 "translate for us", "fala por mim", "traduz pra gente"). While on, every sentence not addressed to Mochi is
 said in the other language, the direction taken from the sentence's own language; a sentence too short to
-tell goes the way of the one before. Off: the same phrases as before, from anyone. Mochi remembers its last
-four sentences and stays silent when one comes back as a turn. No contract change.
+tell is guessed to go the way of the one before, and the model has the last word on it. Off: the same
+phrases as before, from anyone. Mochi remembers its last lines and stays silent when one comes back as a
+turn. No contract change.
 
 With the real model, typed: "A gente precisa adiar o lançamento para a semana que vem." → "We need to
 postpone the launch to next week."; "Why? Is there a problem with the supplier?" → "Por quê? Há um problema
@@ -1957,7 +1958,34 @@ the supplier delayed the delivery and we'll work something out by Friday."; "I n
 tomorrow." → "Preciso adiar minha reunião de amanhã."; "Ok." → nothing; "Mochi, como se diz fila em
 inglês?" → answered, not translated; "Mochi, pode parar." → off. 0.6 to 1.1 s each.
 
-**Tests:** `test_speak_for_me.py` rewritten (31), `test_live_findings.py` (17). `make verify`: 1843 passed
+**After a review before any deploy (same day).** Read by a second pair of eyes, with the functions run on
+sentences; each of these is now a test:
+- *Stopping.* "Stop, Mochi", "Mochi, stop translating", "Mochi, para.", "Mochi, stop, okay?" and a stop
+  with more said after it in the same turn left the interpreter on. The short stop words now count
+  wherever a sentence ends, the name may come after them, and "stop translating" needs no "for us".
+- *Saying no.* "Mochi, don't translate for us" and "não precisa falar por mim" hold the words that turn it
+  on, and turned it on. With a no in the sentence they stop it, or do nothing when it was off; so does
+  "Mochi, para de falar por mim" when it was off (it turned it on again: the D-64 bug, back).
+- *Which way.* The direction was the guess from the sentence's small words, and a short sentence with none
+  ("Quanto custa?", "Sounds good.") went the way of the sentence before, which is the wrong way whenever
+  two people take turns. The model now decides and says which language it answered in (`language` in its
+  JSON); the guess is only its starting point. With the real model, after an English sentence: "A proposta
+  ficou boa." → "The proposal turned out good."; "Quanto custa?" → "How much does it cost?"; "Dois mil
+  reais." → "Two thousand reais."; "Friday works." → "Sexta-feira funciona."; "Fechado, combinado." →
+  "Agreed, it's settled."
+- *Its own voice.* Mochi's welcome ends in "Mochi, pode parar": heard back through a microphone it would
+  have stopped the mode it had just started. What it said is now looked for before any command, whole and
+  sentence by sentence (but a piece that is a stop command is not remembered: said by a person it must work).
+- *The sentence's language.* "Eu não sei, how do you say recibo?" had become Portuguese under the new rule.
+  The rule now also needs the words asked about to be in the asker's own language, and a language named
+  outright ("… in English?") wins over it.
+- *Asking for a word.* "Não sei como é que diz pra ele…" is telling, not asking: the "é que" form does not
+  count after "sei", "sabe", "saber" or "de". It also matches without the accent ("como e que fala").
+- *Repeating oneself* was too wide ("Can you say it again so I can say it?" was refused) and too narrow ("I
+  have to say it again"): it is now the forms that announce it ("I'll", "I'm going to", "I have to", "let
+  me", "want me to", "vou", "tenho que", "deixa eu" + say/falar).
+
+**Tests:** `test_speak_for_me.py` rewritten (49), `test_live_findings.py` (31). `make verify`: 1875 passed
 with `main`'s D-68 merged in.
 
 **Open:**

@@ -114,6 +114,15 @@ async def test_the_ways_of_asking(command: str) -> None:
         "Okay Mochi, chega, obrigada.",
         "Moji, pode parar.",  # the name misheard: the stop phrase and nothing else is enough
         "Hey Moshe, stop.",
+        "Mochi, stop translating.",
+        "Stop, Mochi.",
+        "Pode parar, Mochi.",
+        "Mochi, para.",
+        "Mochi. Stop.",
+        "Mochi, stop, okay?",
+        "Mochi, pode parar. Então, voltando ao assunto.",  # more said after it in the same turn
+        "Mochi, não precisa falar por mim.",  # the words that turn it on, with a no
+        "Mochi, you don't need to translate for us anymore.",
     ],
 )
 async def test_the_ways_of_stopping_it(command: str) -> None:
@@ -134,6 +143,9 @@ async def test_the_ways_of_stopping_it(command: str) -> None:
         "Please stop talking, Ben.",  # to a person
         "Pode parar.",  # no name at all: a sentence of the meeting
         "A gente pode parar de adiar o lançamento?",
+        "Mochi, isso é para o cliente de São Paulo?",  # "para": for
+        "Monday, stop by my office.",
+        "Mostra, pode parar aí.",
     ],
 )
 async def test_a_stop_word_in_a_question_or_in_the_meetings_own_talk_does_not_turn_it_off(
@@ -158,6 +170,45 @@ async def test_what_is_not_a_command_and_what_is_not_translated() -> None:
     assert await mode.take(_by(ADIAR_PT), review) is None
     mode.fresh_session()
     assert not mode.on
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Mochi, don't translate for us.",
+        "Mochi, não precisa falar por mim.",
+        "I asked Mochi to speak for me yesterday.",
+        "Mochi, para de falar por mim.",  # it was off: nothing to stop, and nothing to start
+    ],
+)
+async def test_saying_no_with_the_words_that_ask_does_not_turn_it_on(said: str) -> None:
+    mode = _mode()
+    assert await mode.take(_by(said), make_context()) is None
+    assert not mode.on
+
+
+async def test_the_model_decides_which_way_a_short_sentence_goes() -> None:
+    # after an English sentence "Quanto custa?" is guessed English; the model knows better
+    model = FakeInterpretModel({"quanto custa": "How much does it cost?"}, answers_in="en")
+    mode = _mode(model)
+    await mode.take(_by("Mochi, speak for me."), make_context())
+    said = await mode.take(_by("Quanto custa?", None, 4), make_context())
+    assert said is not None and said.speak is not None
+    assert (said.speak.text, said.speak.language) == ("How much does it cost?", Language.EN)
+
+
+async def test_its_welcome_coming_back_neither_stops_it_nor_is_translated() -> None:
+    model = FakeInterpretModel(SCRIPT)
+    mode = _mode(model)
+    welcome = await mode.take(_by("Mochi, speak for me."), make_context())
+    assert welcome is not None and welcome.speak is not None
+    heard = welcome.speak.text.partition("] ")[2]  # as a microphone would hear it
+    for echo in (heard, "Okay, I'll translate for you."):
+        again = await mode.take(_by(echo, None, 5), make_context())
+        assert again is not None and again.decision is DecisionKind.IGNORE
+    assert mode.on and model.requests == []
+    stop = await mode.take(_by("Mochi, pode parar.", None, 9), make_context())  # a person
+    assert stop is not None and not mode.on
 
 
 async def test_its_own_sentence_coming_back_is_not_translated_again() -> None:
