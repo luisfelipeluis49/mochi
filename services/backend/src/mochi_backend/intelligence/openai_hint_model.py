@@ -334,7 +334,7 @@ class OpenAiHintModel:
             return {"temperature": 0}
         if request.suspect and self._reasoning_effort == NO_THINKING:
             # Whether a word is used with its look-alike's meaning needs a moment of thought.
-            # Measured on 9 sentences, 3 times each (D-41): 20 of 27 right answering at once,
+            # Measured on 9 sentences, 3 times each (D-42): 20 of 27 right answering at once,
             # 26 of 27 with "low", for 0.14 s more, and only sentences with a suspect pay it.
             return {"reasoning_effort": SUSPECT_THINKING}
         return {"reasoning_effort": self._reasoning_effort}

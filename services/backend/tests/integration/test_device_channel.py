@@ -81,7 +81,7 @@ async def test_a_hint_reaches_the_device_as_a_card_with_its_language_and_meaning
 
 def test_a_hint_with_other_words_that_fit_carries_them_to_the_device() -> None:
     """Someone who stopped at "I forgot my" named no word: Mochi's own screen showed only the
-    first guess, the glasses all of them (D-41). A hint with one word is the card it always was."""
+    first guess, the glasses all of them (D-42). A hint with one word is the card it always was."""
     words = [HintCandidate(expression=word, meaning=None) for word in ("umbrella", "raincoat")]
     open_search = make_hint(0).model_copy(update={"expression": "umbrella", "candidates": words})
     assert json.loads(hint_card(open_search))["candidates"] == ["raincoat"]  # not the word again

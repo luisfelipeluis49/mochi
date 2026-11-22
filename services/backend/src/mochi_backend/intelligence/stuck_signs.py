@@ -5,7 +5,7 @@ word, start the sentence again, describe the thing, or mutter "como é que fala"
 (AGENTS 7.1 cases 5-7 and 9). The speech recogniser writes none of that as "…": "It's raining and I
 forgot my" simply ends. These signs are what can be seen in the text alone. They are clues for the
 hint model, which sees them next to the sentence (`ModelRequest.noticed`), never verdicts: "It's
-the place where I grew up." describes a place and nobody is stuck (DECISIONS D-41).
+the place where I grew up." describes a place and nobody is stuck (DECISIONS D-42).
 """
 
 import re

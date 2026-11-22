@@ -520,7 +520,7 @@ class HintCardTest(unittest.IsolatedAsyncioTestCase):
         sup.face.show_for.assert_called_with(10, word="queue", note="", more="")
 
     def test_other_words_that_fit_are_a_third_line(self):
-        """Someone who stopped at "I forgot my" may need more than the first guess (D-41)."""
+        """Someone who stopped at "I forgot my" may need more than the first guess (D-42)."""
         card = {"word": "umbrella", "language": "en", "meaning": "guarda-chuva", "candidates": ["raincoat", "jacket", "hat"]}
         self.assertEqual(hint_more(card), "raincoat · jacket")  # two: the screen is small
         self.assertEqual(hint_more({"word": "fork"}), "")       # an older backend sends none

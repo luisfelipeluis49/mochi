@@ -285,7 +285,7 @@ class DecisionFlow:
         AGENTS 7.1 has a model judge case 8 in context, and 7.2 says quiet by default, so with no
         model (or a model that disagrees or is slow) the answer is IGNORE.
         """
-        # The model is told what the rule suspects (D-41): asked without it, it had to come up
+        # The model is told what the rule suspects (D-42): asked without it, it had to come up
         # with the same word unprompted, and "I pretend to travel in July." went unanswered.
         suspect = suspect_in(text, self._lexicon, context.focus)
         answer = await self._ask_model(text, history, context, suspect)

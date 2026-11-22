@@ -75,7 +75,7 @@ def _last_text(context: SessionContext) -> str | None:
 
 
 def unseen(text: str, reason: Reason, context: SessionContext) -> bool:
-    """The model names a sign of being stuck that is not in the sentence (DECISIONS D-41).
+    """The model names a sign of being stuck that is not in the sentence (DECISIONS D-42).
 
     A sentence that "trails off" has to stop short, one that "restarts" has to start over, and
     a listener who "did not understand" has to say so. The model reads these into ordinary

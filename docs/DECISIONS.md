@@ -760,7 +760,7 @@ woken session; "first sound" = end of the speech to Mochi's first audio arriving
   nothing (typed, 12 each: `main` 7 silent, the branch 2). Not fixed here.
 
 
-## D-41: stuck without asking: hints before anyone says "how do you say" (2026-11-21)
+## D-42: stuck without asking: hints before anyone says "how do you say" (2026-11-21)
 
 Asked for by Suhuai ("we only get a hint when we explicitly ask; detect the difficulty in advance, and make
 the analysis faster"). It changes `intelligence/` and `packages/fixtures` (Kauê's), one constant in

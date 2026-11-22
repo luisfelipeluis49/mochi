@@ -1,6 +1,6 @@
 """Someone who is stuck and does not ask: the signs in the sentence, and what is done with them.
 
-Measured on sentences written the way the speech recogniser writes them (DECISIONS D-41): before
+Measured on sentences written the way the speech recogniser writes them (DECISIONS D-42): before
 this, a hint came for 12 of 63 such sentences.
 """
 
@@ -277,7 +277,7 @@ ASSISTED = "Yesterday I assisted a very good movie."
 
 async def test_a_suspected_false_friend_is_put_to_the_model_and_confirmed() -> None:
     """Asked without the suspicion, the model had to name the same word unprompted, and
-    "I pretend to travel in July." went unanswered (D-41)."""
+    "I pretend to travel in July." went unanswered (D-42)."""
     recast = "Yesterday I watched a very good movie."
     model = FakeHintModel(_open("look_alike", "watched", meaning="assistir", example=recast))
     decision = await _decided(model, ASSISTED)
@@ -332,7 +332,7 @@ async def test_the_real_adapter_sends_the_signs_and_the_suspicion() -> None:
 
 
 async def test_a_suspected_false_friend_gets_a_moment_of_thought_and_nothing_else_does() -> None:
-    """Answering at once, the model confirmed "sensible" for someone who never cries (D-41)."""
+    """Answering at once, the model confirmed "sensible" for someone who never cries (D-42)."""
     body = json.dumps({"choices": [{"message": {"content": '{"decision": "IGNORE"}'}}]})
     http = FakeHttpClient([HttpResponse(200, body)] * 3)
     suspect = Suspect(used="assist", meant="watch", look_alike="assistir")

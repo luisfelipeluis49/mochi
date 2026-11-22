@@ -80,7 +80,7 @@ def _openai_hints(settings: Settings, logger: EventLogger) -> HintModel:
         )
         .thinking(settings.mochi_model_reasoning_effort)
         .logging(logger)
-        .warming(http)  # the connection is opened when a session starts (D-41)
+        .warming(http)  # the connection is opened when a session starts (D-42)
     )
 
 

@@ -110,7 +110,7 @@ class Intelligence:
         self._warm_up()
 
     def _warm_up(self) -> None:
-        """Open the models' connections now: the first sentence should not wait for them (D-41)."""
+        """Open the models' connections now: the first sentence should not wait for them (D-42)."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:  # called outside a loop (a script, a plain test): nothing to hurry

@@ -1,4 +1,4 @@
-"""Opening the connection to a model before the first sentence needs it (DECISIONS D-41).
+"""Opening the connection to a model before the first sentence needs it (DECISIONS D-42).
 
 Measured: the first call on a new connection takes 0.15 to 0.5 s longer than the next ones, and
 on the deployed backend the first sentence of a session took 1.6 s instead of 0.8 s (the second,

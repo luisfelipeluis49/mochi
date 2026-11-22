@@ -55,7 +55,7 @@ def hint_card(hint: Hint) -> str:
     Example: `{"word": "fork", "language": "en", "meaning": "garfo", "example": null}`.
     When the speaker named no word and others fit as well (`Hint.candidates`), those go along as
     "candidates": someone who stopped at "I forgot my" may need umbrella, raincoat or jacket,
-    and Mochi's own screen showed only the first (PROPOSAL, DECISIONS D-41).
+    and Mochi's own screen showed only the first (PROPOSAL, DECISIONS D-42).
     """
     card: dict[str, str | None | list[str]] = {
         "word": hint.expression,
