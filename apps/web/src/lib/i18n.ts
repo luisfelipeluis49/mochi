@@ -138,8 +138,8 @@ const en = {
   training_next_due: "Next word due {when}.",
   training_again: "Train again",
   training_caught_up: "All caught up! Next word due {when}.",
-  training_no_words: "Words you need in a session show up here.",
-  training_go_session: "Go to Session",
+  training_no_words: "Training is made of the words Papear showed you when you got stuck. None yet: in a session, say a word from your own language inside a sentence in the language you practise, and it appears here.",
+  training_go_session: "Start a session",
   training_no_meaning_one: "1 word has no meaning yet and is not in training.",
   training_no_meaning_other: "{n} words have no meaning yet and are not in training.",
 
@@ -329,8 +329,8 @@ const ptBR: Copy = {
   training_next_due: "Próxima palavra {when}.",
   training_again: "Treinar de novo",
   training_caught_up: "Tudo em dia! Próxima palavra {when}.",
-  training_no_words: "As palavras que você precisar em uma sessão aparecem aqui.",
-  training_go_session: "Ir para a sessão",
+  training_no_words: "O Treino é feito das palavras que o Papear mostrou quando você travou. Ainda não há nenhuma: em uma sessão, diga uma palavra do seu idioma dentro de uma frase no idioma que você pratica, e ela aparece aqui.",
+  training_go_session: "Começar uma sessão",
   training_no_meaning_one: "1 palavra ainda não tem significado e não está no treino.",
   training_no_meaning_other: "{n} palavras ainda não têm significado e não estão no treino.",
 
