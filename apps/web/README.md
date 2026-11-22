@@ -62,7 +62,8 @@ with it.
 **Without a backend:** open `http://localhost:5173/?mock=1`. The mock backend runs in the page and
 plays the AGENTS.md demo for the stored user. Mochi greets you, then shows **postpone** (adiar),
 **umbrella** (guarda-chuva) and **queue** (fila), and marks postpone "Used with help". Past sessions
-are pre-filled so that Digest and Analytics have data. Nothing leaves the browser.
+are pre-filled so that Digest and Analytics have data. Nothing leaves the browser. `?mock=1&as=Ana` skips
+onboarding with a stored mock user named Ana.
 
 ## Tests
 
