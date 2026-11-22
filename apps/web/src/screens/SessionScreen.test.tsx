@@ -13,7 +13,7 @@ function props(over: Partial<SessionScreenProps> = {}): SessionScreenProps {
   return {
     lang: "en", user, face: faceOf(restingFace("en", "Luís"), 0), level: 0, hint: null, hintRemaining: 0, speak: null, speaking: false,
     sessionHints: [], phase: "idle", elapsedMs: 0, chip: "asleep", micBlocked: null, banner: null, saved: null, rejoin: false, volume: 80,
-    activityInstruction: null, reachable: true, onStart: noop, onStop: noop, onRejoin: noop, onFixMic: noop, onVolume: noop,
+    activityInstruction: null, reachable: true, onStart: noop, onStop: noop, onRejoin: noop, onFixMic: noop, onVolume: noop, mode: "listen", onMode: noop,
     onDismissBanner: noop, onDismissSaved: noop, onGoDigest: noop, ...over,
   };
 }
@@ -72,4 +72,17 @@ test("saved card, reload banner, ended banner, game line", () => {
 test("speech bubble while capturing", () => {
   const html = renderToString(<SessionScreen {...props({ phase: "capturing", speak: { text: "You can say: queue.", language: "en", reason: "asks_mochi" }, speaking: true })} />);
   assert.ok(html.includes("You can say: queue."));
+});
+
+test("before Start the person chooses how Papear listens; the choice is shown and checked", () => {
+  const quiet = renderToString(<SessionScreen {...props()} />);
+  assert.ok(quiet.includes("How should Papear listen?") && quiet.includes("Quiet listener") && quiet.includes("Conversation"));
+  assert.match(quiet, /name="session-mode"[^>]*value="listen"[^>]*checked=""|checked=""[^>]*value="listen"/);
+  assert.match(renderToString(<SessionScreen {...props({ mode: "talk" })} />), /value="talk"[^>]*checked=""|checked=""[^>]*value="talk"/);
+  const pt = renderToString(<SessionScreen {...props({ lang: "pt-BR" })} />);
+  assert.ok(pt.includes("Ouvinte silencioso") && pt.includes("Conversa"));
+});
+
+test("while a session runs the choice is not offered", () => {
+  assert.ok(!renderToString(<SessionScreen {...props({ phase: "capturing" })} />).includes("session-mode"));
 });

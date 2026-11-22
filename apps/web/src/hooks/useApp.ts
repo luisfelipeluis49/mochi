@@ -5,6 +5,7 @@
 // (3) POST start {user_id, woken_by}, (4) GET agora, (5) join with the microphone; (6) any failure
 // after (3) sends POST stop.
 
+import { type SessionMode, readMode, writeMode } from "../lib/mode.ts";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Language } from "../contracts.ts";
 import { type Api, ApiError, realTimers } from "../lib/api.ts";
@@ -45,6 +46,7 @@ export interface AppModel {
   hasSpeech: boolean;
   onboarding: OnboardingState;
   digestWeek: number;
+  mode: SessionMode;
   timeZone?: string;
 }
 
@@ -64,6 +66,7 @@ export interface AppActions {
   forget(): void;
   trainingResult(wordId: string, outcome: Outcome): void;
   selectWeek(offset: number): void;
+  setMode(m: SessionMode): void;
 }
 
 export function bannerOf(e: unknown): Banner {
@@ -96,6 +99,9 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
   const [screen, setScreen] = useState<Screen>(() => routeOf(location.pathname).screen);
   const [onboarding, setOnboarding] = useState<OnboardingState>({ busy: false, error: null });
   const [digestWeek, setDigestWeek] = useState<number>(0);
+  const [mode, setModeState] = useState<SessionMode>(() => readMode());
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const mic = useAgoraMic(deps.joinVoice);
   const micRef = useRef(mic);
   micRef.current = mic;
@@ -283,7 +289,7 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
     await opened;
     let started = false;
     try {
-      await api.start(id, s.user.user_id, s.lang);
+      await api.start(id, s.user.user_id, s.lang, modeRef.current);
       started = true;
       startPosted.current = true;
       const join = await api.agora(id);
@@ -390,11 +396,15 @@ export function useApp(deps: AppDeps): { model: AppModel; actions: AppActions } 
       dispatch({ type: "progress", progress });
     },
     selectWeek: setDigestWeek,
+    setMode: (m) => {
+      writeMode(m);
+      setModeState(m);
+    },
   };
 
   return {
     model: {
-      state, screen, now, hasSpeech, onboarding, digestWeek,
+      state, screen, now, hasSpeech, onboarding, digestWeek, mode,
       voice: { lastHearingAt: mic.lastHearingAt, lastLoudAt: mic.lastLoudAt, level: mic.level },
     },
     actions,

@@ -83,6 +83,11 @@ const en = {
   // Session (3.2)
   session_title: "Session",
   session_start: "Start session",
+  session_mode_label: "How should Papear listen?",
+  session_mode_listen: "Quiet listener",
+  session_mode_listen_note: "Stays quiet and shows hints. Speaks only when you ask, or to explain an expression.",
+  session_mode_talk: "Conversation",
+  session_mode_talk_note: "Talks with you and helps you practise.",
   session_start_line: "Papear listens through your microphone only while a session runs.",
   session_waking: "Connecting…",
   session_stop: "Stop session",
@@ -276,6 +281,11 @@ const ptBR: Copy = {
 
   session_title: "Sessão",
   session_start: "Começar sessão",
+  session_mode_label: "Como o Papear deve ouvir?",
+  session_mode_listen: "Ouvinte silencioso",
+  session_mode_listen_note: "Fica quieto e mostra dicas. Só fala quando você pede, ou para explicar uma expressão.",
+  session_mode_talk: "Conversa",
+  session_mode_talk_note: "Conversa com você e ajuda a praticar.",
   session_start_line: "O Papear só ouve pelo seu microfone enquanto uma sessão está ativa.",
   session_waking: "Conectando…",
   session_stop: "Encerrar sessão",

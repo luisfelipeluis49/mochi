@@ -163,7 +163,9 @@ class SessionService:
                 return self._store.session_state()
             self._begin(agent_id, user)
             self._logger.log("agent_started", {"agent_id": agent_id})
-            self._intelligence.session_started(bool(woken_by), language_of_call(woken_by))
+            self._intelligence.session_started(
+                bool(woken_by), language_of_call(woken_by), explains=user is not None
+            )
             return await self._publish_state()
 
     def _already_running(self, woken_by: str | None, user: User | None) -> SessionState:

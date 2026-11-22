@@ -25,7 +25,7 @@ The hackathon MVP supports **English and Brazilian Portuguese**, exactly **two p
 Product rules that decide design arguments:
 
 1. **Humans first.** In Companhia and Jogar, help the two people talk to each other, never to Mochi. Talking to Mochi is the point only in Praticar, or when someone asks it something.
-2. **Quiet by default.** In Companhia, say and show nothing unless a hint is clearly worth it. Speak aloud only when someone asked Mochi (by name, or while a Praticar session is on).
+2. **Quiet by default.** In Companhia, say and show nothing unless a hint is clearly worth it. Speak aloud only when someone asked Mochi (by name, or while a Praticar session is on). The web app's quiet listener (D-46) may also explain an idiom or a wrong expression unasked, in a sentence or two; the Pi never does.
 3. **Personal.** A saved word belongs to one person and is shown only to them.
 4. **Only when started.** No audio leaves the device before the wake phrase ("Oi, Mochi") or Start, and none after Stop. The Pi may listen **locally** for the wake phrase; that audio is not recorded or sent anywhere.
 

@@ -116,6 +116,7 @@ function Shell({ model, actions }: { model: AppModel; actions: AppActions }) {
         rejoin={s.rejoin} volume={s.volume} activityInstruction={round} reachable={s.probe.status === "ok"}
         onStart={actions.start} onStop={actions.stop} onRejoin={actions.rejoin} onFixMic={actions.retryGate} onVolume={actions.setVolume}
         onDismissBanner={actions.dismissBanner} onDismissSaved={actions.dismissSaved} onGoDigest={() => actions.navigate("digest")}
+        mode={model.mode} onMode={actions.setMode}
       />
     );
   } else if (screen === "training") {

@@ -38,15 +38,22 @@ test("GET user, words and sessions use the user path", async () => {
   ]);
 });
 
-test("start sends user_id and woken_by per UI language", async () => {
+test("a conversation sends the wake phrase per UI language", async () => {
   const f = fakeFetch(() => ({ status: 200, json: state }));
   const api = createApi({ fetch: f.fn });
-  assert.deepEqual(await api.start("w-3f9c1a2b", user.user_id, "pt-BR"), state);
-  await api.start("w-3f9c1a2b", user.user_id, "en");
+  assert.deepEqual(await api.start("w-3f9c1a2b", user.user_id, "pt-BR", "talk"), state);
+  await api.start("w-3f9c1a2b", user.user_id, "en", "talk");
   assert.equal(f.calls[0].url, "/api/sessions/w-3f9c1a2b/start");
   assert.equal(f.calls[0].method, "POST");
   assert.deepEqual(f.calls[0].body, { user_id: user.user_id, woken_by: "oi mochi" });
   assert.deepEqual(f.calls[1].body, { user_id: user.user_id, woken_by: "hey mochi" });
+});
+
+test("a quiet listener sends no wake phrase, so the backend does not start a chat (D-46)", async () => {
+  const f = fakeFetch(() => ({ status: 200, json: state }));
+  const api = createApi({ fetch: f.fn });
+  await api.start("w-3f9c1a2b", user.user_id, "pt-BR", "listen");
+  assert.deepEqual(f.calls[0].body, { user_id: user.user_id });
 });
 
 test("stop and agora", async () => {
@@ -66,7 +73,7 @@ test("stop and agora", async () => {
 async function failure(status: number, op: "start" | "user" | "create" | "agora") {
   const f = fakeFetch(() => ({ status, json: { detail: "nope" } }));
   const api = createApi({ fetch: f.fn, online: () => true });
-  const run = op === "start" ? api.start("w-00000000", "x", "en") : op === "user" ? api.getUser("x")
+  const run = op === "start" ? api.start("w-00000000", "x", "en", "listen") : op === "user" ? api.getUser("x")
     : op === "agora" ? api.agora("w-00000000") : api.createUser({ display_name: "", comfortable_language: "en", target_language: "pt-BR" });
   try {
     await run;

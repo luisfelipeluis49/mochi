@@ -105,7 +105,9 @@ async def test_a_failing_or_slow_decide_means_silence() -> None:
         def reset(self) -> None:
             return None
 
-        def session_started(self, woken: bool, language: Language | None = None) -> None:
+        def session_started(
+            self, woken: bool, language: Language | None = None, explains: bool = False
+        ) -> None:
             return None
 
         def device_status(

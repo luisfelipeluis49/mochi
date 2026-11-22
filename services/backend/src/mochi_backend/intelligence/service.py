@@ -106,15 +106,19 @@ class Intelligence:
         """
         self._talk.use(character)
 
-    def session_started(self, woken: bool, language: Language | None = None) -> None:
+    def session_started(
+        self, woken: bool, language: Language | None = None, explains: bool = False
+    ) -> None:
         """A session begins. `woken`: someone called Mochi on the device (its wake phrase) to talk
         to it, so the next sentence is for it. Otherwise Mochi waits for its name.
 
         `language`: the one Mochi was called and greeted in; a short answer that could be either
         language ("Play.", "Ok.") is then answered in it.
+        `explains`: while it only listens, Mochi may also explain an idiom or a wrong expression
+        unasked (a web session's quiet mode, D-46).
         Example: `session_started(True, Language.PT_BR)`.
         """
-        self._talk.begin(woken, language)
+        self._talk.begin(woken, language, explains)
 
     def device_status(
         self, volume: int | None, temperature: int | None, voices: list[str], speaker: str | None

@@ -932,3 +932,27 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   target language. A phrase in the language that is not their profile target is swapped by D-44 into the profile
   target, which is wrong for someone pretending to learn the other language. A per-session choice of language is a
   product decision.
+
+## D-46: a web session listens quietly or talks, as the Pi does (2026-11-22)
+
+**Why.** Every web session started "woken" (the Start button sent `woken_by`), which is the Pi's "Oi Mochi": Papear
+then chats about every sentence and never watches in silence. The Pi has both ways (Companhia: quiet; Praticar: talks),
+and the product needs both on the web.
+- **Two modes, chosen before Start and remembered on the device** (`apps/web/src/lib/mode.ts`). *Quiet listener* (the
+  default) sends no `woken_by`: the backend treats it like the Pi's operator Start, two people talking, hints on
+  screen, speech only when called by name. *Conversation* sends the wake phrase as before. No new field, route or enum:
+  the existing optional `woken_by` carries the choice. Switching by voice still works through the character's
+  `[listen]` and `[chat]`.
+- **Unasked explanations (new, web only).** A session started with a person (`user_id`) tells intelligence
+  `session_started(..., explains=True)`. While it is not a conversation, a sentence of four or more words that the
+  hint rules and the hint model left without a hint is also shown to the character with a note that says: speak only
+  to explain an idiom, a figure of speech or an expression the other person may not understand, or one used wrongly,
+  in a sentence or two, with a `[phrase: …]` tag (D-45); otherwise answer `[quiet]`. Grammar slips and small mistakes are
+  never commented on. The Pi's session (no person) and a woken session never do this. It reuses `SpeakReason.ASKS_MOCHI`
+  for the spoken line, as other spoken lines already do.
+- **AGENTS 1, rule 2** gets one sentence for this exception; it is proposed until the owners agree.
+- **Cost.** Up to one extra character call per sentence of four or more words in a quiet web session (the hint model
+  already runs per sentence). Watch `model_usage` lines with `"kind": "character"` after deploy.
+- **Unverified.** Whether the live model stays quiet most of the time and explains only real idioms. The note was
+  tested with a scripted character, never the real model; too chatty is the likely failure, and the note is the first
+  thing to tighten. Nobody has tried it with two people in a room either.

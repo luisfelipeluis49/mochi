@@ -8,6 +8,7 @@ import type { FaceView } from "../lib/face.ts";
 import { elapsed, minutes } from "../lib/format.ts";
 import { type UiLang, plural, t } from "../lib/i18n.ts";
 import type { MicProblem } from "../lib/mic.ts";
+import { SESSION_MODES, type SessionMode } from "../lib/mode.ts";
 import { Banner } from "../ui/Banner.tsx";
 import { Face } from "../ui/Face.tsx";
 import { HintCard } from "../ui/HintCard.tsx";
@@ -46,6 +47,9 @@ export interface SessionScreenProps {
   onDismissBanner: () => void;
   onDismissSaved: () => void;
   onGoDigest: () => void;
+  /** how this session listens (D-46): chosen before Start */
+  mode: SessionMode;
+  onMode: (m: SessionMode) => void;
 }
 
 export function SessionScreen(p: SessionScreenProps) {
@@ -84,6 +88,16 @@ export function SessionScreen(p: SessionScreenProps) {
               </button>
             ) : (
               <>
+                <fieldset className="mode-choice" disabled={starting}>
+                  <legend>{t(lang, "session_mode_label")}</legend>
+                  {SESSION_MODES.map((m) => (
+                    <label key={m} className={`mode-option${p.mode === m ? " is-selected" : ""}`}>
+                      <input type="radio" name="session-mode" value={m} checked={p.mode === m} onChange={() => p.onMode(m)} />
+                      <span className="mode-name">{t(lang, `session_mode_${m}`)}</span>
+                      <span className="mode-note muted small">{t(lang, `session_mode_${m}_note`)}</span>
+                    </label>
+                  ))}
+                </fieldset>
                 <button type="button" className="btn btn-primary btn-block btn-tall" onClick={p.onStart} disabled={startDisabled} aria-describedby="start-line">
                   {starting ? <><span className="spinner" aria-hidden="true" />{t(lang, "session_waking")}</> : t(lang, "session_start")}
                 </button>
