@@ -38,6 +38,13 @@ _REPORTED = re.compile(
     r"\b(?:i|we|she|he|they) (?:just |already |explicitly )*(?:asked|said|told|wanted)\b|"
     r"\b(?:perguntei|perguntou|perguntamos|pedi|pediu|pedimos|falei|disse)\b"
 )
+# Saying that one will repeat oneself is not asking Mochi to. Seen live (D-69): "I'll say it
+# again: can you send me the plan before lunch?" made Mochi say the last hint aloud, four times.
+_ONESELF = re.compile(
+    r"\b(?:i(?:'ll| will|'m going to| am going to|'m gonna| can| could| should)?|let me"
+    r"|we(?:'ll| will)?)\s+(?:just\s+)?say (?:it|that|this|the word)\b|"
+    r"\b(?:vou|vamos|posso|deixa eu|deixa que eu|eu) (?:fal\w+|diz\w+|dig\w+|repet\w+)\b"
+)
 # A word the recogniser put in quotes: "Você pode falar 'reunião' para mim?"
 _QUOTED = re.compile(r"[\"“]([^\"”]{2,40})[\"”]|(?<!\w)['‘]([^'’]{2,40})['’](?!\w)")
 
@@ -45,10 +52,13 @@ _QUOTED = re.compile(r"[\"“]([^\"”]{2,40})[\"”]|(?<!\w)['‘]([^'’]{2,40
 def wants_to_hear(text: str) -> bool:
     """True when the turn asks how a word sounds. Example: "Can you pronounce it?" -> True.
 
-    Not when it tells about having asked: "I asked how it is pronounced" -> False.
+    Not when it tells about having asked ("I asked how it is pronounced"), nor when the speaker
+    is going to repeat themselves ("I'll say it again").
     """
     said = lowered(text)
-    return _WANTS_TO_HEAR.search(said) is not None and _REPORTED.search(said) is None
+    if _REPORTED.search(said) or _ONESELF.search(said):
+        return False
+    return _WANTS_TO_HEAR.search(said) is not None
 
 
 def _quoted(text: str) -> str | None:
