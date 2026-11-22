@@ -16,6 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f services/backend/Dockerfile -t mochi-backend .
+      # The web image (apps/web/Dockerfile): build it, then smoke-test nginx with an unreachable backend.
+      - run: docker build -t mochi-web apps/web
+      - name: smoke-test mochi-web
+        run: |
+          docker run -d -p 8080:8080 -e BACKEND_URL=http://127.0.0.1:9 --name web mochi-web
+          for i in $(seq 1 10); do curl -fsS http://localhost:8080/web-healthz && break; sleep 1; done
+          curl -fsS http://localhost:8080/web-healthz
+          curl -fsS http://localhost:8080/session | grep -q '<div id="root">'
+          docker exec web nginx -t
   apps:
     runs-on: ubuntu-latest
     strategy:
@@ -40,3 +49,5 @@ jobs:
       - run: npm test
       - if: matrix.app == 'web'
         run: npx tsc --noEmit
+      - if: matrix.app == 'web'
+        run: npm run build
