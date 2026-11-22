@@ -29,6 +29,7 @@ class ReviewWord(BaseModel):
 
     expression: str
     meaning: str | None = None
+    used: bool = False  # in a training: the person has already said it in this session
 
 
 class CharacterRequest(BaseModel):
@@ -45,7 +46,9 @@ class CharacterRequest(BaseModel):
     explains: bool = False  # a quiet listener that may explain an expression nobody asked about
     given: list[str] = []  # words Mochi handed over earlier in this talk: a goodbye may name one
     reviewing: bool = False  # a review session on a phone; False: a meeting
-    review: list[ReviewWord] = []  # in a review: the words Mochi should bring back
+    review: list[ReviewWord] = []  # in a training: the target words, fixed for the session
+    practice: list[str] = []  # in a training: moments of the person's earlier conversations
+    minute: float = 0.0  # in a training: minutes since it began
 
 
 class CharacterModel(Protocol):

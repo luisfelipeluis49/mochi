@@ -18,9 +18,11 @@ from mochi_backend.gateway.agora.client_port import (
 )
 from mochi_backend.gateway.core import GatewayCore
 from mochi_backend.gateway.errors import ConflictError, InvalidRequestError, UpstreamError
+from mochi_backend.gateway.practice_brief import PracticeBrief
 from mochi_backend.gateway.roster import SESSION_ID, as_participant
 from mochi_backend.gateway.session_history import SessionHistory
 from mochi_backend.gateway.user_directory import session_participants
+from mochi_backend.platform.scheduler import ScheduledCall, Scheduler
 from mochi_backend.storage.session_record import SessionTally, build_record
 from mochi_contracts import (
     EventType,
@@ -117,11 +119,12 @@ def language_of_call(woken_by: str | None) -> Language | None:
     return Language.PT_BR if words[0] in PORTUGUESE_CUES else Language.EN
 
 
-# What Mochi says first in a review, in the language the person is at home in.
+# What Mochi says first in a training, in the language the person is at home in.
 REVIEW_GREETINGS = {
-    Language.EN: "Hi! Shall we go over your words?",
-    Language.PT_BR: "Oi! Vamos rever as suas palavras?",
+    Language.EN: "Hi! Ready for a short practice? I'll start a little scene, just answer me.",
+    Language.PT_BR: "Oi! Vamos fazer um treino rápido? Eu começo uma cena, é só responder.",
 }
+TRAINING_HARD_STOP_SECONDS = 420.0  # Mochi wraps up from minute 4 (D-68); this is the backstop
 
 
 @dataclass(frozen=True)
@@ -131,6 +134,8 @@ class SessionLeaves:
 
     history: SessionHistory | None = None
     after: AfterSession | None = None
+    practice: PracticeBrief | None = None  # what a training is built from (D-68)
+    scheduler: Scheduler | None = None  # ends a training that ran past its time
 
 
 class SessionService:
@@ -161,6 +166,9 @@ class SessionService:
         self._config = config
         self._start_lock = asyncio.Lock()
         self._after = leaves.after  # what is worked out once it has stopped (D-54, D-55)
+        self._practice = leaves.practice
+        self._scheduler = leaves.scheduler
+        self._time_limit: ScheduledCall | None = None
 
     async def start(
         self,
@@ -190,6 +198,7 @@ class SessionService:
                 await self._stop_agent(agent_id)  # a Stop or Reset arrived while Agora was joining
                 return self._store.session_state()
             self._begin(agent_id, mode, person)
+            self._limit_training(mode)
             self._logger.log("agent_started", {"agent_id": agent_id, "mode": mode.value})
             self._tell_intelligence(woken_by, mode, person, language)
             return await self._publish_state()
@@ -208,7 +217,22 @@ class SessionService:
         reviewing = mode is SessionMode.REVIEW
         own = person is not None and not reviewing
         talking = reviewing or (own and bool(woken_by))
-        self._intelligence.session_started(talking, language, explains=own)
+        practice = (
+            self._practice.for_user(person.user_id)
+            if reviewing and person and self._practice
+            else None
+        )
+        self._intelligence.session_started(talking, language, explains=own, practice=practice)
+
+    def _limit_training(self, mode: SessionMode) -> None:
+        """A training lasts about five minutes: Mochi wraps up on its own, and this ends it for
+        good a little later (D-68)."""
+        if mode is SessionMode.REVIEW and self._scheduler is not None:
+            self._time_limit = self._scheduler.call_later(TRAINING_HARD_STOP_SECONDS, self._time_up)
+
+    async def _time_up(self) -> None:
+        self._logger.log("training_time_up", {"session_id": self._config.session_id})
+        await self.stop()
 
     def _person(self, mode: SessionMode, user_id: str | None, user: User | None) -> User | None:
         """Who the session is for: the reviewer, a web session's user, or nobody in particular
@@ -249,6 +273,9 @@ class SessionService:
 
     async def stop(self) -> SessionState:
         """Stop capturing at once, then the agent. Idempotent; a gone agent is fine."""
+        if self._time_limit is not None:
+            self._time_limit.cancel()
+            self._time_limit = None
         self._store.invalidate()
         self._record()  # now: a turn still in flight is dropped by `invalidate` anyway
         agent_id = self._store.agent_id

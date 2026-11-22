@@ -23,17 +23,13 @@ const words = [
 ];
 
 test("tiles", () => {
-  const v = buildAnalytics(words, [rec("1", "2026-11-20", 12.5), rec("2", "2026-11-21", 3.04)], { a: { box: 1, due_at: 0, correct: 3, wrong: 1, last_at: 0 } }, NOW, f);
-  assert.deepEqual(v.tiles, { words: 3, assisted: 2, reinforced: 1, independent: 0, sessions: 2, minutes: 15.5, streak: 2, accuracy: 0.75 });
+  const v = buildAnalytics(words, [rec("1", "2026-11-20", 12.5), rec("2", "2026-11-21", 3.04)], NOW, f);
+  assert.deepEqual(v.tiles, { words: 3, assisted: 2, reinforced: 1, independent: 0, sessions: 2, minutes: 15.5, streak: 2 });
   assert.equal(v.empty, false);
   assert.deepEqual(v.words.map((w) => w.learning_event_id), ["c", "b", "a"]);
   assert.deepEqual(v.states, [
     { state: "DISCOVERED", count: 1 }, { state: "ASSISTED", count: 1 }, { state: "REINFORCED", count: 1 }, { state: "USED_INDEPENDENTLY", count: 0 },
   ]);
-});
-
-test("accuracy is null with no training", () => {
-  assert.equal(buildAnalytics(words, [], {}, NOW, f).tiles.accuracy, null);
 });
 
 test("streak: ending today, ending yesterday, broken", () => {
@@ -59,7 +55,7 @@ test("statePath: four steps with the first date reached", () => {
 
 test("bars: the last 10 records, oldest on the left, newest marked", () => {
   const records = Array.from({ length: 12 }, (_, i) => rec(`r${i}`, `2026-11-${String(i + 1).padStart(2, "0")}`, i + 1));
-  const v = buildAnalytics([], records.reverse(), {}, NOW, f);
+  const v = buildAnalytics([], records.reverse(), NOW, f);
   assert.equal(v.bars.length, 10);
   assert.equal(v.bars[0].record_id, "r2");
   assert.equal(v.bars[9].record_id, "r11");
@@ -70,5 +66,5 @@ test("bars: the last 10 records, oldest on the left, newest marked", () => {
 });
 
 test("empty with no words and no records", () => {
-  assert.equal(buildAnalytics([], [], {}, NOW, f).empty, true);
+  assert.equal(buildAnalytics([], [], NOW, f).empty, true);
 });

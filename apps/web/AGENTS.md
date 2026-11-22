@@ -38,8 +38,7 @@ Read the root `AGENTS.md` first. These rules add to it for the web app.
   `/dev/*`, `/agora/*` or `/api/demo/reset`, and never uses the `demo` session.
 - **Never decide visibility in the browser.** Show what the gateway sent to this connection, and
   nothing else. Never show a secret word.
-- **Never store learning events.** The backend owns them. Only this device's training progress lives in
-  `localStorage`.
+- **Never store learning events.** The backend owns them. Nothing about training is kept in the browser.
 
 ## Before you finish
 

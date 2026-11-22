@@ -100,7 +100,6 @@ export function AnalyticsScreen({ lang, view, f }: AnalyticsScreenProps) {
         <Tile label={t(lang, "tile_sessions")} value={String(tiles.sessions)} />
         <Tile label={t(lang, "tile_minutes")} value={minutes(tiles.minutes, f)} />
         <Tile label={t(lang, "tile_streak")} value={String(tiles.streak)} accent />
-        <Tile label={t(lang, "tile_accuracy")} value={tiles.accuracy === null ? "—" : percent(tiles.accuracy, f)} note={t(lang, "tile_accuracy_note")} />
       </div>
       <div className="charts">
         <MinutesChart lang={lang} view={view} f={f} />

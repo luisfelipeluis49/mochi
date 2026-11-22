@@ -21,6 +21,7 @@ from mochi_backend.gateway.intelligence_port import IntelligencePort, StreamingD
 from mochi_backend.gateway.live_hint import LiveHint
 from mochi_backend.gateway.live_transcript import LiveTranscript
 from mochi_backend.gateway.one_touch import OneTouch
+from mochi_backend.gateway.practice_brief import PracticeBrief
 from mochi_backend.gateway.roster import (
     DEMO_COMPANY,
     DEMO_MEMBERS,
@@ -398,7 +399,11 @@ def _runtime(
         core=core,
         pipeline=pipeline,
         sessions=SessionService(
-            core, adapters.agora, adapters.tokens, config, SessionLeaves(people.history, after)
+            core,
+            adapters.agora,
+            adapters.tokens,
+            config,
+            SessionLeaves(people.history, after, PracticeBrief(people.ledger), adapters.scheduler),
         ),
         demo_reset=DemoReset(core, people.ledger),
     )

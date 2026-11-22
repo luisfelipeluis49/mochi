@@ -121,16 +121,20 @@ function Shell({ model, actions }: { model: AppModel; actions: AppActions }) {
     );
   } else if (screen === "training") {
     body = (
-      <TrainingScreen lang={lang} userId={user.user_id} words={words} progress={s.progress} now={model.now} hasSpeech={model.hasSpeech}
-        onResult={actions.trainingResult} onGoSession={() => actions.navigate("session")} />
+      <TrainingScreen
+        lang={lang} phase={s.phase} training={model.training} elapsedMs={s.startedAt ? model.now - s.startedAt : 0}
+        micBlocked={micBlock(s)} banner={s.banner} reachable={s.probe.status === "ok"} hasWords={words.length > 0}
+        onStart={() => actions.start("train")} onStop={actions.stop} onFixMic={actions.retryGate}
+        onDismissBanner={actions.dismissBanner} onGoAnalytics={() => actions.navigate("analytics")} onGoSession={() => actions.navigate("session")}
+      />
     );
   } else if (screen === "digest") {
     body = (
-      <DigestScreen lang={lang} view={buildDigest(s.records, words, s.progress, model.now, f, model.digestWeek)}
-        onSelect={actions.selectWeek} onGoTraining={() => actions.navigate("training")} onGoSession={() => actions.navigate("session")} />
+      <DigestScreen lang={lang} view={buildDigest(s.records, words, model.now, f, model.digestWeek)}
+        onSelect={actions.selectWeek} onGoSession={() => actions.navigate("session")} />
     );
   } else if (screen === "analytics") {
-    body = <AnalyticsScreen lang={lang} view={buildAnalytics(words, s.records, s.progress, model.now, f)} f={f} />;
+    body = <AnalyticsScreen lang={lang} view={buildAnalytics(words, s.records, model.now, f)} f={f} />;
   } else {
     body = <ProfileScreen lang={lang} user={user} onLang={actions.setLang} onForget={actions.forget} />;
   }

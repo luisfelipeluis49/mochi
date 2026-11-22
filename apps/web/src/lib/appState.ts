@@ -8,7 +8,6 @@ import type { ProblemKind } from "./httpProblem.ts";
 import type { UiLang } from "./i18n.ts";
 import type { MicProblem } from "./mic.ts";
 import type { ProbeState } from "./probe.ts";
-import type { Progress } from "./training.ts";
 
 export type GateView =
   | { status: "checking" }
@@ -52,10 +51,9 @@ export interface AppState {
   volume: number;
   volumePopAt: number;
   records: SessionRecord[];
-  progress: Progress;
 }
 
-export function initialApp(input: { lang: UiLang; user: User | null; sessionId: string; online?: boolean; progress?: Progress }): AppState {
+export function initialApp(input: { lang: UiLang; user: User | null; sessionId: string; online?: boolean }): AppState {
   return {
     lang: input.lang,
     gate: { status: "checking" },
@@ -77,7 +75,6 @@ export function initialApp(input: { lang: UiLang; user: User | null; sessionId: 
     volume: 80,
     volumePopAt: 0,
     records: [],
-    progress: input.progress ?? {},
   };
 }
 
@@ -95,7 +92,6 @@ export type AppAction =
   | { type: "socket"; status: AppState["socket"] }
   | { type: "words"; words: LearningEvent[] }
   | { type: "records"; records: SessionRecord[] }
-  | { type: "progress"; progress: Progress }
   | { type: "start_begin"; sessionId: string }
   | { type: "start_ok"; now: number }
   | { type: "start_failed"; banner: Banner }
@@ -132,8 +128,6 @@ export function appReducer(s: AppState, a: AppAction): AppState {
       return { ...s, live: liveReducer(s.live, { type: "words", words: a.words }) };
     case "records":
       return { ...s, records: a.records };
-    case "progress":
-      return { ...s, progress: a.progress };
     case "live":
       return onLive(s, a.action);
     case "start_begin":
@@ -164,7 +158,7 @@ export function appReducer(s: AppState, a: AppAction): AppState {
 
 function forgotten(s: AppState): AppState {
   return {
-    ...s, user: null, identity: "none", live: initialLive(null, s.sessionId), records: [], progress: {},
+    ...s, user: null, identity: "none", live: initialLive(null, s.sessionId), records: [],
     phase: "idle", rejoin: false, saved: null, banner: null,
   };
 }

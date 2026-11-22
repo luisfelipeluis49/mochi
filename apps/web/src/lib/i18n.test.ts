@@ -36,7 +36,7 @@ test("the stored language survives blocked storage", () => {
 
 test("helpers", () => {
   assert.equal(fill("{a} and {b}", { a: 1 }), "1 and {b}");
-  assert.equal(t("en", "training_wrong", { word: "umbrella" }), "The word is “umbrella”.");
+  assert.equal(t("en", "training_start"), "Start training");
   assert.equal(plural("en", "hints", 1), "1 hint");
   assert.equal(plural("pt-BR", "hints", 3), "3 dicas");
   assert.equal(languageName("en", "en"), "English");

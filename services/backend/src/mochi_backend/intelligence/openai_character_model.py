@@ -15,6 +15,7 @@ from mochi_backend.intelligence.character_port import (
 from mochi_backend.intelligence.hedged import first_answer
 from mochi_backend.intelligence.model_usage import ModelUsage, log_usage
 from mochi_backend.intelligence.openai_character_stream import chunk_of, is_done
+from mochi_backend.intelligence.training_note import training_note
 from mochi_backend.intelligence.warm_start import open_connections
 from mochi_backend.platform.http_client import (
     HTTP_OK,
@@ -58,16 +59,10 @@ LANGUAGE_NOTES = {
         "entirely in English; otherwise use no English at all."
     ),
 }
-# A review: no example sentences here, the model would repeat them (see LANGUAGE_NOTES).
-REVIEW_NOTE = (
-    "This session is a review with one person, on their phone. These are words they needed in "
-    "their meetings and have not yet shown they remember (the word, then what it means in their "
-    "own language): {words}. Bring them back one at a time, as described under 'A review'. "
-    "Never say one of these words before they have tried to."
-)
 EMPTY_REVIEW_NOTE = (
-    "This session is a review with one person, on their phone, and they have no saved words to "
-    "go over yet."
+    "This session is a training with one person, on their phone, and they have no saved words to "
+    "practise yet: chat about their work day instead, in the language they are learning, and give "
+    "no hints."
 )
 MEETING_NOTE = "This session is a meeting: people at work are talking to each other."
 # People talking to each other: Mochi stays out unless the sentence is clearly for it.
@@ -142,8 +137,7 @@ def session_note(request: CharacterRequest) -> str:
         return MEETING_NOTE
     if not request.review:
         return EMPTY_REVIEW_NOTE
-    words = "; ".join(f"{w.expression} ({w.meaning or 'no translation'})" for w in request.review)
-    return REVIEW_NOTE.format(words=words)
+    return training_note(request)
 
 
 def messages_for(request: CharacterRequest, prompt: str) -> list[JsonValue]:

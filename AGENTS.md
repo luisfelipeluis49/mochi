@@ -99,7 +99,7 @@ The demo, which is also the acceptance test for the whole build:
  +---------------------------+-----------------------------+
             |  WebSocket events             |  HTTP: company routes
    Home view (Mochi)   Mobile view (phones)   Audience view (projector)
-                             owner: Tasnim
+                             owner: Luis (was Tasnim)
 ```
 
 - Agora hears and speaks. The backend decides. The Pi and the web pages never decide anything.
@@ -116,10 +116,10 @@ mochi/
   packages/fixtures/                Kaue      test sentences and expected decisions
   services/backend/app.py           Luis      process entry; wires gateway to intelligence
   services/backend/gateway/         Luis      Agora adapter, turn endpoint, session, devices, WebSocket, company routes
-  services/backend/intelligence/    Kaue      decide(), review rules, memory
+  services/backend/intelligence/    Luis      decide(), review rules, memory (was Kaue; Luis since 2026-11-22, D-68)
   services/backend/team/            (new, D-45: owner to be agreed)   ledger, session journal, team view
   services/backend/storage/         Luis      Postgres / local file / memory
-  apps/web/                         Tasnim    the Mochi web app: Onboarding, Session, Training, Digest, Analytics (D-56, D-57)
+  apps/web/                         Luis      (was Tasnim; Luis since 2026-11-22, D-68) the Mochi web app: Onboarding, Session, Training, Digest, Analytics (D-56, D-57)
   apps/glasses/                     Suhuai    Mochi AR (outside the hackathon build)
   hardware/pi-bridge/               Matheus   Agora IoT SDK audio bridge
   hardware/pi-setup/                Matheus   kiosk launch, device diagnostics
@@ -129,7 +129,7 @@ mochi/
 
 Default stack: Python 3 + FastAPI for the backend; React + TypeScript (Vite) for the web app; C with the Agora IoT SDK on the Pi. **Do not use the Agora Python RTC SDK on the Pi; it crashes there.** (The Pi may use `agora-agents`, a REST client for the Conversational AI Engine, only as an explicit, off-by-default fallback.)
 
-**An agent edits only the directory of the person who started it.** If the task seems to need a change elsewhere, stop and report what is needed.
+**Since 2026-11-22 (D-68) `services/backend/intelligence/` and `apps/web/` are Luís's, together with `gateway/`, `storage/` and `scripts/`; the Kauê and Tasnim columns and guides below are history.** **An agent edits only the directory of the person who started it.** If the task seems to need a change elsewhere, stop and report what is needed.
 
 ## 6. Contracts (draft v0.7, proposed)
 
@@ -358,7 +358,7 @@ GET  /api/devices/home_pi_01/state   carries "commands": [ { "command_id", "kind
 - The Pi starts a session itself when it hears the wake phrase; Start on a phone does the same through `/start`. `GET /state` is polled only while a session runs.
 - `/agora/llm/...` accepts the shared key as `Authorization: Bearer` (case-insensitive).
 - `GET /ws?user=ana&surface=ar` (owner Suhuai): AR glasses; the gateway sends that user only `session.state.changed` and `hint.created`/`hint.cleared` for hints aimed at them or at nobody; an unknown `surface` closes 4400.
-- **Hint** has `candidates: [{ "expression", "meaning" }] | None` and `context: string | None` (owner: Kauê, D-31). Set only for trails_off, restarts and talks_around, where no single word is known; every other reason leaves both `null`.
+- **Hint** has `candidates: [{ "expression", "meaning" }] | None` and `context: string | None` (owner: Luís, D-31). Set only for trails_off, restarts and talks_around, where no single word is known; every other reason leaves both `null`.
 
 ### 6.7 The company and its team view (proposed in v0.7, D-45)
 
@@ -448,15 +448,17 @@ In a **review** there is one person, and every word is theirs, whichever languag
 
 Every change appends to `state_history`. There is no "mastered" state and no score. A word shown as a hint a moment ago does not count as recalled: reading it off the screen is not remembering it. `USED_INDEPENDENTLY` is decided when the meeting stops, not while it runs: only then is it settled who said each sentence (D-46). It needs a recognised voice, so a meeting on a phone's microphone never gives it. `ASSISTED` also needs the hint to be at most three minutes old: three turns were counted from this session's turns alone, so last week's card said in a new meeting's first sentence looked "used with help".
 
-### 7.5 The review session
+### 7.5 The review session (a training, D-68)
 
-A review is a session of its own on a person's phone (`POST /api/sessions/{id}/start` with `{"mode": "review", "user_id": ...}`; the phone is the microphone, D-41).
+A review is a session of its own on a person's phone (`POST /api/sessions/{id}/start` with `{"mode": "review", "user_id": ...}`; the phone is the microphone, D-41). The web app calls it **Training**.
 
-- Mochi is the person's partner from the first sentence: every sentence is for it, with no wake phrase.
-- Mochi is given up to six of that person's words that are not yet `REINFORCED`, newest first, each with its meaning. It asks for one at a time through the meaning or a small work situation, and never says the word before the person has tried. A clue first, the word only after that.
-- Saying the word moves its card to `REINFORCED` (7.4). The phone gets `learning_event.updated` as in a meeting.
-- A person who is stuck in a review gets hints the same way as in a meeting.
-- With no words to review, Mochi says so and chats about the person's work day instead.
+- Mochi is the person's scene partner from the first sentence: every sentence is for it, with no wake phrase. It plays a colleague in a short work role-play, in the language the person is learning.
+- The scene is **new every time** but built from the person's history in the database: the moments where they needed a word (with what they said) and the mistakes in their reports. Never the same people, topic or sentences.
+- The target words are up to four saved words not yet `REINFORCED`, fixed when the training starts. Mochi steers the scene so they come up and never says one first.
+- **No hints and no second tries.** No hint is shown or spoken, no clue, translation or correction while the scene runs, and a missed word is not asked for again.
+- Saying a target word moves its card to `REINFORCED` (7.4). The phone gets `learning_event.updated` as in a meeting.
+- It lasts about five minutes, and the next training can start at once (no waiting, no schedule): from minute four Mochi ends the scene and gives **positive feedback** by voice: what went well and what is improving, each unused target word as an example to try next time, at most one thing to improve. The gateway stops the session after seven minutes at the latest.
+- With no words to train, Mochi says so and chats about the person's work day instead, still with no hints.
 - Mochi's screen is not involved in a review. (In a meeting a touch on it has one use: saying a suggested sentence, 7.8.)
 
 ### 7.6 The live transcript, code switches and explanations (proposed, D-51 to D-53)
@@ -530,28 +532,28 @@ Build the simplest thing that satisfies the row. Not in scope unless a human ask
 - **Test:** `scripts/say.sh "I need to adiar my meeting tomorrow"` produces a `hint.created` on a connected `?user=ana` socket and not on `?user=ben`'s private stream.
 - **Do not:** write rules about when Mochi helps, or store learning events yourself. Keep every Agora call in one adapter module with a mock mode.
 
-### 9.3 Kauê — `services/backend/intelligence`, `packages/fixtures`
+### 9.3 Intelligence (Kauê until 2026-11-22, now Luís) — `services/backend/intelligence`, `packages/fixtures`
 
 - **`decide()`:** cases 1–9 from Section 7.1; the quiet rules in 7.2; the whose-word rule in 7.3; the learning states in 7.4, including the review.
 - **Fixtures:** for every case, at least three sentences that should produce a hint and three near-misses that should not. Include both demo sentences.
 - **Test:** everything runs with `pytest` on a laptop. No server, no Agora, no microphone.
 - **Do not:** import from `gateway`, open sockets, or call Agora.
 
-### 9.4 Tasnim — `apps/web`
+### 9.4 Web app (Tasnim until 2026-11-22, now Luís) — `apps/web`
 
 Rebuilt in November 2026 (D-56) and reshaped for companies (D-57; it was called Papear until D-65): one responsive app (phone, tablet, desktop) that does in a browser what Mochi Home does on the Pi, through the same backend. It runs in Docker (nginx) as the Render service `mochi-web`. Read `apps/web/README.md`.
 
 - **Screens:**
   - **Onboarding** (`/welcome`): asks for a name only and creates the user with `POST /api/users`. The id is kept in `localStorage`.
   - **Session** (`/session`): Start is the wake phrase. It starts the person's own session and uses the browser's microphone through Agora. A sober status panel (state, audio meter), the hint card, what Mochi says and who is talking are live. Speaking over Mochi cuts it off (D-57).
-  - **Training** (`/training`): spaced recall of the person's saved words, answered by typing or speaking.
-  - **Digest** (`/digest`): a weekly wrap-up (Monday to Sunday, with a week picker) across all of the person's sessions.
+  - **Training** (`/training`): a five-minute role-play with Mochi built from the person's history (7.5, D-68): Start, a clock, Finish. Nothing is written: Mochi's feedback is spoken, and starting another training never waits.
+  - **Digest** (`/digest`): a weekly digest of the person's conversations at work (Monday to Sunday, with a week picker): their sessions, the words they needed and how those words moved. It is not a to-do list: no "practise next".
   - **Analytics** (`/analytics`): progress, each word's state path, and minutes per session.
 - **Microphone:** the browser asks for it on the first visit. Every way the microphone can fail has its own screen and message, and so does a backend that cannot be reached.
 - **Not built:** the Home view (`/home`) and the Audience view (`/audience`) of the old app are not in the new build. Mochi's own screen is `hardware/pi-setup/face.html`.
 - **Contracts:** the app still types contracts v0.4. Since D-58 its guard also accepts the session modes `meeting` and `review`; it drops event types it does not know, so it shows none of the things below until they are built.
 - **Proposed, not built in the app (D-51 to D-54, D-59):** the live transcript (`transcript.line`: a line replaced when it comes again, each mark drawn in its sentence with its `gloss`), a suggested sentence with a "say it" button (`phrase.suggested`, `POST /api/sessions/{id}/hints/{hint_id}/say`), the person's reports (`conversation.report.created`, `GET /api/users/{id}/reports`), and the team view for administrators (`GET /api/companies/{id}/insights`; `docs/TEAM_VIEW.md`).
-- **Do not:** implement AI or speech recognition, decide visibility in the browser, or store learning events. Training progress is kept only in the browser.
+- **Do not:** implement AI or speech recognition, decide visibility in the browser, or store learning events.
 
 ## 10. Rules for coding agents
 

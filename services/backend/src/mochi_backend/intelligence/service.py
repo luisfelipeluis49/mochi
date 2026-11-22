@@ -214,7 +214,11 @@ class Intelligence:
         ]
 
     def session_started(
-        self, conversing: bool, language: Language | None = None, explains: bool = False
+        self,
+        conversing: bool,
+        language: Language | None = None,
+        explains: bool = False,
+        practice: list[str] | None = None,
     ) -> None:
         """A session begins. `conversing`: one person talks WITH Mochi (a review on their phone),
         so every sentence is for it. Otherwise it is a meeting and Mochi waits for its name.
@@ -223,9 +227,10 @@ class Intelligence:
         language ("Ok.") is then answered in it.
         `explains`: while it only listens, Mochi may also explain an idiom or a wrong expression
         aloud, unasked (a web session's quiet mode, D-62).
+        `practice`: in a training, lines about the person's earlier conversations (D-68).
         Example: `session_started(True, Language.PT_BR)`.
         """
-        self._talk.begin(conversing, language, explains)
+        self._talk.begin(conversing, language, explains, practice)
         self._explainer.fresh_session()
         self._voice.fresh_session()
         self._warm_up()

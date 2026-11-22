@@ -124,7 +124,7 @@ async def test_in_a_review_mochi_is_told_the_words_and_the_card_moves_on() -> No
     assert decision.decision is DecisionKind.SPEAK
     request = mochi.requests[0]
     assert request.reviewing and request.conversing
-    assert request.review == [ReviewWord(expression="postpone", meaning="postpone-pt")]
+    assert request.review == [ReviewWord(expression="postpone", meaning="postpone-pt", used=True)]
     assert [e.learning_state for e in decision.learning_events] == [LearningState.REINFORCED]
 
 
@@ -132,9 +132,10 @@ def test_mochi_is_told_which_kind_of_session_it_is_in() -> None:
     base = CharacterRequest(text="Oi", history=[], status=DeviceStatus())
     assert "This session is a meeting" in session_note(base)
     empty = base.model_copy(update={"reviewing": True})
-    assert "no saved words to go over yet" in session_note(empty)
+    assert "no saved words to practise yet" in session_note(empty)
     words = [ReviewWord(expression="postpone", meaning="adiar"), ReviewWord(expression="queue")]
     review = empty.model_copy(update={"review": words})
     note = session_note(review)
-    assert "postpone (adiar); queue (no translation)" in note and "review" in note
+    assert "postpone (adiar, not used yet); queue (no translation, not used yet)" in note
+    assert "TRAINING" in note
     assert note in json.dumps(messages_for(review, "PROMPT"), ensure_ascii=False)

@@ -39,12 +39,18 @@ class IntelligencePort(Protocol):
         ...
 
     def session_started(
-        self, conversing: bool, language: Language | None = None, explains: bool = False
+        self,
+        conversing: bool,
+        language: Language | None = None,
+        explains: bool = False,
+        practice: list[str] | None = None,
     ) -> None:
         """A session begins. `conversing`: a review, where one person talks WITH Mochi; False
         for a meeting, where Mochi waits for its name.
 
         `language`: the one it was called in and greeted in, when known ("oi Mochi" is pt-BR).
+        `practice`: in a training (a review), what the person's earlier conversations hold,
+        one line each (D-68).
         """
         ...
 

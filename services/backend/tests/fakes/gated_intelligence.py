@@ -44,10 +44,14 @@ class GatedIntelligence:
         self._inner.reset()
 
     def session_started(
-        self, conversing: bool, language: Language | None = None, explains: bool = False
+        self,
+        conversing: bool,
+        language: Language | None = None,
+        explains: bool = False,
+        practice: list[str] | None = None,
     ) -> None:
         """Delegate."""
-        self._inner.session_started(conversing, language, explains)
+        self._inner.session_started(conversing, language, explains, practice)
 
     def interrupted(self) -> None:
         """Delegate."""
