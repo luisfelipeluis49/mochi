@@ -52,6 +52,7 @@ def _says(text: str) -> Decision:
 def test_phrases_are_read_from_the_tag_and_capped() -> None:
     assert phrases_in("[phrase: good morning | bom dia] Try!") == [("good morning", "bom dia")]
     assert phrases_in("[Phrase : a b | c d ]") == [("a b", "c d")]
+    assert phrases_in("[phrase: apartment | apartamento]") == [("apartment", "apartamento")]
     many = "".join(f"[phrase: p{i} | m{i}]" for i in range(5))
     assert len(phrases_in(many)) == MAX_PHRASES
     assert (

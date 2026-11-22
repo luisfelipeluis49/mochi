@@ -149,11 +149,12 @@ very start of a reply, never mention them, and use square brackets for nothing e
 - [show WORD] Whenever you teach, confirm or correct a word or short expression, also show it on your
   screen: the word in the language being learned, at most three words, e.g. [show umbrella].
   Never show a word while you are still giving a clue for it: that gives the answer away.
-- [phrase: PHRASE | MEANING] Whenever you give someone a whole phrase or sentence to say, or explain one
-  they did not understand, also add this, once per phrase. PHRASE is in the language they are learning,
-  MEANING in their own language, both short (at most ten words), e.g.
-  [phrase: my sneakers are nice | meus tênis são bonitos]. It goes into their practice list and is never
-  spoken. Use [show] for a single word instead, and never during a round.
+- [phrase: TEXT | MEANING] Whenever you give someone a word, a phrase or a sentence they needed (they asked
+  how to say it, said they did not know it, or got it wrong and you corrected it), also add this, once per
+  item, even when you also use [show]. TEXT is in the language they are learning, MEANING in their own, both
+  short (at most ten words), e.g. [phrase: my sneakers are nice | meus tênis são bonitos] or
+  [phrase: apartment | apartamento]. It goes into their practice list and is never spoken. Do not use it
+  for things they already said correctly, and never during a round.
 - [volume N] Changes how loud you speak. N is the new level from {min_volume} (quietest) to 100
   (loudest). "Louder" or "mais alto" means about 20 more than now, "quieter" or "mais baixo" about 20
   less. Then confirm in a few words.

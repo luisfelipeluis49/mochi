@@ -908,9 +908,10 @@ person's Training, My words and screen never saw them. Assigning the pair to the
 **Why.** Training is meant to hold what a person had a hard time saying or understanding, often a whole phrase
 ("how do I say my sneakers are nice?"). Only hints became learning events, so a person who just chats with Papear
 (`SPEAK`, no hint) had an empty Training even after D-44.
-- **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: PHRASE | MEANING]`: the
-  phrase in the language the person learns, its meaning in their own, at most twelve words, written next to the line it
-  speaks. The gateway already strips every bracket before speech (`split_commands`, `SpokenRelease`), so it is never
+- **How.** The character prompt (`intelligence/character.md`) gets a silent command, `[phrase: TEXT | MEANING]`: a word,
+  phrase or sentence the person needed (asked how to say it, did not know it, or got it wrong), in the language they
+  learn, with its meaning in their own, at most twelve words, written next to the line it speaks. It is used for single
+  words too, because `[show WORD]` only draws on the device face and saves nothing. The gateway already strips every bracket before speech (`split_commands`, `SpokenRelease`), so it is never
   said. `intelligence/saved_phrase.py` (`PhraseSaver`) reads it from the spoken line in `DecisionFlow.run` and adds a
   DISCOVERED `LearningEvent` (`detection_signal: asks_mochi`, `hint_id: null`) for the one participant learning the
   phrase's language (AGENTS 7.3). At most two per line; the same phrase is not saved twice; a line with no tag, or
@@ -922,3 +923,12 @@ person's Training, My words and screen never saw them. Assigning the pair to the
   real session after deploy; if the model forgets the tag, the prompt wording is the first thing to change.
 - **Not built.** Phrases the person said badly (grammar feedback is out of scope, AGENTS 8) and sentences the person
   did not understand when the partner spoke them; both need the character or the hint model to name the phrase.
+- **Seen live (a 10.4 minute web chat, 2026-11-22):** about 60 turns, every one answered by the character (`SPEAK`,
+  no hint): words the person pretended not to know (`portão de ferro`, `apartamento`, `prédio`, `pé direito`) and
+  corrections of past and future sentences (`Eu fui ao parque ontem`, `eu vou comer croissant amanhã`). Nothing was
+  saved, because a woken session sends every sentence to the character and the hint path is skipped, and nothing the
+  character says was stored. That is what this entry fixes, if the model writes the tag.
+- **Open:** the person switched between practising English and Portuguese inside one session while the profile has one
+  target language. A phrase in the language that is not their profile target is swapped by D-44 into the profile
+  target, which is wrong for someone pretending to learn the other language. A per-session choice of language is a
+  product decision.
