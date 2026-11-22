@@ -183,6 +183,8 @@ def test_a_web_user_and_their_session_records_round_trip_and_survive_a_reset(
 def test_the_reports_table_takes_a_report_once_and_goes_with_the_history(
     storage: PostgresStorage,
 ) -> None:
+    storage.seed_users(DEMO_USERS)
+    storage.seed_company(DEMO_COMPANY, DEMO_MEMBERS)  # a report refers to its company and person
     report = draft()
     storage.save_report(report)
     storage.save_report(report.model_copy(update={"strengths": ["changed"]}))  # never rewritten

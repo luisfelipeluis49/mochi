@@ -1520,9 +1520,13 @@ two to be reconciled now; these are the choices, each one open to the owners' ve
 - **Decision numbers.** `main`'s two entries were renumbered D-56 and D-57, because `hardware` had fourteen
   entries and their references in code against two.
 
-**Checked:** the merged backend passes both sides' tests (1701) with lint, strict types and the schema
-check. **Not checked here:** the web app's own tests (no Node on the Pi; CI runs them), and every company
-table's SQL against a real Postgres (AGENTS 12.7), which now includes the renamed one.
+**Checked:** the merged backend passes both sides' tests with lint, strict types and the schema check. The
+Postgres tests, skipped until now for want of a database, were run against a throwaway PostgreSQL 17 on
+the Pi (the Debian packages unpacked into a folder, no install): all 7 pass. And the deploy was rehearsed:
+a database made with `main`'s schema and holding a web user and a web session was opened by this code,
+which created its six tables beside them, kept the web session, wrote a company session, a moment, a
+sentence and a report, and read all of it back after a restart.
+**Not checked here:** the web app's own tests (no Node on the Pi; CI runs them), and Render's real database.
 
 ## D-59: one-touch assistance: the sentence someone was reaching for, and Mochi saying it (2026-11-22)
 
