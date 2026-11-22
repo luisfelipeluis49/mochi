@@ -1,8 +1,8 @@
 // =============================================================================
 // usePhoneMic.ts  —  LANGUAGE: TypeScript (a React hook)
 // -----------------------------------------------------------------------------
-// Start/Stop with THIS phone's microphone, shared by the phone page (/m: Iniciar/Parar) and
-// "My conversations" (/me: Record/Stop and save). See phoneMic.ts and PROPOSAL_phone_microphone.md.
+// Start session / Stop session with THIS phone's microphone (the Session tab, SessionView.tsx).
+// Used once, in PhoneApp.tsx, so switching tabs keeps the mic on. See phoneMic.ts.
 //   startHere: the usual POST /start, then this phone's mic joins Mochi's channel (the Pi is not used)
 //   stopHere:  mic off, then the usual POST /stop
 //   here:      did THIS phone start the running session? (false while a session started on the Pi runs)
@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Backend } from "./backend.ts";
 import { askForMic, type MicProblem, markStartedHere, problemOf, startedHere, startPhoneMic } from "./phoneMic.ts";
+
+export type PhoneMic = ReturnType<typeof usePhoneMic>;
 
 export function usePhoneMic(capturing: boolean, onMicFailed: (problem: MicProblem) => void) {
   const [here, setHere] = useState(() => startedHere());

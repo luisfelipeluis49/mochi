@@ -17,10 +17,8 @@ import { type Who, whoFromUrl } from "./lib/who.ts"; // turns the URL into "whic
 import { AudienceView } from "./views/AudienceView.tsx"; // projector screen
 import { DebugPanel } from "./views/DebugPanel.tsx";     // the ?debug=1 event list
 import { HomeView } from "./views/HomeView.tsx";
-import { InsightsView } from "./views/InsightsView.tsx";         // Mochi's own little screen
-import { MobileView } from "./views/MobileView.tsx";
+import { PhoneApp } from "./views/PhoneApp.tsx";               // a person's phone: Session + Analytics tabs
 import { StartPage } from "./views/StartPage.tsx";
-import { TabBar } from "./views/TabBar.tsx";                  // the Analytics / Conversations bar on phone pages
 import { peopleFromUrl, rememberUser } from "./lib/people.ts";     // a person's phone screen
 import "./styles.css";                                  // all the colors and sizes (CSS)
 
@@ -31,7 +29,6 @@ const lang = pickLanguage(window.location.search, navigator.language); // "en" o
 const debug = q.get("debug") === "1";                            // show the event list?
 const mock = q.get("mock") === "1";                              // use fake data instead of the backend?
 const mockSpeed = Number(q.get("speed") ?? "1") || 1;            // make the fake demo run faster (e.g. 4 = 4x)
-const insights = window.location.pathname.startsWith("/me");      // the "My conversations" page
 const mockPeople = peopleFromUrl(window.location.search) ?? undefined; // ?people=tasnim,matheus: names in the mock demo
 
 // --- App: the page shown when the URL is one of our 3 screens -----------------
@@ -42,20 +39,15 @@ function App({ who }: { who: Who }) {
   //   connected = is the connection open right now?
   //   now       = the current time, updated 4x per second (so hints disappear on time)
   //   backend   = an object with functions to send commands (start, stop, game result)
-  const { state, connected, now, backend, rejected } = useMochi(who, { mock, mockSpeed, mockPeople, mockScenario: insights ? "recording" : "demo" });
+  const { state, connected, now, backend, rejected } = useMochi(who, { mock, mockSpeed, mockPeople, mockScenario: "demo" });
 
   // Draw ONE of the three screens depending on "who".
   // `condition && <Thing />` means "draw Thing only if condition is true".
   return (
     <>
       {who.kind === "device" && <HomeView state={state} now={now} lang={lang} backend={backend} />}
-      {/* /me?user=... → "My conversations" (the person's analytics); /m?user=... → the phone page */}
-      {who.kind === "user" && insights && <InsightsView user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />}
-      {who.kind === "user" && !insights && (
-        <MobileView user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />
-      )}
-      {/* Phone pages: the Analytics / Conversations bar at the bottom */}
-      {who.kind === "user" && <TabBar current={insights ? "conversations" : "analytics"} search={window.location.search} lang={lang} />}
+      {/* A person's phone: /m?user=... (Session tab) and /m/analytics?user=... (Analytics tab) */}
+      {who.kind === "user" && <PhoneApp user={who.user} state={state} now={now} lang={lang} connected={connected} backend={backend} />}
       {who.kind === "audience" && <AudienceView state={state} now={now} lang={lang} />}
       {rejected && <p className="fatal" role="alert">Connection refused by the backend: {rejected}</p>}
       {debug && <DebugPanel log={state.log} connected={connected} />}
@@ -67,7 +59,7 @@ function App({ who }: { who: Who }) {
 
 // --- Decide which page this is, then draw it -----------------------------------
 const who = whoFromUrl(window.location.pathname, window.location.search); // null if the URL is not one of our pages
-// A personal page (/me?user=tasnim or /m?user=tasnim) tells this phone whose it is; "/" opens it next time.
+// A personal page (/m?user=tasnim) tells this phone whose it is; "/" opens it next time.
 if (who?.kind === "user") rememberUser(who.user);
 document.body.dataset.view = who?.kind ?? "index";   // adds data-view="device"/"user"/... to <body> so CSS can style each page
 if (q.get("projector") === "1") document.body.classList.add("projector"); // bigger layout for the projector

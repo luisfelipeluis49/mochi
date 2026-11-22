@@ -109,7 +109,6 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .dot.off { background: #f3d6dd; color: var(--berry); }
 .controls { display: grid; gap: 10px; }
 .status { font-size: 15px; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.mode-pill { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: var(--pink); color: var(--night); }
 .btn {
   font: inherit; font-size: 20px; font-weight: 700; padding: 16px; border: 0; border-radius: 14px;
   cursor: pointer; color: var(--cream);
@@ -119,12 +118,6 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .btn.stop { background: #fff; color: var(--night); border: 2px solid var(--night); }
 .btn.secondary { background: var(--pink); color: var(--night); font-size: 17px; padding: 12px; }
 .error { color: var(--berry); font-size: 14px; }
-/* The live hint on the phone (dark card, like Mochi's word screens) */
-.live-hint { background: var(--night); color: var(--cream); border-radius: 16px; padding: 16px 18px; display: grid; gap: 4px; }
-.live-hint .tag { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--pink); }
-.live-hint .expr { font-size: 30px; font-weight: 800; line-height: 1.1; }
-.live-hint .meaning { font-size: 17px; opacity: .9; }
-.live-hint .example { font-size: 15px; font-style: italic; opacity: .85; }
 .empty { color: var(--muted); font-size: 15px; }
 
 /* "Your session" summary, like the phone on the Mochi Mobile slide */
@@ -163,42 +156,37 @@ body[data-view="device"] { background: var(--night); overflow: hidden; }
 .path li.current { background: var(--night); color: var(--cream); font-weight: 700; }
 .next { font-size: 14px; color: var(--muted); }
 
-/* ---------- "My conversations" page (/me) ---------- */
-.insights .subtitle { font-size: 14px; color: var(--muted); margin-top: 2px; }
-.insights header { align-items: flex-start; }
-.trend-note { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
-.trend-note.good { color: #3f6b3a; }
-.trend-note.bad { color: var(--berry); }
+/* Lists of links on the start page; the dark "first time" box */
 .practice { background: var(--night); color: var(--cream); border-radius: 16px; padding: 16px 18px; }
 .practice h2 { color: var(--pink); }
-.practice ol { padding-left: 20px; display: grid; gap: 6px; font-size: 16px; font-weight: 600; }
-.going-well { margin-top: 10px; font-size: 14px; color: var(--muted-dark); }
-.going-well b { color: var(--cream); }
-.kind-pill { justify-self: start; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--cream); color: var(--berry); }
-.mistake .said, .mistake .better { font-size: 15px; line-height: 1.35; }
-.mistake .said span, .mistake .better span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.mistake .said s { color: var(--berry); text-decoration-thickness: 1px; }
-.mistake .better { font-weight: 700; }
-.mistake .better span { color: #3f6b3a; }
-.word-needed .label { color: var(--berry); }
 .conv-list { list-style: none; display: grid; gap: 8px; }
 .conv-list li { background: #fff; border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; }
-.conv-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.conv-title { font-weight: 700; font-size: 16px; }
-.conv-meta { font-size: 13px; color: var(--muted); }
-/* Record card: "Record a conversation" / "Recording 03:27" */
-.record { display: grid; gap: 8px; }
-.record.on { background: #fff; border: 3px solid var(--berry); border-radius: 16px; padding: 14px; }
-.record-btn { background: var(--berry); }
-.record-status { font-size: 20px; font-weight: 800; color: var(--berry); display: flex; align-items: center; gap: 8px; }
-.rec-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--berry); display: inline-block; }
-.record-hint { font-size: 13px; color: var(--muted); }
-.record-notice { font-size: 14px; margin-top: 8px; padding: 12px; border-radius: 12px; background: var(--beige); display: grid; gap: 10px; }
-/* A link that looks like a button (no underline) */
-.link-btn { display: block; text-align: center; text-decoration: none; }
-.back-btn { justify-self: start; font-size: 15px; padding: 8px 16px; }
 
-/* ---------- The tab bar at the bottom of the phone pages ---------- */
+/* ---------- Session tab: the live stage, like Mochi's own screen ---------- */
+.session-live { font-size: 15px; font-weight: 700; color: var(--berry); display: flex; align-items: center; gap: 8px; margin-bottom: -8px; }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--berry); display: inline-block; }
+.stage {
+  position: relative; min-height: 52vh; border-radius: 24px; padding: 28px 20px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center;
+}
+.stage-light { background: #fff; color: var(--night); }
+.stage-dark { background: var(--night); color: var(--cream); }
+.stage .face { width: min(56vw, 240px); height: min(26vw, 112px); }
+.stage .face.small-face { width: min(34vw, 150px); height: min(16vw, 70px); }
+.stage-title { font-size: 22px; font-weight: 800; line-height: 1.2; }
+.stage-text { font-size: 15px; color: var(--muted); line-height: 1.4; max-width: 30ch; }
+.stage-label { font-size: 18px; font-weight: 700; color: var(--berry); }
+.stage-said { font-size: 24px; font-weight: 700; line-height: 1.25; }
+.stage-for { font-size: 13px; font-weight: 700; color: var(--pink); text-transform: uppercase; letter-spacing: .08em; }
+.stage-word { font-weight: 800; line-height: 1.05; }
+.stage-meaning { font-size: 18px; opacity: .9; }
+.stage-example { font-size: 15px; font-style: italic; opacity: .8; }
+.speaker-badge { position: absolute; top: 14px; right: 14px; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 99px; background: var(--pink); color: var(--night); }
+
+/* ---------- Analytics tab: the "session in progress" note ---------- */
+.record-notice { font-size: 14px; padding: 12px; border-radius: 12px; background: var(--beige); display: grid; gap: 10px; }
+
+/* ---------- The tab bar at the bottom of the phone ---------- */
 body[data-view="user"] .mobile { padding-bottom: 96px; } /* room so the bar does not cover the last card */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
@@ -207,25 +195,10 @@ body[data-view="user"] .mobile { padding-bottom: 96px; } /* room so the bar does
   background: var(--cream); border-top: 1px solid var(--beige);
 }
 .tab {
-  display: block; text-align: center; text-decoration: none; font-weight: 700; font-size: 16px;
+  font: inherit; font-weight: 700; font-size: 16px; cursor: pointer;
   padding: 12px; border-radius: 12px; color: var(--night); background: #fff; border: 2px solid var(--beige);
 }
 .tab.on { background: var(--night); color: var(--cream); border-color: var(--night); }
-
-/* Conversation history entries are buttons that open the conversation */
-.conv-open { all: unset; display: grid; gap: 4px; width: 100%; cursor: pointer; }
-.conv-preview { font-size: 13px; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* One conversation: what you said */
-.only-you { font-size: 13px; color: var(--muted); margin: -4px 0 8px; }
-.sentences { list-style: none; display: grid; gap: 8px; }
-.sentences li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; background: #fff; border-radius: 12px; padding: 10px 12px; }
-.sentences li.has-fix { background: var(--beige); }
-.sentences .at { font-size: 12px; color: var(--muted); padding-top: 2px; }
-.said-line { font-size: 15px; line-height: 1.35; }
-.said-line s { color: var(--berry); text-decoration-thickness: 1px; }
-.better-line { font-size: 15px; font-weight: 700; margin-top: 4px; line-height: 1.35; }
-.better-line .kind-pill { margin-right: 4px; }
 
 .consent { font-size: 12px; color: var(--muted); text-align: center; padding-top: 8px; }
 

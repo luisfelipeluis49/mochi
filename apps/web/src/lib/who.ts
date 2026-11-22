@@ -8,7 +8,7 @@
 
 /** The three kinds of connection. */
 export type Who =
-  | { kind: "user"; user: string; session?: string } // a phone: /m?user=ana  (also /me?user=ana, "My conversations");
+  | { kind: "user"; user: string; session?: string } // a phone: /m?user=ana (Session tab), /m/analytics?user=ana (Analytics tab);
                                                      // session: ?session=demo follows the Pi's session
   | { kind: "device"; device: string }    // Mochi's screen:  /home?device=home_pi_01
   | { kind: "audience" };                 // the projector:   /audience
@@ -47,7 +47,7 @@ export function indexLinks(): { href: string; label: string }[] {
     { href: `/m?user=${SECOND_USER}`, label: `Mobile view: ${SECOND_USER[0].toUpperCase()}${SECOND_USER.slice(1)}` },
     { href: "/m?user=ben", label: "Mobile view: Ben (backend roster)" },
     { href: "/m?user=ana&session=demo", label: "Operator: Ana's phone controls the Pi's session (no phone mic)" },
-    { href: "/me?user=tasnim&mock=1", label: "My conversations (analytics of real conversations)" },
+    { href: "/m/analytics?user=ana&mock=1", label: "Analytics tab: Ana (demo)" },
     { href: "/audience", label: "Audience view (projector)" },
   ];
 }
